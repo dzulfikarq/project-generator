@@ -39,3 +39,7 @@ On Windows 11 Pro `10.0.26300`, Node.js `22.22.1`, npm `10.9.4`:
 - **FE-02 Next.js: NO-GO for promotion/release.** Same shared blockers; prior local E2E evidence does not close independent acceptance. Keep `planned`.
 
 No recipe status, release status, or approval record changed.
+
+## Phase 01.6 follow-up
+
+The Phase 01.5 findings above remain the historical baseline. Subsequent FE-01/FE-02 E2E reruns and targeted Windows safety status are recorded in [Phase 01.6 follow-up](phase-01.6-windows-safety-remediation.md). PID reuse, detached descendants/full-job cancellation, and junction-swap races remain open; no recipe was promoted.

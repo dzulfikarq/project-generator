@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Date | 2026-11-11 |
+| Date | 2026-11-12 |
 | State | Phase 01 CLI implemented; formal architecture/release review not yet complete |
 | Governance | See [`governance.md`](governance.md) |
 
@@ -24,7 +24,9 @@ This project adopts EvoPilot's **decision accountability** pattern but uses stan
 | DEC-011 | Phase 1 system Node; defer desktop runtime packaging | Proposed | [DEC-011](DEC-011-phase1-runtime.md) | PoC before Windows installer; OPEN-001 remains open |
 | DEC-012 | Owned staging and no-replace finalization | Proposed | [DEC-012](DEC-012-owned-staging-finalize.md) | Windows race/cleanup tests needed |
 | DEC-013 | Typed CLI + versioned JSONL progress bridge | Proposed | [DEC-013](DEC-013-cli-events-bridge.md) | Verify schema and consumer tests |
-| DEC-014 | Windows scoped process runner | Proposed | [DEC-014](DEC-014-windows-process-runner.md) | Independent process/security review; Job Object alternative remains open |
+| DEC-014 | Windows scoped process runner | Proposed | [DEC-014](DEC-014-windows-process-runner.md) | PID reuse, detached descendants, and full-job cancellation remain open; see DEC-015 |
+| DEC-015 | Native Windows process/filesystem safety boundary | Proposed | [DEC-015](DEC-015-windows-native-safety-boundary.md) | Select native module/helper/OS isolation only after architecture and packaging review |
+| DEC-016 | npm lifecycle script execution policy | Accepted Discovery | [DEC-016](DEC-016-npm-lifecycle-script-policy.md) | Interim explicit-generate disclosure policy; review before desktop UI/release |
 
 ## Open items
 
@@ -33,5 +35,6 @@ This project adopts EvoPilot's **decision accountability** pattern but uses stan
 - OPEN-003: Exact first shipping recipes and release milestone scope.
 - OPEN-004: Forma private GitHub authentication and permission policy.
 - OPEN-005: Optional Docker Compose start behavior and DB readiness semantics.
+- OPEN-006: Approve and validate native process containment and handle-safe staging operations before closing Windows safety blockers.
 
 Proposed decisions remain unapproved even where Phase 01 code now uses that approach. Implementation or passing tests do not substitute for decision approval. Record real authorization before changing status.

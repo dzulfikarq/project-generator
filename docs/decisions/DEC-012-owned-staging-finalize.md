@@ -31,7 +31,7 @@ Use B. Stage at `<parent>/.project-generator-stage-<uuid>/<project-name>`, with 
 
 ## Verification / evidence
 
-Partial Windows evidence: unit tests cover forged ownership markers, junction rejection, case-insensitive collisions, target-creation race/no-replace behavior, successful staged move, and child-tree cancellation; both FE-01/FE-02 E2E runs finalized new outputs from owned staging. The E2E parent path included spaces and `雪`. See [QA matrix](../qa/acceptance-matrix.md) and per-recipe reports. Locked-file behavior, junction-swap stress, crash/power-loss recovery, and independent security review remain unverified.
+Partial Windows evidence: unit tests cover forged ownership markers, static junction rejection, case-insensitive collisions, target-creation race/no-replace behavior, and successful staged move; FE-01/FE-02 E2E runs finalized new outputs from owned staging. The E2E parent path included spaces and `雪`. Path-based validation/cleanup still has a junction/symlink swap TOCTOU window; static rejection does not cover swaps. See [DEC-015](DEC-015-windows-native-safety-boundary.md), [QA matrix](../qa/acceptance-matrix.md), and per-recipe reports. Locked-file behavior, swap stress, crash/power-loss recovery, and independent security review remain unverified.
 
 ## Security and second-order effects
 
