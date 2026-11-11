@@ -1,0 +1,218 @@
+﻿
+> project-generator-desktop@0.1.0 test
+> npm run build && npm run test --workspace @project-generator/core && npm run test --workspace @project-generator/cli
+
+
+> project-generator-desktop@0.1.0 build
+> npm run build:supervisor && npm run build --workspace @project-generator/core && npm run build --workspace @project-generator/cli
+
+
+> project-generator-desktop@0.1.0 build:supervisor
+> node scripts/build-windows-supervisor.mjs
+
+    Finished `release` profile [optimized] target(s) in 0.22s
+
+> @project-generator/core@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @project-generator/cli@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @project-generator/core@0.1.0 test
+> node --test dist/test/*.test.js
+
+TAP version 13
+# Subtest: production generation blocks planned recipes before destination writes
+ok 1 - production generation blocks planned recipes before destination writes
+  ---
+  duration_ms: 52.8815
+  type: 'test'
+  ...
+# Subtest: elevated generation fails before staging
+ok 2 - elevated generation fails before staging
+  ---
+  duration_ms: 138.3067
+  type: 'test'
+  ...
+# Subtest: redacts fake credentials and private paths from process output
+ok 3 - redacts fake credentials and private paths from process output
+  ---
+  duration_ms: 0.9378
+  type: 'test'
+  ...
+# Subtest: generation plan discloses unsandboxed npm lifecycle script execution
+ok 4 - generation plan discloses unsandboxed npm lifecycle script execution
+  ---
+  duration_ms: 2.2554
+  type: 'test'
+  ...
+# Subtest: cancellation during runner path checks is not lost
+ok 5 - cancellation during runner path checks is not lost
+  ---
+  duration_ms: 10.8221
+  type: 'test'
+  ...
+# Subtest: native preflight blocks workload when caller token is elevated
+ok 6 - native preflight blocks workload when caller token is elevated
+  ---
+  duration_ms: 162.2098
+  type: 'test'
+  ...
+# Subtest: cancellation terminates owned Node process tree on Windows
+ok 7 - cancellation terminates owned Node process tree on Windows # SKIP owned-process integration requires a non-elevated caller
+  ---
+  duration_ms: 39.5885
+  type: 'test'
+  ...
+# Subtest: timeout terminates detached descendants in the owned Job Object
+ok 8 - timeout terminates detached descendants in the owned Job Object # SKIP owned-process integration requires a non-elevated caller
+  ---
+  duration_ms: 28.0425
+  type: 'test'
+  ...
+# Subtest: natural root exit detects and terminates remaining detached descendants
+ok 9 - natural root exit detects and terminates remaining detached descendants # SKIP owned-process integration requires a non-elevated caller
+  ---
+  duration_ms: 29.6839
+  type: 'test'
+  ...
+# Subtest: cancelling generator does not terminate an unrelated process
+ok 10 - cancelling generator does not terminate an unrelated process # SKIP owned-process integration requires a non-elevated caller
+  ---
+  duration_ms: 31.0732
+  type: 'test'
+  ...
+# Subtest: Job Object rejects explicit CREATE_BREAKAWAY_FROM_JOB descendants
+ok 11 - Job Object rejects explicit CREATE_BREAKAWAY_FROM_JOB descendants # SKIP owned-process integration requires a non-elevated caller
+  ---
+  duration_ms: 20.3087
+  type: 'test'
+  ...
+# Subtest: rejects a junction in the destination path on Windows
+ok 12 - rejects a junction in the destination path on Windows
+  ---
+  duration_ms: 8.9828
+  type: 'test'
+  ...
+# Subtest: refuses forged marker cleanup without in-process ownership
+ok 13 - refuses forged marker cleanup without in-process ownership
+  ---
+  duration_ms: 5.4679
+  type: 'test'
+  ...
+# Subtest: destination collision check is case-insensitive on Windows
+ok 14 - destination collision check is case-insensitive on Windows
+  ---
+  duration_ms: 3.9234
+  type: 'test'
+  ...
+# Subtest: Windows no-replace finalize preserves an occupied target
+ok 15 - Windows no-replace finalize preserves an occupied target # SKIP native staging integration requires a non-elevated caller
+  ---
+  duration_ms: 33.1805
+  type: 'test'
+  ...
+# Subtest: Windows no-replace finalize moves only validated staging content
+ok 16 - Windows no-replace finalize moves only validated staging content # SKIP native staging integration requires a non-elevated caller
+  ---
+  duration_ms: 29.7818
+  type: 'test'
+  ...
+# Subtest: stage creation rejects parent junction swaps without creating outside entries
+ok 17 - stage creation rejects parent junction swaps without creating outside entries # SKIP native staging integration requires a non-elevated caller
+  ---
+  duration_ms: 37.6834
+  type: 'test'
+  ...
+# Subtest: support cleanup contains concurrent junction replacement within staging
+ok 18 - support cleanup contains concurrent junction replacement within staging # SKIP native staging integration requires a non-elevated caller
+  ---
+  duration_ms: 25.2389
+  type: 'test'
+  ...
+# Subtest: no-replace finalize contains concurrent project junction replacement
+ok 19 - no-replace finalize contains concurrent project junction replacement # SKIP native staging integration requires a non-elevated caller
+  ---
+  duration_ms: 32.9695
+  type: 'test'
+  ...
+# Subtest: accepts and resolves FE-01 and FE-02 without filesystem access
+ok 20 - accepts and resolves FE-01 and FE-02 without filesystem access
+  ---
+  duration_ms: 2.5838
+  type: 'test'
+  ...
+# Subtest: rejects malformed types, unknown fields, unsupported managers and bad enums
+ok 21 - rejects malformed types, unknown fields, unsupported managers and bad enums
+  ---
+  duration_ms: 0.776
+  type: 'test'
+  ...
+# Subtest: blocks incompatible stacks and contradictory choices with structured errors
+ok 22 - blocks incompatible stacks and contradictory choices with structured errors
+  ---
+  duration_ms: 1.4342
+  type: 'test'
+  ...
+# Subtest: validates Windows path forms, spaces, Unicode, traversal, reserved names, and length
+ok 23 - validates Windows path forms, spaces, Unicode, traversal, reserved names, and length
+  ---
+  duration_ms: 0.8607
+  type: 'test'
+  ...
+# Subtest: plan is read-only even when parent path does not exist
+ok 24 - plan is read-only even when parent path does not exist
+  ---
+  duration_ms: 0.538
+  type: 'test'
+  ...
+# Subtest: toolchain version checks follow pinned scaffold engine ranges
+ok 25 - toolchain version checks follow pinned scaffold engine ranges
+  ---
+  duration_ms: 0.3884
+  type: 'test'
+  ...
+1..25
+# tests 25
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 10
+# todo 0
+# duration_ms 436.8773
+
+> @project-generator/cli@0.1.0 test
+> node --test dist/test/*.test.js
+
+TAP version 13
+# Subtest: catalog emits local versioned JSON without network
+ok 1 - catalog emits local versioned JSON without network
+  ---
+  duration_ms: 84.0109
+  type: 'test'
+  ...
+# Subtest: plan reads config but does not create a missing destination
+ok 2 - plan reads config but does not create a missing destination
+  ---
+  duration_ms: 89.7427
+  type: 'test'
+  ...
+# Subtest: doctor reports actual Node/npm and absent destination without writes
+ok 3 - doctor reports actual Node/npm and absent destination without writes
+  ---
+  duration_ms: 89.2985
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 341.1852
+npmExitCode=0

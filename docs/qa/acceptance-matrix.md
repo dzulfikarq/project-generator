@@ -63,6 +63,13 @@ Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PAS
 - Cancellation, timeout, detached-descendant, unrelated-process, explicit breakaway, no-replace-finalize, parent-junction race, cleanup-junction race, and finalize-junction race tests were **SKIPPED**, because running them would require bypassing the elevated-mode guard. They are implementation tests, not passing evidence yet.
 - DEC-016 remains unchanged: explicit `generate` is consent to lifecycle scripts, not isolation. FE-01 and FE-02 remain `planned` and **NO-GO**. Required next step: run skipped tests from a non-elevated Windows 11 session; review remaining path-based Node staging writes, termination-failure/helper-death cases, packaging, then independent security review.
 
+## Phase 01.8 Windows native runtime verification
+
+- Baseline `53d71068ecb93a959cf31809559fdd9a170143a2`; native `--check-elevation` returned `{"elevated":true}` (exit 0), and token carried High Mandatory Level.
+- `npm test` exit 0: core 15 passed, 10 intentionally skipped by the elevation guard, 0 failed; CLI 3 passed, 0 skipped. All ten skips are listed in [Phase 01.8 evidence](evidence/phase-01.8-windows-native-runtime-verification.md); no integration test is counted as a pass.
+- Typecheck, lint, Cargo test/Clippy/format checks passed. Real npm cancellation, forced-helper-death/cleanup-failure tests, FE-01/FE-02 native E2E, and independent security review remain **NOT RUN** because no non-elevated session was available.
+- FE-01 and FE-02 remain `planned` and **NO-GO for promotion**. See report and raw test log: [Phase 01.8 evidence](evidence/phase-01.8-windows-native-runtime-verification.md).
+
 ## Evidence protocol
 
 For any recipe marked `tested`, store a report under future `docs/qa/evidence/<recipe-id>/<test-run-id>.md` with:
