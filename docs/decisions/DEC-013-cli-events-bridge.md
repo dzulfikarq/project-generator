@@ -31,7 +31,7 @@ Use B. CLI offers read-only `catalog/plan/doctor` and explicit `generate` with `
 
 ## Verification / evidence
 
-Not run. Verify schema consumer tests, invalid/stale events, ordered sequences, disconnect/reconnect behavior and log redaction.
+Partial evidence: FE-01/FE-02 generation produced ordered JSONL job/stage/validation events with terminal completion; unit coverage checks monotonic sequence numbers for a blocked generation. See per-recipe reports and [QA matrix](../qa/acceptance-matrix.md). No Tauri consumer, stale-event handling, disconnect/reconnect behavior, or independent schema compatibility test exists yet.
 
 ## Security and second-order effects
 

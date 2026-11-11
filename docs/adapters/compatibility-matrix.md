@@ -3,22 +3,22 @@
 | Field | Value |
 |---|---|
 | Version | Draft 0.1 — 2026-11-11 |
-| Status | **Planning only; zero Project Generator recipes have been verified** |
+| Status | **FE-01/FE-02 CLI implementation and local E2E evidence exist; no recipe promoted or release-approved** |
 | Main platform | Windows 11 |
 | Source of truth | This matrix + machine-readable adapter manifests + QA results |
 
-> **DO NOT equate framework popularity or an official CLI's capability with Project Generator readiness.** No combination in this planning matrix is currently implemented or certified by Project Generator.
+> **DO NOT equate framework popularity or an official CLI's capability with Project Generator readiness.** Phase 01 implements only FE-01/FE-02. Their local development runs are evidence, not recipe promotion or release approval; every recipe remains unavailable in normal generation.
 
 ## 1. Status and test gates
 
 - `CAT`: cataloged / roadmap — may be displayed only in informational lists.
-- `PLAN`: proposed V1 recipe; **disabled for generation** until tests pass.
+- `PLAN`: planned recipe; **disabled in normal generation** until acceptance and review. A development-only evidence run does not change status.
 - `FUT`: future or V1.1; not selectable.
 - `BLK`: unsupported/incompatible; cannot generate.
 - `EXP`: experimental; adapter implemented but incomplete checks; opt-in with warning.
 - `TEST`: tested by the Project Generator's independent Windows build/install/typecheck/smoke acceptance pipeline.
 
-The catalog can mention `PLAN`, but the Generate action is enabled for `TEST`, or `EXP` only with an explicit experimental toggle. A fully supported recipe is a **specific tuple** of framework, version family, language, styling, UI library, backend, database, data mapper, manager, template, OS and validation plan—not a single green check next to a framework.
+The catalog can mention `PLAN`, but normal generation is enabled only for `TEST`, or `EXP` with an explicit experimental toggle. The CLI's `--development-allow-planned` flag exists only to gather evidence and is not a product support toggle. A fully supported recipe is a **specific tuple** of framework, version family, language, styling, UI library, backend, database, data mapper, manager, template, OS and validation plan—not a single green check next to a framework.
 
 ## 2. Frontend (web)
 
@@ -109,7 +109,7 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 
 ## 7. Cross-stack recipe registry (unit of release)
 
-**Every row below is only a target.** All start with `PLAN` and cannot be selected for production generation until the tests in `docs/qa/acceptance-matrix.md` pass.
+**Every row below remains `PLAN`.** FE-01/FE-02 have implementations and local Windows E2E reports; other rows remain targets only. No recipe can be selected for normal generation until its acceptance evidence is reviewed and status is explicitly promoted.
 
 | Recipe ID | Type | Frontend | Backend | DB / data access | Styling | Manager(s) | Launch target |
 |---|---|---|---|---|---|---|---|
@@ -133,6 +133,8 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | MOB-01 | Mobile | Expo | Optional backend later | None | NativeWind / Native default | npm | V1.1 |
 | MOB-02 | Mobile | Flutter | Optional backend later | None | Material | pub | V1.1 |
 
+FE-01 evidence: [Windows React + Vite run](../qa/evidence/FE-01/2026-11-11-cli-e2e.md). FE-02 evidence: [Windows Next.js run](../qa/evidence/FE-02/2026-11-11-cli-e2e.md). Both were invoked with `--development-allow-planned`; remain `PLAN` pending the full independent acceptance/review gates.
+
 **Important:** the fullstack recipe must produce a real, reachable example API endpoint and frontend call when that is part of its advertised output. Generating two unrelated folder trees is insufficient.
 
 ## 8. Forma integration matrix
@@ -147,7 +149,7 @@ Registry access: authenticated private GitHub → validated manifest/hash and pi
 
 ## 9. Runtime / machine prerequisites
 
-- Windows 11 target, PowerShell and Windows path validation; Node.js installed for V1 if CLI uses system Node (subject to OPEN-001).
+- Windows 11 target, PowerShell and Windows path validation; Phase 01 CLI requires installed system Node.js and npm. OPEN-001 remains open for the future desktop runtime/sidecar packaging PoC.
 - Node/npm (and optionally Yarn/pnpm/Bun) for JavaScript stacks.
 - Go SDK for Go backend.
 - PHP, Composer and required PHP extensions for Laravel.

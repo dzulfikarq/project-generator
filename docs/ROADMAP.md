@@ -1,6 +1,6 @@
 # Roadmap — Project Generator Desktop V1
 
-Status: **Proposed.** No implementation claimed. Date: 2026-11-11.
+Status: **Phase 01 CLI implementation present; acceptance and release review pending.** Date: 2026-11-11.
 
 ## Phase 0 — Specification and governance
 
@@ -12,9 +12,9 @@ Architecture specification: [`ARCHITECTURE.md`](ARCHITECTURE.md). UX specificati
 
 ## Phase 1 — CLI kernel and first vertical slice
 
-- Implement typed config, capability resolver, read-only plan, Windows preflight, staging, safe subprocess bridge, structured events and cancellation.
-- Prove FE-01 React+Vite (npm/CSS) and FE-02 Next (npm/Tailwind) in clean folders; testing status earned independently.
-- Output: fully usable CLI independent of desktop.
+- Implemented: strict config/resolver, read-only plan, doctor, owned staging/finalize, scoped process runner, JSONL jobs, cancellation, generated docs/manifest, FE-01 and FE-02 adapters.
+- Local Windows E2E evidence exists for FE-01 and FE-02, using the explicit development-only planned-recipe override; see [QA evidence](qa/acceptance-matrix.md).
+- **Phase gate remains open:** broader security acceptance, independent review, and recipe promotion have not occurred. Both recipes stay `planned` and blocked in normal generation.
 
 ## Phase 2 — Web/frontend breadth and styling
 

@@ -4,7 +4,7 @@
 |---|---|
 | Version | V1 design draft 0.2 |
 | Date | 2026-11-11 |
-| Status | **Proposed / not implemented / pending engineering review** |
+| Status | **Design draft; Phase 01 CLI implemented; architecture/release review pending** |
 | Product baseline | [PRD](PRD.md) |
 | Interface contract | [Adapter Contract](adapters/adapter-contract.md) |
 | Compatibility source | [Compatibility Matrix](adapters/compatibility-matrix.md) |
@@ -49,6 +49,10 @@ flowchart TD
 
 Desktop UI will be introduced in a later phase. Phase 1 ships **Engine + CLI + built-in recipes** independently and is fully testable without Tauri. Implementation order must never turn the UI into an unstructured shell-command frontend.
 
+### Phase 01 implementation snapshot
+
+Current repository implements two npm workspaces: `packages/core` owns schema/resolution, plans, doctor, generation jobs, process execution, staging and project docs; `packages/cli` owns command parsing and JSON/JSONL output. No Tauri UI, backend/database adapters, Forma integration, or Node sidecar packaging exists. FE-01/FE-02 generation has local Windows evidence but recipes remain `planned`; normal generation blocks them. `--development-allow-planned` is an evidence-gathering switch, not a support-status override.
+
 ## 3. Proposed repository boundaries
 
 ```text
@@ -80,7 +84,7 @@ project-generator/
 └── design.md
 ```
 
-This is a **proposed directory shape**, not a record of existing code. The coding agent may adjust folder names for build simplicity but must not collapse security/contract boundaries. The root internal developer package manager may differ from the generated project's npm default; **prefer npm for both** unless an explicit decision is recorded.
+This is the **proposed future directory shape**. Current implementation is narrower: root npm workspaces contain `packages/core` and `packages/cli`; config, catalog, adapters, and docs generation currently live within `core`. The root internal and generated-project package manager are both npm. Do not infer that proposed packages or desktop components exist.
 
 ### Package responsibilities
 
@@ -106,25 +110,25 @@ This is a **proposed directory shape**, not a record of existing code. The codin
 - `JobReport`: step outcome, validation outcome, cleanup status, target impact and recovery instructions.
 - `ReproducibilityManifest`: recipe ID and version, exact resolved upstream versions/hashes, package managers, actual generated lockfiles, validation statuses, no machine secrets.
 
-The [Adapter Contract](adapters/adapter-contract.md) defines proposed types. Once implemented, the Zod/TypeScript or equivalent canonical schema must be the single source of truth for CLI and desktop; do not maintain conflicting validation rules in two layers.
+The [Adapter Contract](adapters/adapter-contract.md) defines the broader proposed model. Phase 01's canonical types and strict parser live in `packages/core/src/types.ts` and `packages/core/src/schema.ts`; the CLI uses them directly. Desktop-side validation does not yet exist.
 
 ## 5. Execution protocol
 
 ### 5.1 Commands and invocation
 
-Recommended CLI interface (proposed; confirm exact names during Phase 1):
+Phase 01 CLI interface (implemented):
 
 ```text
 project-generator catalog --json
 project-generator plan --config <path> --json
 project-generator doctor --config <path> --json
-project-generator generate --config <path> --jsonl
+project-generator generate --config <path> --jsonl [--development-allow-planned]
 project-generator inspect --output <path> --json
 ```
 
 - `catalog`: built-in metadata only, no network.
 - `plan`: schema validate, resolve recipe, render immutable plan and expected output; **no filesystem modification and no external execution**, with optional strictly read-only local config file read.
-- `doctor`: inspect installed toolchains, versions, path constraints and network prerequisites. No install, no target changes; allowlisted `--version` probes only.
+- `doctor`: inspect the active Node runtime, npm CLI beside it, platform and target-path safety. No installs, subprocess probes or target changes in Phase 01.
 - `generate`: revalidate config and destination immediately before execution; ask for explicit execution intent at the UI layer or CLI invocation; emit streaming structured job events. `generate` is allowed to create its own staging workspace and use official package tooling.
 - `inspect`: read generator-owned output metadata without modifying the generated project; do not infer build readiness from metadata alone.
 
@@ -135,10 +139,9 @@ CLI output contract: a stable JSON error envelope for JSON mode and newline-deli
 ```mermaid
 flowchart TD
     Start[CLI generate request] --> Validate[Validate schema and recipe]
-    Validate --> Check{Supported and prerequisites pass?}
+    Validate --> Check{Valid recipe and prerequisites pass?}
     Check -- No --> Block[Blocked with actionable error; target untouched]
-    Check -- Yes --> Review[Revalidate reviewed plan fingerprint]
-    Review --> Stage[Create generator-owned staging directory]
+    Check -- Yes --> Stage[Recheck destination; create owned staging]
     Stage --> Scaffold[Official pinned scaffold]
     Scaffold --> Configure[Controlled config, docs and manifest]
     Configure --> Install[Approved dependency installation]
@@ -164,7 +167,7 @@ E:\Projects\
 ```
 
 - Verify destination absent before stage and **again just before commit**.
-- Use a native Windows fail-if-destination-exists move/rename procedure; never use overwrite/replacement flags. Explicitly test adversarial creation of target between plan and finalization.
+- Phase 01 uses fixed PowerShell code to call `.NET Directory.Move` with source/target supplied as environment values; never use overwrite/replacement flags. Unit tests cover target creation before finalization; broader race review remains open.
 - A staging marker alone is not authority to delete arbitrary contents: ownership must match the exact canonical staging path, job UUID and creation record; guard against swapped junctions/symlinks.
 - Recheck path boundaries and canonicalization before mutating files. No `..` traversal, drive-root target, reserved Windows names, or reparse-point escape.
 - Cancellation/crash must not erase preexisting user directories. Report orphan staging cleanly; never auto-delete unverified folders.
@@ -173,8 +176,8 @@ E:\Projects\
 ### 5.4 Process execution and cancellation
 
 - Registry-controlled executable identity + argv list, not concatenated shell strings; whitelist permitted env keys, set controlled cwd, redact logs.
-- npm on Windows may be exposed through `.cmd` shims; the engine needs a **reviewed Windows-specific launcher** (e.g. resolution of trusted npm CLI JS and `node` process), not user text passed through `cmd.exe /c`.
-- Process descendants started by installers must be accounted for. Validate tree cancellation on real Windows (Job Object where supported by native bridge; vetted scoped fallback for CLI) before claiming `GEN-006` PASS.
+- Phase 01 resolves npm's CLI JavaScript under the active Node installation, then invokes reviewed JavaScript entrypoints through `node` with explicit argv and `shell: false`; executable and cwd roots are checked and the child environment is reduced.
+- Phase 01 cancellation uses Windows `taskkill.exe /PID <pid> /T /F` for the owned child tree, with a Windows descendant test. It does not use a Job Object; broader process-race and security review remain open. See proposed [DEC-014](decisions/DEC-014-windows-process-runner.md).
 - Secret values remain in private runtime memory / secure store, never argv or logs when the tool accepts safer mechanisms.
 - Lifecycle scripts in dependency packages can execute code: disclose at Review and provide no false 'sandboxed' claim.
 - Network access occurs only in generation or explicitly requested registry sync, not in plan.
@@ -210,7 +213,7 @@ Use one stable manifest per adapter + one reviewed recipe manifest per releaseab
 8. Resolve to a named recipe with a QA-backed support state; do not automatically swap technologies.
 9. Return a plan or actionable blocked reason.
 
-`tested` requires per-recipe Windows evidence; status is release data promoted by reviewers/CI, **not set automatically after one run**. The initial V1 CLI vertical slice supports only `FE-01` and `FE-02`, initially `planned` until their tests pass.
+`tested` requires per-recipe Windows evidence; status is release data promoted by reviewers/CI, **not set automatically after one run**. The Phase 01 CLI vertical slice implements only `FE-01` and `FE-02`. Both remain `planned` despite successful local Windows generation/build/smoke evidence; normal generation blocks them until independent acceptance and review. Evidence links are in the [compatibility matrix](adapters/compatibility-matrix.md).
 
 ## 7. Deployment/runtime choice and open PoC
 
@@ -260,7 +263,7 @@ Forma private access is optional P1 and cannot be implemented until access contr
 
 - Unit tests: schema/resolver/pure plan/event transitions/Windows path validation.
 - Integration tests: fake executables and fixture adapters, fault injection per phase, cancellation, path race simulation.
-- Windows E2E: clean environment, real pinned Vite/Next scaffold, npm install, required checks, smoke, path with spaces/Unicode, no overwrite.
+- Windows E2E: local runs used pinned Vite/Next scaffolds, npm install, required checks, HTTP-served HTML smoke, and a parent path containing spaces and Unicode. Per-recipe reports are linked from the [QA matrix](qa/acceptance-matrix.md); clean-machine, broader adversarial and independent review gates remain open.
 - Performance: measure cold plan time, actual generation/install duration and peak memory, but do not declare arbitrary SLA before baseline evidence.
 - Evidence: record versions, commands (redacted), check statuses, timestamps, exit codes and report hashes; no credentials.
 
@@ -272,6 +275,7 @@ Acceptance rules: [QA Matrix](qa/acceptance-matrix.md); release roadmap: [Roadma
 - DEC-006: Tauri 2 UI and TS CLI split.
 - DEC-011 (new proposal): Phase 1 system Node; Windows packaging PoC before desktop release.
 - DEC-012 (new proposal): owned same-volume staging plus no-replace finalize.
-- DEC-013 (new proposal): CLI JSONL event contract and typed desktop bridge.
+- DEC-013: CLI JSONL event contract and future typed desktop bridge.
+- DEC-014 (proposal): Node-invoked allowlisted JS tools and Windows `taskkill` process-tree cancellation.
 
 See individual records in `docs/decisions/`. None of these proposals are a formal implementation approval or actual test result.

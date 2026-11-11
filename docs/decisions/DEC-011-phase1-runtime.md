@@ -31,7 +31,7 @@ Use **A for Phase 1 only**. Keep CLI process and event contracts stable so B can
 
 ## Verification / evidence
 
-Not run. Test CLI on clean Windows machine with Node/npm versions recorded. Before desktop release, compare Node sidecar vs system Node on clean-machine install, process permissions, child cancellation, package-manager interoperability and updates.
+Partial local evidence: FE-01 and FE-02 were generated on Windows 11 Pro build 26300 with system Node.js 22.22.1 and npm 10.9.4; see [FE-01](../qa/evidence/FE-01/2026-11-11-cli-e2e.md) and [FE-02](../qa/evidence/FE-02/2026-11-11-cli-e2e.md). This is not a clean-machine packaging PoC. Before desktop release, compare Node sidecar vs system Node on clean-machine install, process permissions, child cancellation, package-manager interoperability and updates.
 
 ## Security and second-order effects
 

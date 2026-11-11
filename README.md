@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Phase 01 CLI implementation in progress** — no recipe independently verified or release-approved |
+| Status | **Phase 01 CLI implementation present** — FE-01/FE-02 remain planned; no recipe release-approved |
 | Version | 0.1.0 |
 | Date | 2026-11-11 |
 | Product | Universal Project Generator Desktop |
@@ -10,7 +10,7 @@
 | Documentation inspiration | EvoPilot (PRD ↔ design ↔ decision register ↔ QA evidence) |
 | Scope | CLI kernel and React + Vite / Next.js generators only; no desktop UI |
 
-Planning documents remain the source for requirements and boundaries. Code and observed test evidence define implemented behavior. `FE-01` and `FE-02` remain `planned` until full independent Windows acceptance and review.
+Planning documents remain source for requirements and boundaries. Code and observed test evidence define implemented behavior. FE-01/FE-02 have local Windows generation evidence, but remain `planned` pending full independent acceptance and review.
 
 ## Vision
 
@@ -18,7 +18,7 @@ Create real, ready-to-develop projects with a guided wizard, official framework 
 
 ## Developer setup
 
-Requirements: Windows 11, Node.js `>=22.12.0`, npm `>=10`. Node is a system prerequisite for Phase 01; desktop runtime packaging remains unresolved.
+Requirements: Windows 11, Node.js `>=22.13.0`, npm `>=10`. Node is a system prerequisite for Phase 01; desktop runtime packaging remains unresolved.
 
 ```powershell
 npm install
@@ -90,4 +90,4 @@ project-generator generate --config <file> --jsonl
 project-generator inspect --output <folder> --json
 ```
 
-`generate` is explicit execution consent. Planned recipes are blocked by default; a development-only opt-in exists for gathering evidence and does not change recipe status. npm installs can execute dependency lifecycle scripts and are not sandboxed. No automatic Git, Docker, remote push, or hidden installs.
+`generate` is explicit execution consent. Planned recipes are blocked by default; `--development-allow-planned` is development-only and does not change recipe status. npm installs can execute dependency lifecycle scripts and are not sandboxed. No automatic Git, Docker, remote push, or hidden installs. See [Phase 01 evidence](docs/qa/acceptance-matrix.md).

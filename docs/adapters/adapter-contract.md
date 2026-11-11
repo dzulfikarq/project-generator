@@ -4,7 +4,7 @@
 |---|---|
 | Version | Draft 0.1, schema proposal 1 |
 | Date | 2026-11-11 |
-| Status | **Proposed design**; no TypeScript interfaces or engine have been implemented |
+| Status | **Broader contract proposed; Phase 01 implements a narrower TypeScript CLI/core subset** |
 | Applicable components | Generator Core CLI; bundled platform/framework/styling/database/template adapters |
 
 ## 1. Design principles
@@ -35,7 +35,9 @@
 
 V1 does not execute unreviewed third-party adapters. New adapters are repository-controlled, reviewed and versioned; any future plugin SDK requires its own security/permission decision.
 
-## 3. Proposed TypeScript-facing contract (illustrative, not code implemented)
+## 3. Proposed TypeScript-facing contract (illustrative; not identical to Phase 01 code)
+
+Phase 01 implements selection and runtime types in `packages/core/src/types.ts`, strict parsing in `packages/core/src/schema.ts`, and recipe metadata in `packages/core/src/catalog.ts`. These types intentionally cover only FE-01/FE-02; the interfaces below remain the target contract for future adapters and components.
 
 ```ts
 type SupportState =
@@ -126,7 +128,7 @@ interface ValidationResult {
 }
 ```
 
-**Implementation detail pending review:** Windows-specific executable aliases (`npm.cmd`, `npx.cmd`, `composer.bat`) and spawn mechanisms must be resolved via an allowlisted Windows runner. **Do not** treat user input as a shell command or enable `shell: true` to work around `.cmd` execution without separate threat analysis.
+Phase 01 avoids `.cmd` aliases: it resolves npm's JavaScript CLI under active Node and launches reviewed JS entrypoints through Node with explicit argv and `shell: false`. Windows child-tree cancellation uses `taskkill.exe /T /F`; see proposed [DEC-014](../decisions/DEC-014-windows-process-runner.md). This does not cover Composer or other ecosystems, and remains pending independent security review. Never use user input as shell command text.
 
 ## 4. Recipe manifest — one selectable product output
 
@@ -192,7 +194,7 @@ Preflight → Staging → Scaffolding → Configuring
 
 ### Cancellation and rollback
 
-- Send a stop signal to the owned child process tree; Windows process-tree semantics require dedicated implementation and tests.
+- Phase 01 invokes reviewed JavaScript entrypoints with `node` and explicit argv (`shell: false`); cancellation uses `taskkill.exe /T /F` on Windows and has a child-descendant unit test. No Job Object implementation exists; independent stress/race review remains pending.
 - Perform bounded cleanup only in a staging directory with an owner sentinel and exact canonical path match; never delete arbitrary paths from error logs or user input.
 - A locked staging directory is retained as an explicit recoverable artifact with a cleanup recommendation, not forcibly erased.
 - Once finalized, do not silently delete the user's output even if optional Git init or later actions fail. Report partial completion.
@@ -305,6 +307,8 @@ Mandatory for a `TEST` recipe:
 10. Store pinned versions, exit codes, test artifacts and approved status change.
 
 See `docs/qa/acceptance-matrix.md` for traceability.
+
+Phase 01 implements this pipeline for FE-01/FE-02. Both still have `planned` status: the development-only CLI override permits local evidence gathering but does not enable normal generation or promote support status. See per-recipe reports linked from the QA matrix.
 
 ## 13. Prohibited shortcuts
 

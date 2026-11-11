@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Date | 2026-11-11 |
-| State | Discovery baseline; formal implementation/release review not yet complete |
+| State | Phase 01 CLI implemented; formal architecture/release review not yet complete |
 | Governance | See [`governance.md`](governance.md) |
 
 This project adopts EvoPilot's **decision accountability** pattern but uses standard English spelling (`decision`, `decisions`). A user-selected direction can be recorded as **Accepted Discovery** without implying implementation completion, test passage or formal release approval.
@@ -24,6 +24,7 @@ This project adopts EvoPilot's **decision accountability** pattern but uses stan
 | DEC-011 | Phase 1 system Node; defer desktop runtime packaging | Proposed | [DEC-011](DEC-011-phase1-runtime.md) | PoC before Windows installer; OPEN-001 remains open |
 | DEC-012 | Owned staging and no-replace finalization | Proposed | [DEC-012](DEC-012-owned-staging-finalize.md) | Windows race/cleanup tests needed |
 | DEC-013 | Typed CLI + versioned JSONL progress bridge | Proposed | [DEC-013](DEC-013-cli-events-bridge.md) | Verify schema and consumer tests |
+| DEC-014 | Windows scoped process runner | Proposed | [DEC-014](DEC-014-windows-process-runner.md) | Independent process/security review; Job Object alternative remains open |
 
 ## Open items
 
@@ -33,4 +34,4 @@ This project adopts EvoPilot's **decision accountability** pattern but uses stan
 - OPEN-004: Forma private GitHub authentication and permission policy.
 - OPEN-005: Optional Docker Compose start behavior and DB readiness semantics.
 
-No decision in this draft is evidence of an implemented feature. To approve an individual material decision, create a record using the template and document real authorization.
+Proposed decisions remain unapproved even where Phase 01 code now uses that approach. Implementation or passing tests do not substitute for decision approval. Record real authorization before changing status.
