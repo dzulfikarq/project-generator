@@ -1,9 +1,8 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
 import { lstat, realpath } from 'node:fs/promises'
 import { dirname, isAbsolute, relative, win32 } from 'node:path'
 import { GeneratorError } from './errors.js'
-
-const OUTPUT_LIMIT = 256 * 1024
+import { readSupervisorResponse, sendSupervisorRequest, spawnSupervisor } from './native-supervisor.js'
 
 export interface SafeProcessOptions {
   scriptPath: string
@@ -22,6 +21,9 @@ export interface ProcessResult {
   stdout: string
   stderr: string
   truncated: boolean
+  cancelled?: boolean
+  timedOut?: boolean
+  terminationConfirmed?: boolean
 }
 
 export interface RunningProcess {
@@ -81,14 +83,8 @@ function processEnvironment(home: string, temp: string, cwd: string): NodeJS.Pro
   }
 }
 
-function appendBounded(chunks: Buffer[], current: number, data: Buffer): { length: number; truncated: boolean } {
-  if (current >= OUTPUT_LIMIT) return { length: current, truncated: data.length > 0 }
-  const available = OUTPUT_LIMIT - current
-  chunks.push(data.subarray(0, available))
-  return { length: current + Math.min(data.length, available), truncated: data.length > available }
-}
-
 export async function startNodeProcess(options: SafeProcessOptions): Promise<RunningProcess> {
+  if (process.platform !== 'win32') throw new GeneratorError({ code: 'GEN_NATIVE_SUPERVISOR_UNAVAILABLE', stage: 'process', message: 'Windows native supervisor is required for generation.', nextAction: 'Build and run Project Generator on supported Windows.', targetModified: false })
   if (options.signal?.aborted) throw new GeneratorError({ code: 'GEN_CANCELLED', stage: 'process', message: 'Generation was cancelled.', nextAction: 'Retry from the beginning.', targetModified: false })
   if (options.args.some((arg) => typeof arg !== 'string' || arg.includes('\0')) || options.args.join('').length > 28_000) {
     throw new GeneratorError({ code: 'GEN_RUNNER_BLOCKED', stage: 'process', message: 'Refused invalid process arguments.', nextAction: 'Use a valid generator config and retry.', targetModified: false })
@@ -98,87 +94,66 @@ export async function startNodeProcess(options: SafeProcessOptions): Promise<Run
     checkedDirectory(options.cwd, options.allowedCwdRoot),
   ])
   if (options.signal?.aborted) throw new GeneratorError({ code: 'GEN_CANCELLED', stage: 'process', message: 'Generation was cancelled.', nextAction: 'Retry from the beginning.', targetModified: false })
-  const child = spawn(process.execPath, [scriptPath, ...options.args], {
-    cwd,
-    env: processEnvironment(options.homeDirectory, options.tempDirectory, cwd),
-    shell: false,
-    windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
+  let child: ChildProcess
+  try {
+    child = spawnSupervisor('--run')
+  } catch (error) {
+    throw new GeneratorError({ code: 'GEN_NATIVE_SUPERVISOR_UNAVAILABLE', stage: 'process', message: 'Windows native supervisor is unavailable.', nextAction: 'Rebuild the Project Generator Windows supervisor and retry.', targetModified: false }, { cause: error })
+  }
+  child.once('spawn', () => {
+    sendSupervisorRequest(child, {
+      executable: process.execPath,
+      args: [scriptPath, ...options.args],
+      cwd,
+      env: Object.fromEntries(Object.entries(processEnvironment(options.homeDirectory, options.tempDirectory, cwd)).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
+      ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
+    })
   })
-  const stdout: Buffer[] = []
-  const stderr: Buffer[] = []
-  let stdoutLength = 0
-  let stderrLength = 0
-  let truncated = false
-  child.stdout?.on('data', (chunk: Buffer) => {
-    const result = appendBounded(stdout, stdoutLength, chunk)
-    stdoutLength = result.length
-    truncated ||= result.truncated
-  })
-  child.stderr?.on('data', (chunk: Buffer) => {
-    const result = appendBounded(stderr, stderrLength, chunk)
-    stderrLength = result.length
-    truncated ||= result.truncated
-  })
-
-  const result = new Promise<ProcessResult>((resolveResult, rejectResult) => {
-    child.once('error', rejectResult)
-    child.once('close', (code) => resolveResult({
-      exitCode: code ?? 1,
-      stdout: Buffer.concat(stdout).toString('utf8'),
-      stderr: Buffer.concat(stderr).toString('utf8'),
-      truncated,
-    }))
+  const responseTimeout = options.timeoutMs === undefined ? 24 * 60 * 60 * 1000 : options.timeoutMs + 15_000
+  const result = readSupervisorResponse(child, responseTimeout).then(({ response, exitCode }) => {
+    if (typeof response.terminationConfirmed !== 'boolean' || !response.terminationConfirmed) throw processTreeError()
+    if (typeof response.started !== 'boolean' || typeof response.exitCode !== 'number'
+      || typeof response.stdout !== 'string' || typeof response.stderr !== 'string'
+      || typeof response.truncated !== 'boolean') throw processTreeError()
+    if (response.error !== null && response.error !== undefined) {
+      if (response.error === 'elevated caller is not allowed') {
+        throw new GeneratorError({ code: 'GEN_ELEVATED_CALLER', stage: 'process', message: 'Generation is blocked in an elevated Windows session.', nextAction: 'Start Project Generator without administrator elevation and retry.', targetModified: false })
+      }
+      throw new GeneratorError({ code: 'GEN_PROCESS_SUPERVISOR_FAILED', stage: 'process', message: 'Windows supervisor could not complete the owned process tree safely.', nextAction: 'Leave staging untouched if termination was not confirmed; inspect the redacted job log before retrying.', targetModified: false })
+    }
+    if (exitCode !== 0) throw processTreeError()
+    return {
+      exitCode: response.exitCode,
+      stdout: response.stdout,
+      stderr: response.stderr,
+      truncated: response.truncated,
+      cancelled: response.cancelled === true,
+      timedOut: response.timedOut === true,
+      terminationConfirmed: true,
+    }
+  }).catch((error: unknown) => {
+    if (error instanceof GeneratorError) throw error
+    throw processTreeError()
   })
 
   let stopPromise: Promise<void> | undefined
   const stop = (): Promise<void> => {
-    stopPromise ??= terminateProcessTree(child, result)
+    stopPromise ??= (async () => {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        await result
+        return
+      }
+      try {
+        child.stdin?.write('{"kind":"cancel"}\n')
+        const completed = await result
+        if (completed.terminationConfirmed !== true) throw processTreeError()
+      } catch {
+        throw processTreeError()
+      }
+    })()
     return stopPromise
   }
   return { result, stop }
-}
-
-async function terminateProcessTree(child: ChildProcess, result: Promise<ProcessResult>): Promise<void> {
-  if (!child.pid || child.exitCode !== null || child.signalCode !== null) return
-  if (process.platform === 'win32') {
-    const systemRoot = process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows'
-    const taskkill = win32.join(systemRoot, 'System32', 'taskkill.exe')
-    const killResult = await new Promise<{ code: number | null; failedToStart: boolean }>((resolveKill) => {
-      const killer = spawn(taskkill, ['/PID', String(child.pid), '/T', '/F'], {
-        env: { SystemRoot: systemRoot, WINDIR: systemRoot, PATH: win32.join(systemRoot, 'System32') },
-        shell: false,
-        windowsHide: true,
-        stdio: 'ignore',
-      })
-      killer.once('error', () => resolveKill({ code: null, failedToStart: true }))
-      killer.once('close', (code) => resolveKill({ code, failedToStart: false }))
-    })
-    if (killResult.failedToStart || killResult.code !== 0) {
-      child.kill()
-      await waitForExit(result, 1000)
-      throw processTreeError()
-    }
-  } else {
-    child.kill('SIGTERM')
-  }
-  if (!await waitForExit(result, 5000)) {
-    child.kill()
-    throw processTreeError()
-  }
-}
-
-function waitForExit(result: Promise<ProcessResult>, timeoutMs: number): Promise<boolean> {
-  return new Promise((resolveExit) => {
-    const timeout = setTimeout(() => resolveExit(false), timeoutMs)
-    result.then(() => {
-      clearTimeout(timeout)
-      resolveExit(true)
-    }, () => {
-      clearTimeout(timeout)
-      resolveExit(true)
-    })
-  })
 }
 
 export async function runNodeProcess(options: SafeProcessOptions): Promise<ProcessResult> {
@@ -202,7 +177,12 @@ export async function runNodeProcess(options: SafeProcessOptions): Promise<Proce
     if (options.timeoutMs) timeout = setTimeout(() => { void stop('GEN_PROCESS_TIMEOUT', 'A reviewed tool exceeded its time limit.', 'Check network/tool health and retry.').then(() => reject(failure)) }, options.timeoutMs)
   })
   try {
+    if (options.signal?.aborted) {
+      await stop('GEN_CANCELLED', 'Generation was cancelled.', 'Retry from the beginning.')
+      throw failure
+    }
     const completed = await Promise.race([running.result, interruption])
+    if (completed.timedOut) throw new GeneratorError({ code: 'GEN_PROCESS_TIMEOUT', stage: 'process', message: 'A reviewed tool exceeded its time limit.', nextAction: 'Check network/tool health and retry.', targetModified: false })
     if (options.signal?.aborted) {
       await running.stop()
       throw new GeneratorError({ code: 'GEN_CANCELLED', stage: 'process', message: 'Generation was cancelled.', nextAction: 'Retry from the beginning.', targetModified: false })

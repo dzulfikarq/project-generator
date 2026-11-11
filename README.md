@@ -18,7 +18,7 @@ Create real, ready-to-develop projects with a guided wizard, official framework 
 
 ## Developer setup
 
-Requirements: Windows 11, Node.js `>=22.13.0`, npm `>=10`. Node is a system prerequisite for Phase 01; desktop runtime packaging remains unresolved.
+Requirements: Windows 11 x64, Node.js `>=22.13.0`, npm `>=10`, and Rust stable with the MSVC linker/Windows SDK. Run build and generation from a **non-elevated** terminal. Generation fails closed if the native supervisor is missing or caller token is elevated. Desktop/runtime packaging remains unresolved.
 
 ```powershell
 npm install
@@ -90,4 +90,4 @@ project-generator generate --config <file> --jsonl
 project-generator inspect --output <folder> --json
 ```
 
-`generate` is explicit execution consent. Planned recipes are blocked by default; `--development-allow-planned` is development-only and does not change recipe status. npm installs can execute dependency lifecycle scripts and are not sandboxed. No automatic Git, Docker, remote push, or hidden installs. See [Phase 01 evidence](docs/qa/acceptance-matrix.md).
+`npm run build` builds the Rust Windows supervisor and copies local sidecar into ignored `packages/core/native/`; no binary is committed or installer packaged yet. Windows Job Objects manage owned process lifetime, not filesystem/network isolation. `generate` is explicit execution consent. Planned recipes are blocked by default; `--development-allow-planned` is development-only and does not change recipe status. npm installs can execute dependency lifecycle scripts and are not sandboxed. No automatic Git, Docker, remote push, or hidden installs. See [Phase 01 evidence](docs/qa/acceptance-matrix.md).

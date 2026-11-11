@@ -11,6 +11,7 @@ import { writeProjectDocs, writeProjectManifest } from './project-docs.js'
 import { runNodeProcess, startNodeProcess, type ProcessResult, type SafeProcessOptions } from './runner.js'
 import { createOwnedStage, cleanupOwnedStage, cleanupStageSupportFiles, moveDirectoryNoReplace, type OwnedStage } from './staging.js'
 import { resolveNpmTool, supportsNpm } from './toolchain.js'
+import { assertGenerationAllowed } from './native-supervisor.js'
 import { resolveSelection } from './resolver.js'
 import type { DoctorReport, JobEventV1, JobStatus, ProjectSelectionV1, RecipeManifestV1, ResolvedSelection, StageId, ValidationOutcome } from './types.js'
 
@@ -390,6 +391,8 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     if (resolved.recipe.status !== 'tested' && !(options.allowPlanned && resolved.recipe.status === 'planned')) {
       throw userError('GEN_RECIPE_UNTESTED', 'preflight', `${resolved.recipe.id} is planned and disabled for normal generation.`, 'Use a tested recipe; development-only runs do not change recipe status.')
     }
+    await assertGenerationAllowed()
+    throwIfCancelled(options.signal, currentStage)
     const doctor = await runDoctor(selection)
     if (!doctor.ready) throw preflightError(doctor)
     const npmTool = await resolveNpmTool()
@@ -482,15 +485,19 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     return { jobId, status: 'completed', targetPath: resolved.outputPath, exitCode: 0, validations, logFile: log.file }
   } catch (error) {
     const original = asGeneratorError(error, currentStage)
+    const finalizeUnconfirmed = original.code === 'GEN_FINALIZE_UNCONFIRMED'
+    const preserveStage = original.code === 'GEN_PROCESS_TREE_UNCONFIRMED' || finalizeUnconfirmed
     const detail = new GeneratorError({
       ...original.toJSON(),
       stage: currentStage,
-      targetModified: committed,
+      targetModified: committed || finalizeUnconfirmed,
     }, { cause: original })
     stageFinish(currentStage, detail.code === 'GEN_CANCELLED' ? 'skipped' : 'failed', detail.message)
     emit({ type: detail.code === 'GEN_CANCELLED' ? 'warning' : 'error', stageId: currentStage, stageOwner: stageOwner(currentStage, resolved.recipe.frontend), code: detail.code, message: detail.message })
-    if (stage && !committed && detail.code === 'GEN_PROCESS_TREE_UNCONFIRMED') {
-      emit({ type: 'warning', stageId: 'staging', stageOwner: 'core', code: 'GEN_STAGING_LEFTOVER', message: 'Owned staging was retained because process-tree termination could not be confirmed.' })
+    if (stage && !committed && preserveStage) {
+      emit({ type: 'warning', stageId: 'staging', stageOwner: 'core', code: 'GEN_STAGING_LEFTOVER', message: finalizeUnconfirmed
+        ? 'Owned staging was retained because native finalization outcome could not be confirmed.'
+        : 'Owned staging was retained because process-tree termination could not be confirmed.' })
     } else if (stage && !committed) {
       try {
         await cleanupOwnedStage(stage)
@@ -499,7 +506,9 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       }
     }
     const status = detail.code === 'GEN_CANCELLED' ? 'cancelled' : 'failed'
-    emit({ type: 'job-finished', stageOwner: 'core', status, message: status === 'cancelled' ? 'Generation cancelled; cleanup attempted.' : 'Generation failed; final destination was not committed.', code: detail.code })
+    emit({ type: 'job-finished', stageOwner: 'core', status, message: status === 'cancelled'
+      ? 'Generation cancelled; cleanup attempted.'
+      : finalizeUnconfirmed ? 'Finalization outcome is uncertain; inspect destination and retained staging.' : 'Generation failed; final destination was not committed.', code: detail.code })
     return {
       jobId,
       status,

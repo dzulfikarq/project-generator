@@ -1,3 +1,5 @@
 node_modules/
 packages/*/dist/
+native/windows-supervisor/target/
+packages/core/native/pg-windows-supervisor.exe
 *.log

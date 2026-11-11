@@ -12,17 +12,17 @@ Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PAS
 | Test ID | Requirement | Acceptance procedure / expected evidence | Current status |
 |---|---|---|---|
 | GEN-001 | PRD-001–004 | Invalid framework/database/ORM/style rejected at plan stage; target untouched | PARTIAL — FE-01/FE-02 schema/resolver only |
-| GEN-002 | PRD-002,NFR-001–002 | Existing directory, path traversal, Windows reserved names, junction escape rejected | PARTIAL — static junction/path cases pass; junction/symlink swap race remains open |
+| GEN-002 | PRD-002,NFR-001–002 | Existing directory, path traversal, Windows reserved names, junction escape rejected | PARTIAL — native handle-relative create/cleanup/finalize implemented; swap tests added but skipped under elevated token; Node staging writes remain path-based |
 | GEN-003 | PRD-005,PRD-012 | npm default for Node; unsupported managers rejected; correct lockfile | PASS — FE-01/FE-02 npm only |
 | GEN-004 | PRD-007 | Missing Node/Go/PHP/Composer/Python/uv reported with fix action, no hidden install | PARTIAL — Node/npm positive detection; missing-tool scenarios incomplete |
 | GEN-005 | PRD-008–009 | Review shows accurate steps; scaffold is deterministic and noninteractive | PARTIAL — read-only plan tests and pinned FE scaffolds; plan-preview audit incomplete |
-| GEN-006 | PRD-010–011,NFR-009 | Cancelling running scaffold stops owned process tree and cleans only owned staging | PARTIAL — Windows descendant and kill-failure tests; PID reuse, detached descendants, full-job cancellation, and locked files unverified |
+| GEN-006 | PRD-010–011,NFR-009 | Cancelling running scaffold stops owned process tree and cleans only owned staging | PARTIAL — Job Object helper and cancellation/timeout/detached/breakaway tests added; runtime tests skipped under elevated token; termination-failure and forced-helper-death proof remain open |
 | GEN-007 | PRD-013,NFR-010 | Generate from pinned scaffold; compile/build/typecheck/smoke selected recipe; record independent review separately | PASS — latest FE-01/FE-02 local Windows E2E only; reports linked below; no promotion |
 | GEN-008 | PRD-014 | Minimal, Standard, Full docs contain working actual commands and truthful status | PARTIAL — Standard/Full observed; Minimal and broader doc assertions remain |
 | GEN-009 | PRD-016,NFR-003 | Exact tool versions, adapter IDs, source integrity and lock hash persisted where applicable; no secrets | PASS — FE-01/FE-02 manifests; no Forma template selected |
 | GEN-010 | PRD-017 | SQL migration and DB driver work against test service; none mode has no DB artifacts | NOT RUN — no database adapters in Phase 01 |
 | GEN-011 | PRD-018 | Fullstack UI can call actual API endpoint; root scripts work on Windows | NOT RUN |
-| GEN-012 | PRD-019,NFR-004–005 | No arbitrary commands/token logging; file ownership and consent controls enforced | PARTIAL — PID/tree and junction-swap risks remain open; DEC-016 records explicit-generate disclosure policy; lifecycle scripts remain unsandboxed |
+| GEN-012 | PRD-019,NFR-004–005 | No arbitrary commands/token logging; file ownership and consent controls enforced | PARTIAL — elevated caller blocked; native filesystem tests not executed here; DEC-016 consent unchanged; lifecycle scripts remain unsandboxed |
 | GEN-013 | PRD-020,NFR-008 | Offline caches work if complete; otherwise transparent network/prerequisite error | NOT RUN |
 | GEN-014 | PRD-021 | Private Forma auth; SHA/manifest verified; React Vite/Next templates build and smoke | NOT RUN |
 | GEN-015 | PRD-024 | Optional Docker Compose generated correctly; services never started without action | NOT RUN |
@@ -53,7 +53,15 @@ Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PAS
 - Windows unit coverage includes junction rejection, case-insensitive collision, forged-stage ownership rejection, no-replace collision/success, process-tree cancellation, abort during runner path checks, and fail-closed taskkill errors (`packages/core/test/safety.test.ts`, `runner.test.ts`). Schema tests cover traversal, reserved names, long paths, spaces and Unicode (`schema.test.ts`).
 - FE-01 and FE-02 were rerun through the CLI's explicit `--development-allow-planned` flag. Per-run job IDs, scaffold integrity, manifest/lockfile hashes, and limits: [FE-01](evidence/FE-01/2026-11-11-phase-01.6-cli-e2e.md), [FE-02](evidence/FE-02/2026-11-11-phase-01.6-cli-e2e.md). Earlier reports remain available: [FE-01](evidence/FE-01/2026-11-11-cli-e2e.md), [FE-02](evidence/FE-02/2026-11-11-cli-e2e.md).
 - In each generated project, `npm run lint` and `npm run build` also exited `0`.
-- `PASS` above means only the stated test scope passed. FE-01/FE-02 remain `planned` and NO-GO. PID reuse, detached/full-job cancellation, junction-swap safety, clean-machine packaging, and desktop QA remain open. See [Phase 01.5 baseline](evidence/phase-01.5-windows-security-review.md) and [Phase 01.6 follow-up](evidence/phase-01.6-windows-safety-remediation.md).
+- `PASS` above means only the stated test scope passed. FE-01/FE-02 remain `planned` and NO-GO. Runtime proof for detached/full-job cancellation and junction-swap safety, clean-machine packaging, and desktop QA remain open. See [Phase 01.5 baseline](evidence/phase-01.5-windows-security-review.md), [Phase 01.6 follow-up](evidence/phase-01.6-windows-safety-remediation.md), and [Phase 01.7 native-hardening evidence](evidence/phase-01.7-windows-native-hardening.md).
+
+## Phase 01.7 Windows-native hardening
+
+- Implementation: Rust sidecar creates workload suspended and assigns it to a Job Object before resume; verifies membership and kill-on-close; rejects elevated callers; routes staging create/cleanup/finalize through handle-rooted native operations. No PID/taskkill fallback. This is process management, **not** a sandbox; see [DEC-015](../decisions/DEC-015-windows-native-safety-boundary.md).
+- Build/checks on Windows: `npm test` PASS (15 core + 3 CLI passed; 10 Windows process/filesystem integration tests skipped; 0 failed), `npm run lint` PASS, `npm run typecheck` PASS, `cargo test --locked` PASS (both helper test targets compile; 0 Rust unit tests), `cargo clippy --locked -- -D warnings` PASS, `cargo fmt --check` PASS. Native release sidecar build PASS.
+- Native `--check-elevation` returned `{"elevated":true}` for this High Integrity administrator session. Elevated-generation rejection test passed; generation did not create staging or start a workload.
+- Cancellation, timeout, detached-descendant, unrelated-process, explicit breakaway, no-replace-finalize, parent-junction race, cleanup-junction race, and finalize-junction race tests were **SKIPPED**, because running them would require bypassing the elevated-mode guard. They are implementation tests, not passing evidence yet.
+- DEC-016 remains unchanged: explicit `generate` is consent to lifecycle scripts, not isolation. FE-01 and FE-02 remain `planned` and **NO-GO**. Required next step: run skipped tests from a non-elevated Windows 11 session; review remaining path-based Node staging writes, termination-failure/helper-death cases, packaging, then independent security review.
 
 ## Evidence protocol
 

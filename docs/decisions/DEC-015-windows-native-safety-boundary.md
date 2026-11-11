@@ -11,9 +11,9 @@
 
 ## Context and problem
 
-Phase 01 uses Node `child_process` plus `taskkill /PID /T /F` and path-based Node filesystem calls. The current cancellation failure path is fail-closed, but `taskkill` still identifies the root by a reusable PID and does not prove that detached descendants are gone. `lstat`/`realpath`/reparse checks followed by path-based cleanup also leave a check-to-use window if a directory is replaced with a junction or symlink.
+Phase 01.6 used Node `child_process` plus `taskkill /PID /T /F` and path-based cleanup. Phase 01.7 adds a Rust helper and replaces those Windows process and staging mutation paths. Implementation exists, but adversarial Windows integration could not run in the current elevated session; this decision remains unapproved and FE-01/FE-02 remain NO-GO.
 
-These are shared safety blockers for FE-01 and FE-02. They are not resolved by successful generation E2E runs. No native implementation or native dependency has been started.
+These are shared safety blockers for FE-01 and FE-02. Successful generation E2E runs do not resolve them. Native helper source and integration tests now exist; runtime/package validation and independent review remain open.
 
 ## Constraints
 
@@ -35,35 +35,36 @@ These are shared safety blockers for FE-01 and FE-02. They are not resolved by s
 
 ## Filesystem design questions
 
-Node's public path-based filesystem APIs do not provide the required handle-relative traversal and mutation contract. A native proof of concept should open and retain directory handles, inspect reparse attributes and stable file identity, enumerate/delete through verified handles, and test no-replace rename/finalization. Win32 `CreateFileW` with `FILE_FLAG_OPEN_REPARSE_POINT` and handle-based information/deletion APIs are candidate primitives. If safe child opens cannot be anchored to a retained parent handle using supported Win32 APIs, document and assess any NT Native API dependency rather than assuming canonical path checks eliminate races.
+The helper opens each local-drive path component relative to the previously opened directory handle with `NtCreateFile` and `FILE_OPEN_REPARSE_POINT`, rejects reparse points and volume changes, enumerates cleanup entries through `GetFileInformationByHandleEx`, deletes by handle, and performs no-replace finalize with `SetFileInformationByHandle(FileRenameInfo)`. This removes path-based traversal from native create/cleanup/finalize operations. Node still writes ordinary staging contents through path-based APIs; native cleanup/finalize are not a sandbox or a claim that all staging writes are race-free. Adversarial tests must verify the outside sentinel remains untouched.
 
 The proof must test junction/symlink swaps at each operation boundary, cross-volume substitution, locked files, cleanup after crashes, and a destination race on supported Windows 11 builds. Static junction rejection remains useful but is not evidence against swaps.
 
 ## Proposed direction and rationale
 
-Keep the existing Phase 01 implementation unchanged for this remediation. Before native code or dependency work, select and prototype B, C, or D with a threat model, packaging plan, ABI/support matrix, and independent review. No option is approved here. A PoC must prove pre-execution Job Object assignment, PID-reuse resistance, detached-child containment, full-job drain/cancel, handle-rooted cleanup, and no-replace finalize before replacing DEC-014/DEC-012 behavior.
+Phase 01.7 implements option C as a local Rust helper at `native/windows-supervisor/`. It creates the workload suspended with `PROC_THREAD_ATTRIBUTE_JOB_LIST`, verifies Job Object membership before `ResumeThread`, verifies kill-on-close and absence of breakaway flags, and cancels by Job Object plus process handles. Cancellation, timeout, root-exit-with-descendants, EOF, and supervisor failures fail closed; if termination is unconfirmed, core retains staging. The helper also rejects elevated callers before generation and performs native stage creation, cleanup, and no-replace finalize. Node invokes it over bounded JSON/stdin/stdout; no Windows `taskkill` fallback remains.
 
-Native tool probes on the current Windows environment found PowerShell but no `cl`, Cargo/Rust, CMake, `node-gyp`, or .NET SDK in `PATH`; this is an environment observation, not proof those toolchains are unavailable elsewhere.
+`npm run build` compiles the helper and copies an ignored local sidecar to `packages/core/native/`; the executable is not committed or installer-packaged. Cargo exists under the current user's `.cargo/bin` but is not on inherited `PATH`. Current session has a High Integrity administrator token, so generation is intentionally blocked. Native workload/filesystem integration tests skip in this context; do not treat compile or skip results as race/process proof.
 
 ## Verification gates
 
-1. Native unit/integration tests prove assignment-before-resume, kill-on-close, process-handle identity, and complete-job cancellation; include detached/nested children and forced supervisor/generator termination.
-2. Windows adversarial tests race junction/symlink replacement against staging writes, cleanup, and finalize; assert outside sentinel data is unchanged.
-3. Repeat tests on clean Windows 11 x64 machines and document build/runtime dependencies.
-4. Rerun full test/typecheck/lint and FE-01/FE-02 E2E; separately cancel a real npm install and verify no descendants or staging writes remain.
-5. Independent security review closes or explicitly accepts every residual finding before recipe promotion or release review.
+1. **Implemented, runtime proof pending:** suspended creation, atomic Job Object assignment, membership check, kill-on-close and breakaway policy. Existing tests cover cancellation, timeout, detached descendants, unrelated process survival, and explicit breakaway attempts.
+2. **Implemented, race tests pending execution:** handle-rooted stage creation/cleanup/finalize; tests race parent/support/project paths against junction replacement and check outside sentinels.
+3. **Blocked here:** rerun those Windows tests from a non-elevated shell. Current run skipped 10 Windows workload/filesystem integration cases because the elevation guard correctly blocked this administrator token.
+4. Reproduce on clean Windows 11 x64; verify packaging/signing and forced helper/generator termination; separately cancel a real npm install and confirm no descendants remain.
+5. Independent security review must close or explicitly accept residual path-based Node staging writes and every other finding before recipe promotion or release review.
 
 ## Security and rollback
 
-Job Objects constrain process membership/lifetime; they do not restrict filesystem, network, registry, or token access and are not a sandbox. If the native boundary fails or is unavailable, keep generation blocked for release; do not silently fall back to path-based deletion or PID cancellation as equivalent protection. A failed cleanup retains staging for manual recovery.
+Job Objects constrain process membership/lifetime; they do not restrict filesystem, network, registry, or token access and are not a sandbox. DEC-016 lifecycle consent remains unchanged and is not isolation. If the native boundary fails or is unavailable, generation fails closed; do not silently fall back to PID cancellation or path-based destructive cleanup. A failed/unconfirmed process termination retains staging. No FE status or release approval changes here.
 
 ## References
 
 - Microsoft, [Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects).
 - Microsoft, [AssignProcessToJobObject](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-assignprocesstojobobject), [CreateProcessW](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw), and [UpdateProcThreadAttribute](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute) (`PROC_THREAD_ATTRIBUTE_JOB_LIST`).
 - Microsoft, [CreateFileW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew) and [SetFileInformationByHandle](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfileinformationbyhandle).
+- Microsoft, [GetFileInformationByHandleEx](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileinformationbyhandleex); Windows Native API `NtCreateFile` is used for parent-handle-relative child opens.
 
-These references establish candidate OS primitives, not a validated Project Generator implementation.
+These references establish OS primitives, not independent security approval or completed adversarial validation.
 
 ## Approval record
 
@@ -72,3 +73,4 @@ Pending human architecture, packaging, and security review. No implementation ap
 ## Revision history
 
 2026-11-12: Drafted from Phase 01.5/01.6 findings and Microsoft Win32 API investigation; no native implementation or approval claimed.
+2026-11-12: Phase 01.7 adds the Rust supervisor, handle-rooted staging operations, fail-closed CLI integration, and Windows adversarial tests. Runtime integration remains blocked by elevated test session; proposal and NO-GO status unchanged.
