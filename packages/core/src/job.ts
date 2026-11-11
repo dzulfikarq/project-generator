@@ -489,7 +489,9 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     }, { cause: original })
     stageFinish(currentStage, detail.code === 'GEN_CANCELLED' ? 'skipped' : 'failed', detail.message)
     emit({ type: detail.code === 'GEN_CANCELLED' ? 'warning' : 'error', stageId: currentStage, stageOwner: stageOwner(currentStage, resolved.recipe.frontend), code: detail.code, message: detail.message })
-    if (stage && !committed) {
+    if (stage && !committed && detail.code === 'GEN_PROCESS_TREE_UNCONFIRMED') {
+      emit({ type: 'warning', stageId: 'staging', stageOwner: 'core', code: 'GEN_STAGING_LEFTOVER', message: 'Owned staging was retained because process-tree termination could not be confirmed.' })
+    } else if (stage && !committed) {
       try {
         await cleanupOwnedStage(stage)
       } catch {

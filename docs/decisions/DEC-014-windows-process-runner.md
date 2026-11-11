@@ -34,11 +34,11 @@ Use B for the Phase 01 CLI only. `core` resolves npm's CLI JS under the active N
 
 ## Verification / evidence
 
-Unit tests exercise cancellation of a child plus descendant on Windows. FE-01 and FE-02 generation logs show pinned scaffolds, npm installs, validation, and finalize completion. See [QA matrix](../qa/acceptance-matrix.md) and per-recipe evidence reports. Broader adversarial PID-race, nested-installer, locked-process, clean-machine, and independent security tests remain open.
+Windows tests exercise cancellation of a child plus descendant, abort during runner path checks, and fail-closed behavior when `taskkill.exe` cannot be started. FE-01 and FE-02 generation logs show pinned scaffolds, npm installs, validation, and finalize completion. See [QA matrix](../qa/acceptance-matrix.md), [Phase 01.5 review](../qa/evidence/phase-01.5-windows-security-review.md), and per-recipe evidence reports. Broader adversarial PID-race, detached/nested-installer, locked-process, clean-machine, and external security tests remain open.
 
 ## Security and second-order effects
 
-No `.cmd` shell is used for reviewed JavaScript tools. Package lifecycle scripts may execute third-party code with the generator user's privileges. `taskkill /T /F` is forceful and does not provide Job Object guarantees; report cancellation only after termination/cleanup handling completes. No UI bridge exists yet.
+No `.cmd` shell is used for reviewed JavaScript tools. Package lifecycle scripts may execute third-party code with the generator user's privileges. `taskkill /T /F` is forceful and does not provide Job Object guarantees; failed/unconfirmed termination now retains staging and reports failure, but PID-reuse and detached-descendant risks remain. No UI bridge exists yet.
 
 ## Migration / rollback
 

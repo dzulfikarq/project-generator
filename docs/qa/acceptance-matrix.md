@@ -16,13 +16,13 @@ Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PAS
 | GEN-003 | PRD-005,PRD-012 | npm default for Node; unsupported managers rejected; correct lockfile | PASS — FE-01/FE-02 npm only |
 | GEN-004 | PRD-007 | Missing Node/Go/PHP/Composer/Python/uv reported with fix action, no hidden install | PARTIAL — Node/npm positive detection; missing-tool scenarios incomplete |
 | GEN-005 | PRD-008–009 | Review shows accurate steps; scaffold is deterministic and noninteractive | PARTIAL — read-only plan tests and pinned FE scaffolds; plan-preview audit incomplete |
-| GEN-006 | PRD-010–011,NFR-009 | Cancelling running scaffold stops owned process tree and cleans only owned staging | PARTIAL — Windows child-tree unit test; full-job cancellation/locked files unverified |
+| GEN-006 | PRD-010–011,NFR-009 | Cancelling running scaffold stops owned process tree and cleans only owned staging | PARTIAL — Windows descendant and kill-failure runner tests; full-job cancellation/locked files unverified |
 | GEN-007 | PRD-013,NFR-010 | Generate from pinned scaffold; compile/build/typecheck/smoke selected recipe; record independent review separately | PASS — FE-01/FE-02 local Windows E2E only; reports linked below |
 | GEN-008 | PRD-014 | Minimal, Standard, Full docs contain working actual commands and truthful status | PARTIAL — Standard/Full observed; Minimal and broader doc assertions remain |
 | GEN-009 | PRD-016,NFR-003 | Exact tool versions, adapter IDs, source integrity and lock hash persisted where applicable; no secrets | PASS — FE-01/FE-02 manifests; no Forma template selected |
 | GEN-010 | PRD-017 | SQL migration and DB driver work against test service; none mode has no DB artifacts | NOT RUN — no database adapters in Phase 01 |
 | GEN-011 | PRD-018 | Fullstack UI can call actual API endpoint; root scripts work on Windows | NOT RUN |
-| GEN-012 | PRD-019,NFR-004–005 | No arbitrary commands/token logging; file ownership and consent controls enforced | PARTIAL — scoped runner, redaction and ownership tests; independent security review pending |
+| GEN-012 | PRD-019,NFR-004–005 | No arbitrary commands/token logging; file ownership and consent controls enforced | PARTIAL — Phase 01.5 review recorded; PID/tree and junction-swap risks remain open; lifecycle scripts are unsandboxed |
 | GEN-013 | PRD-020,NFR-008 | Offline caches work if complete; otherwise transparent network/prerequisite error | NOT RUN |
 | GEN-014 | PRD-021 | Private Forma auth; SHA/manifest verified; React Vite/Next templates build and smoke | NOT RUN |
 | GEN-015 | PRD-024 | Optional Docker Compose generated correctly; services never started without action | NOT RUN |
@@ -49,11 +49,11 @@ Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PAS
 ## Phase 01 execution snapshot
 
 - Windows 11 Pro `10.0.26300` x64; Node.js `22.22.1`; npm `10.9.4`.
-- `npm run build`, `npm run typecheck`, `npm run lint`, and `npm test`: exit `0`. Test suite: 14 core tests and 3 CLI tests passed; zero failed or skipped.
-- Windows unit coverage includes junction rejection, case-insensitive collision, forged-stage ownership rejection, no-replace collision/success, and parent/descendant process cancellation (`packages/core/test/safety.test.ts`, `runner.test.ts`). Schema tests cover traversal, reserved names, long paths, spaces and Unicode (`schema.test.ts`).
+- After Phase 01.5 fixes, `npm test`, `npm run typecheck`, and `npm run lint`: exit `0`. Test suite: 16 core tests and 3 CLI tests passed; zero failed or skipped.
+- Windows unit coverage includes junction rejection, case-insensitive collision, forged-stage ownership rejection, no-replace collision/success, process-tree cancellation, abort during runner path checks, and fail-closed taskkill errors (`packages/core/test/safety.test.ts`, `runner.test.ts`). Schema tests cover traversal, reserved names, long paths, spaces and Unicode (`schema.test.ts`).
 - FE-01 and FE-02 were freshly generated through the CLI's explicit `--development-allow-planned` flag. Per-recipe commands, job IDs, resolved versions, manifest/lockfile hashes and limitations: [FE-01](evidence/FE-01/2026-11-11-cli-e2e.md), [FE-02](evidence/FE-02/2026-11-11-cli-e2e.md).
 - In each generated project, `npm run lint` and `npm run build` also exited `0`.
-- `PASS` above means only the stated test scope passed. FE-01/FE-02 remain `planned`; full independent security/acceptance review, clean-machine packaging, and desktop QA remain open.
+- `PASS` above means only the stated test scope passed. FE-01/FE-02 remain `planned`; broader independent acceptance, process-tree identity/race review, clean-machine packaging, and desktop QA remain open. See [Phase 01.5 review](evidence/phase-01.5-windows-security-review.md).
 
 ## Evidence protocol
 

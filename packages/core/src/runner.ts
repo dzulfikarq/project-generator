@@ -29,6 +29,10 @@ export interface RunningProcess {
   stop(): Promise<void>
 }
 
+function processTreeError(): GeneratorError {
+  return new GeneratorError({ code: 'GEN_PROCESS_TREE_UNCONFIRMED', stage: 'process', message: 'Could not confirm termination of the owned process tree.', nextAction: 'Inspect the owned staging directory only after confirming all generator child processes have exited.', targetModified: false })
+}
+
 function isWithin(root: string, candidate: string): boolean {
   const pathApi = process.platform === 'win32' ? win32 : undefined
   const rel = pathApi ? pathApi.relative(root, candidate) : relative(root, candidate)
@@ -93,6 +97,7 @@ export async function startNodeProcess(options: SafeProcessOptions): Promise<Run
     checkedFile(options.scriptPath, options.allowedScriptRoot),
     checkedDirectory(options.cwd, options.allowedCwdRoot),
   ])
+  if (options.signal?.aborted) throw new GeneratorError({ code: 'GEN_CANCELLED', stage: 'process', message: 'Generation was cancelled.', nextAction: 'Retry from the beginning.', targetModified: false })
   const child = spawn(process.execPath, [scriptPath, ...options.args], {
     cwd,
     env: processEnvironment(options.homeDirectory, options.tempDirectory, cwd),
@@ -135,25 +140,45 @@ export async function startNodeProcess(options: SafeProcessOptions): Promise<Run
 }
 
 async function terminateProcessTree(child: ChildProcess, result: Promise<ProcessResult>): Promise<void> {
-  if (!child.pid) return
+  if (!child.pid || child.exitCode !== null || child.signalCode !== null) return
   if (process.platform === 'win32') {
     const systemRoot = process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows'
     const taskkill = win32.join(systemRoot, 'System32', 'taskkill.exe')
-    await new Promise<void>((resolveKill) => {
+    const killResult = await new Promise<{ code: number | null; failedToStart: boolean }>((resolveKill) => {
       const killer = spawn(taskkill, ['/PID', String(child.pid), '/T', '/F'], {
         env: { SystemRoot: systemRoot, WINDIR: systemRoot, PATH: win32.join(systemRoot, 'System32') },
         shell: false,
         windowsHide: true,
         stdio: 'ignore',
       })
-      killer.once('error', () => resolveKill())
-      killer.once('close', () => resolveKill())
+      killer.once('error', () => resolveKill({ code: null, failedToStart: true }))
+      killer.once('close', (code) => resolveKill({ code, failedToStart: false }))
     })
+    if (killResult.failedToStart || killResult.code !== 0) {
+      child.kill()
+      await waitForExit(result, 1000)
+      throw processTreeError()
+    }
   } else {
     child.kill('SIGTERM')
   }
-  await Promise.race([result.then(() => undefined, () => undefined), new Promise<void>((resolveWait) => setTimeout(resolveWait, 5000))])
-  if (child.exitCode === null) child.kill()
+  if (!await waitForExit(result, 5000)) {
+    child.kill()
+    throw processTreeError()
+  }
+}
+
+function waitForExit(result: Promise<ProcessResult>, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolveExit) => {
+    const timeout = setTimeout(() => resolveExit(false), timeoutMs)
+    result.then(() => {
+      clearTimeout(timeout)
+      resolveExit(true)
+    }, () => {
+      clearTimeout(timeout)
+      resolveExit(true)
+    })
+  })
 }
 
 export async function runNodeProcess(options: SafeProcessOptions): Promise<ProcessResult> {
@@ -163,7 +188,11 @@ export async function runNodeProcess(options: SafeProcessOptions): Promise<Proce
   let failure: GeneratorError | undefined
   const stop = async (code: string, message: string, nextAction: string): Promise<void> => {
     failure = new GeneratorError({ code, stage: 'process', message, nextAction, targetModified: false })
-    await running.stop()
+    try {
+      await running.stop()
+    } catch {
+      failure = processTreeError()
+    }
   }
   const interruption = new Promise<never>((_, reject) => {
     if (options.signal) {
