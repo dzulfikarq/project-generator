@@ -128,7 +128,7 @@ interface ValidationResult {
 }
 ```
 
-Phase 01 avoids `.cmd` aliases: it resolves npm's JavaScript CLI under active Node and launches reviewed JS entrypoints through Node with explicit argv and `shell: false`. Windows child-tree cancellation uses `taskkill.exe /T /F`; see proposed [DEC-014](../decisions/DEC-014-windows-process-runner.md). This does not cover Composer or other ecosystems, and remains pending independent security review. Never use user input as shell command text.
+Phase 01 avoids `.cmd` aliases: it resolves npm's JavaScript CLI under active Node and launches reviewed JS entrypoints through Node with explicit argv and `shell: false`. Phase 01.7 delegates Windows workload lifetime to a Rust helper that assigns the suspended child to a Job Object before resume; there is no PID/`taskkill` fallback. See proposed [DEC-014](../decisions/DEC-014-windows-process-runner.md) and [DEC-015](../decisions/DEC-015-windows-native-safety-boundary.md). This does not cover Composer or other ecosystems, and remains pending non-elevated runtime tests, packaging, and independent security review. Never use user input as shell command text.
 
 ## 4. Recipe manifest — one selectable product output
 
@@ -194,7 +194,7 @@ Preflight → Staging → Scaffolding → Configuring
 
 ### Cancellation and rollback
 
-- Phase 01 invokes reviewed JavaScript entrypoints with `node` and explicit argv (`shell: false`); cancellation uses `taskkill.exe /T /F` on Windows and has a child-descendant unit test. No Job Object implementation exists; independent stress/race review remains pending.
+- Phase 01 invokes reviewed JavaScript entrypoints with `node` and explicit argv (`shell: false`). Phase 01.7 uses the native Windows helper and Job Objects for process-tree ownership; cancellation, timeout, detached-child, unrelated-process and breakaway integration tests exist but remain unexecuted under a non-elevated token. Handle-rooted staging mutations do not make ordinary Node writes race-free or isolate lifecycle scripts; independent review remains pending.
 - Perform bounded cleanup only in a staging directory with an owner sentinel and exact canonical path match; never delete arbitrary paths from error logs or user input.
 - A locked staging directory is retained as an explicit recoverable artifact with a cleanup recommendation, not forcibly erased.
 - Once finalized, do not silently delete the user's output even if optional Git init or later actions fail. Report partial completion.

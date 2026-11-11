@@ -51,7 +51,7 @@ Desktop UI will be introduced in a later phase. Phase 1 ships **Engine + CLI + b
 
 ### Phase 01 implementation snapshot
 
-Current repository implements two npm workspaces: `packages/core` owns schema/resolution, plans, doctor, generation jobs, process execution, staging and project docs; `packages/cli` owns command parsing and JSON/JSONL output. No Tauri UI, backend/database adapters, Forma integration, or Node sidecar packaging exists. FE-01/FE-02 generation has local Windows evidence but recipes remain `planned`; normal generation blocks them. `--development-allow-planned` is an evidence-gathering switch, not a support-status override.
+Current repository implements two npm workspaces: `packages/core` owns schema/resolution, plans, doctor, generation jobs, process execution, staging and project docs; `packages/cli` owns command parsing and JSON/JSONL output. A Rust Windows helper now owns workload Job Objects and native staging create/cleanup/finalize; ordinary Node staging writes remain path-based. The helper is built locally but not installer-packaged. No Tauri UI, backend/database adapters, or Forma integration exists. FE-01/FE-02 remain `planned`; normal generation blocks them. `--development-allow-planned` is an evidence-gathering switch, not a support-status override.
 
 ## 3. Proposed repository boundaries
 
@@ -167,7 +167,7 @@ E:\Projects\
 ```
 
 - Verify destination absent before stage and **again just before commit**.
-- Phase 01 uses fixed PowerShell code to call `.NET Directory.Move` with source/target supplied as environment values; never use overwrite/replacement flags. Unit tests cover target creation before finalization; broader race review remains open.
+- Phase 01.7 uses the native helper to open local-drive paths relative to retained directory handles, reject reparse points/volume changes, and perform no-replace finalization by handle. Ordinary Node writes into staging remain path-based; native race tests still need non-elevated execution and independent review.
 - A staging marker alone is not authority to delete arbitrary contents: ownership must match the exact canonical staging path, job UUID and creation record; guard against swapped junctions/symlinks.
 - Recheck path boundaries and canonicalization before mutating files. No `..` traversal, drive-root target, reserved Windows names, or reparse-point escape.
 - Cancellation/crash must not erase preexisting user directories. Report orphan staging cleanly; never auto-delete unverified folders.
@@ -177,7 +177,7 @@ E:\Projects\
 
 - Registry-controlled executable identity + argv list, not concatenated shell strings; whitelist permitted env keys, set controlled cwd, redact logs.
 - Phase 01 resolves npm's CLI JavaScript under the active Node installation, then invokes reviewed JavaScript entrypoints through `node` with explicit argv and `shell: false`; executable and cwd roots are checked and the child environment is reduced.
-- Phase 01 cancellation uses Windows `taskkill.exe /PID <pid> /T /F` for the owned child tree, with a Windows descendant test. It does not use a Job Object; broader process-race and security review remain open. See proposed [DEC-014](decisions/DEC-014-windows-process-runner.md).
+- Phase 01.7 delegates Windows workload creation and cancellation to the Rust helper: child starts suspended, enters a Job Object before resume, and termination is confirmed against the active job. There is no PID/`taskkill` fallback. Process integration tests and independent security review remain open; see proposed [DEC-014](decisions/DEC-014-windows-process-runner.md) and [DEC-015](decisions/DEC-015-windows-native-safety-boundary.md).
 - Secret values remain in private runtime memory / secure store, never argv or logs when the tool accepts safer mechanisms.
 - Lifecycle scripts in dependency packages can execute code: disclose at Review and provide no false 'sandboxed' claim.
 - Network access occurs only in generation or explicitly requested registry sync, not in plan.
@@ -276,6 +276,6 @@ Acceptance rules: [QA Matrix](qa/acceptance-matrix.md); release roadmap: [Roadma
 - DEC-011 (new proposal): Phase 1 system Node; Windows packaging PoC before desktop release.
 - DEC-012 (new proposal): owned same-volume staging plus no-replace finalize.
 - DEC-013: CLI JSONL event contract and future typed desktop bridge.
-- DEC-014 (proposal): Node-invoked allowlisted JS tools and Windows `taskkill` process-tree cancellation.
+- DEC-014 (proposed; Phase 01.7 implementation present): Node-invoked allowlisted JS tools supervised by the Rust Windows Job Object helper; approval and runtime review pending.
 
 See individual records in `docs/decisions/`. None of these proposals are a formal implementation approval or actual test result.
