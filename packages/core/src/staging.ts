@@ -14,6 +14,13 @@ export interface OwnedStage {
   readonly markerPath: string
 }
 
+export interface OwnedStageFile {
+  readonly path: string
+  readonly content: string
+  readonly replace?: boolean
+  readonly skipExisting?: boolean
+}
+
 function stagingError(code: string, stage: string, message: string, nextAction: string, targetModified = false): GeneratorError {
   return new GeneratorError({ code, stage, message, nextAction, targetModified })
 }
@@ -27,18 +34,26 @@ function requestFor(stage: OwnedStage, projectName?: string): Record<string, str
   }
 }
 
-function checkFsResult(result: SupervisorResult, operation: 'create' | 'cleanup' | 'finalize'): void {
+function checkFsResult(result: SupervisorResult, operation: 'create' | 'cleanup' | 'finalize' | 'write'): void {
   const { response, exitCode } = result
   if (exitCode === 0 && response.ok === true) return
   const code = typeof response.code === 'string' ? response.code : ''
   if (code === 'elevated_caller') {
     throw stagingError('GEN_ELEVATED_CALLER', 'preflight', 'Generation is blocked in an elevated Windows session.', 'Start Project Generator without administrator elevation and retry.')
   }
+  if (operation === 'create' && code === 'stage_orphaned') {
+    throw stagingError('GEN_STAGING_LEFTOVER', 'staging', 'Staging creation failed and its partial directory could not be safely removed.', 'Inspect the staging path associated with this job before retrying.')
+  }
+  if (operation === 'write') {
+    if (code === 'unsafe_path') throw stagingError('GEN_PATH_UNSAFE', 'configuring', 'A generated file path failed native handle validation.', 'Inspect staging for reparse points and retry with a new destination.')
+    throw stagingError('GEN_CONFIGURE_FAILED', 'configuring', 'Native staging file operation failed closed.', 'Inspect the local redacted job log and retry from a new destination.')
+  }
   if (operation === 'create') {
     if (code === 'stage_exists' || code === 'entry_exists') throw stagingError('GEN_STAGE_CREATE_FAILED', 'staging', 'Could not create a unique owned staging directory.', 'Check destination permissions and retry.')
     throw stagingError('GEN_STAGE_CREATE_FAILED', 'staging', 'Native staging creation failed closed.', 'Do not modify any retained staging folder; inspect it before retrying.')
   }
   if (operation === 'finalize') {
+    if (code === 'finalize_unconfirmed') throw stagingError('GEN_FINALIZE_UNCONFIRMED', 'finalizing', 'Native finalization returned success, but destination identity could not be verified.', 'Do not clean staging or overwrite the destination; inspect both paths before retrying.', true)
     if (code === 'target_exists') throw stagingError('GEN_PATH_EXISTS', 'finalizing', 'Destination became occupied before finalization; existing files were not changed.', 'Choose a new destination and retry.')
     if (code === 'unsafe_path') throw stagingError('GEN_PATH_UNSAFE', 'finalizing', 'Staged project or destination failed native path verification.', 'Do not modify staging; inspect it before retrying.')
     throw stagingError('GEN_FINALIZE_FAILED', 'finalizing', 'Native no-replace finalization failed.', 'Inspect both destination and retained staging before retrying.')
@@ -46,7 +61,7 @@ function checkFsResult(result: SupervisorResult, operation: 'create' | 'cleanup'
   throw stagingError('GEN_STAGING_LEFTOVER', 'cleanup', 'Owned staging could not be safely removed; it was retained.', 'Inspect the recorded staging folder and remove it manually only after confirming ownership.')
 }
 
-async function nativeFs(mode: string, request: unknown, operation: 'create' | 'cleanup' | 'finalize'): Promise<void> {
+async function nativeFs(mode: string, request: unknown, operation: 'create' | 'cleanup' | 'finalize' | 'write'): Promise<SupervisorResult> {
   let result: SupervisorResult
   try {
     result = await callSupervisor(mode, request)
@@ -57,9 +72,13 @@ async function nativeFs(mode: string, request: unknown, operation: 'create' | 'c
     if (operation === 'cleanup') {
       throw stagingError('GEN_STAGING_LEFTOVER', 'cleanup', 'Native cleanup could not be confirmed; staging was retained.', 'Inspect the recorded staging folder and remove it manually only after confirming ownership.')
     }
+    if (operation === 'write') {
+      throw stagingError('GEN_CONFIGURE_FAILED', 'configuring', 'Native staging file operation could not be confirmed.', 'Do not use partially generated staging; inspect the job log and retry from a new destination.')
+    }
     throw error
   }
   checkFsResult(result, operation)
+  return result
 }
 
 export async function createOwnedStage(parentPath: string, targetPath: string, projectName: string, jobId: string = randomUUID()): Promise<OwnedStage> {
@@ -80,6 +99,19 @@ export async function createOwnedStage(parentPath: string, targetPath: string, p
 export async function cleanupStageSupportFiles(stage: OwnedStage): Promise<void> {
   if (!liveStages.has(stage)) throw stagingError('GEN_STAGING_LEFTOVER', 'cleanup', 'Refused cleanup without a live in-process staging record.', 'Inspect staging manually; do not delete an unverified path.')
   await nativeFs('--cleanup-support', requestFor(stage), 'cleanup')
+}
+
+export async function mutateOwnedStage(stage: OwnedStage, directories: readonly string[], files: readonly OwnedStageFile[]): Promise<string[]> {
+  if (!liveStages.has(stage)) throw stagingError('GEN_STAGING_LEFTOVER', 'configuring', 'Refused staging mutation without a live in-process ownership record.', 'Inspect staging manually; do not write to an unverified path.')
+  const result = await nativeFs('--prepare-stage', {
+    ...requestFor(stage),
+    directories,
+    files: files.map((file) => ({ ...file, replace: file.replace ?? false, skipExisting: file.skipExisting ?? false })),
+  }, 'write')
+  if (!Array.isArray(result.response.writtenFiles) || !result.response.writtenFiles.every((path) => typeof path === 'string')) {
+    throw stagingError('GEN_CONFIGURE_FAILED', 'configuring', 'Native staging file operation returned an invalid response.', 'Inspect the local redacted job log and retry from a new destination.')
+  }
+  return result.response.writtenFiles as string[]
 }
 
 export async function cleanupOwnedStage(stage: OwnedStage): Promise<void> {

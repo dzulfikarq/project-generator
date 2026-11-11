@@ -12,23 +12,23 @@ Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PAS
 | Test ID | Requirement | Acceptance procedure / expected evidence | Current status |
 |---|---|---|---|
 | GEN-001 | PRD-001–004 | Invalid framework/database/ORM/style rejected at plan stage; target untouched | PARTIAL — FE-01/FE-02 schema/resolver only |
-| GEN-002 | PRD-002,NFR-001–002 | Existing directory, path traversal, Windows reserved names, junction escape rejected | PARTIAL — native handle-relative create/cleanup/finalize implemented; swap tests added but skipped under elevated token; Node staging writes remain path-based |
+| GEN-002 | PRD-002,NFR-001–002 | Existing directory, path traversal, Windows reserved names, junction escape rejected | PARTIAL — non-elevated native create/write/cleanup/finalize exercised; outside sentinels preserved; identity postcondition now fails closed, but anomaly root cause remains unknown; inherited ACL and cleanup-race findings open |
 | GEN-003 | PRD-005,PRD-012 | npm default for Node; unsupported managers rejected; correct lockfile | PASS — FE-01/FE-02 npm only |
 | GEN-004 | PRD-007 | Missing Node/Go/PHP/Composer/Python/uv reported with fix action, no hidden install | PARTIAL — Node/npm positive detection; missing-tool scenarios incomplete |
 | GEN-005 | PRD-008–009 | Review shows accurate steps; scaffold is deterministic and noninteractive | PARTIAL — read-only plan tests and pinned FE scaffolds; plan-preview audit incomplete |
-| GEN-006 | PRD-010–011,NFR-009 | Cancelling running scaffold stops owned process tree and cleans only owned staging | PARTIAL — Job Object helper and cancellation/timeout/detached/breakaway tests added; runtime tests skipped under elevated token; termination-failure and forced-helper-death proof remain open |
-| GEN-007 | PRD-013,NFR-010 | Generate from pinned scaffold; compile/build/typecheck/smoke selected recipe; record independent review separately | PASS — latest FE-01/FE-02 local Windows E2E only; reports linked below; no promotion |
+| GEN-006 | PRD-010–011,NFR-009 | Cancelling running scaffold stops owned process tree and cleans only owned staging | PARTIAL — non-elevated cancellation, timeout, detached descendants, breakaway rejection, forced helper death, and real npm lifecycle-install cancellation passed; one expected elevated-only skip; independent review findings remain open |
+| GEN-007 | PRD-013,NFR-010 | Generate from pinned scaffold; compile/build/typecheck/smoke selected recipe; record independent review separately | PASS — latest local FE-01/FE-02 native Windows E2Es passed their listed checks; finalize anomaly and independent acceptance remain separate blockers; reports linked below |
 | GEN-008 | PRD-014 | Minimal, Standard, Full docs contain working actual commands and truthful status | PARTIAL — Standard/Full observed; Minimal and broader doc assertions remain |
 | GEN-009 | PRD-016,NFR-003 | Exact tool versions, adapter IDs, source integrity and lock hash persisted where applicable; no secrets | PASS — FE-01/FE-02 manifests; no Forma template selected |
 | GEN-010 | PRD-017 | SQL migration and DB driver work against test service; none mode has no DB artifacts | NOT RUN — no database adapters in Phase 01 |
 | GEN-011 | PRD-018 | Fullstack UI can call actual API endpoint; root scripts work on Windows | NOT RUN |
-| GEN-012 | PRD-019,NFR-004–005 | No arbitrary commands/token logging; file ownership and consent controls enforced | PARTIAL — elevated caller blocked; native filesystem tests not executed here; DEC-016 consent unchanged; lifecycle scripts remain unsandboxed |
+| GEN-012 | PRD-019,NFR-004–005 | No arbitrary commands/token logging; file ownership and consent controls enforced | PARTIAL — non-elevated native filesystem/process tests ran; lifecycle scripts remain unsandboxed; path-based reads and independent review findings remain open |
 | GEN-013 | PRD-020,NFR-008 | Offline caches work if complete; otherwise transparent network/prerequisite error | NOT RUN |
 | GEN-014 | PRD-021 | Private Forma auth; SHA/manifest verified; React Vite/Next templates build and smoke | NOT RUN |
 | GEN-015 | PRD-024 | Optional Docker Compose generated correctly; services never started without action | NOT RUN |
 | GEN-016 | PRD-025 | Optional Git init and commit; without Git generation succeeds, no remote push | PARTIAL — no-Git FE-01/FE-02 generation only; Git bootstrap unsupported |
 | GEN-017 | PRD-026,NFR-006 | Error includes stage, stable code, next action, and target-modification status | PARTIAL — selected CLI/core errors tested; full taxonomy incomplete |
-| GEN-018 | NFR-001 | Paths with spaces/Unicode, drive letters, long path/junction handling | PASS — targeted Windows path tests and FE E2E path with spaces/`雪` |
+| GEN-018 | NFR-001 | Paths with spaces/Unicode, drive letters, long path/junction handling | PARTIAL — path tests and FE E2E paths with spaces/`雪` passed; finalize/junction anomaly remains unexplained despite added identity postcondition |
 | GEN-019 | NFR-011 | Tampered template/manifest rejected before installation | NOT RUN |
 | GEN-020 | NFR-012 | Local redacted logs and user-controlled retention, telemetry off by default | NOT RUN |
 | UX-001 | PRD-001–006 | Wizard keyboard navigable; disabled options explain why | NOT RUN |
@@ -65,10 +65,11 @@ Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PAS
 
 ## Phase 01.8 Windows native runtime verification
 
-- Baseline `53d71068ecb93a959cf31809559fdd9a170143a2`; native `--check-elevation` returned `{"elevated":true}` (exit 0), and token carried High Mandatory Level.
-- `npm test` exit 0: core 15 passed, 10 intentionally skipped by the elevation guard, 0 failed; CLI 3 passed, 0 skipped. All ten skips are listed in [Phase 01.8 evidence](evidence/phase-01.8-windows-native-runtime-verification.md); no integration test is counted as a pass.
-- Typecheck, lint, Cargo test/Clippy/format checks passed. Real npm cancellation, forced-helper-death/cleanup-failure tests, FE-01/FE-02 native E2E, and independent security review remain **NOT RUN** because no non-elevated session was available.
-- FE-01 and FE-02 remain `planned` and **NO-GO for promotion**. See report and raw test log: [Phase 01.8 evidence](evidence/phase-01.8-windows-native-runtime-verification.md).
+- Native `--check-elevation` returned `{"elevated":false}`; token carried Medium Mandatory Level (`S-1-16-8192`).
+- Final `npm test`: exit 0; core 30 passed / 1 expected elevated-only skip / 0 failed; CLI 3 passed / 0 skipped/failed. Raw output and SHA-256 are linked in [Phase 01.8 evidence](evidence/phase-01.8-windows-native-runtime-verification.md). Typecheck, lint, Cargo test/Clippy/format checks passed.
+- Runtime tests passed for cancellation, detached descendants, helper death, real npm lifecycle cancellation, rooted staging writes, cleanup retry and junction swaps. One full-suite run and one standalone race observed missing/empty finalized output; root cause remains unknown. Native finalize now validates destination volume/file identity and returns `GEN_FINALIZE_UNCONFIRMED` on mismatch, preserving staging. Focused race test passed 100 consecutive reruns after this guard; do not mark original anomaly resolved. See [anomaly record](evidence/phase-01.8-finalize-junction-anomaly.md).
+- Latest FE-01 and FE-02 native E2Es passed install/check/smoke/finalize against identity guard; reports: [FE-01](evidence/FE-01/2026-11-12-phase-01.8-native-e2e.md), [FE-02](evidence/FE-02/2026-11-12-phase-01.8-native-e2e.md). They used `--development-allow-planned` and do not promote recipes.
+- Separate read-only security review agent examined the changes and withheld approval; conditional inherited-ACL and cleanup marker-race findings remain open. Human/release approval and clean-machine packaging evidence remain unestablished. FE-01 and FE-02 remain `planned` and **NO-GO for promotion**. See [review report](evidence/phase-01.8-independent-security-review.md) and [Phase 01.8 evidence](evidence/phase-01.8-windows-native-runtime-verification.md).
 
 ## Evidence protocol
 

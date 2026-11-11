@@ -3,18 +3,20 @@ mod windows {
     use serde::{Deserialize, Serialize};
     use std::collections::BTreeMap;
     use std::ffi::c_void;
-    use std::io::{self, BufRead, Read};
-    use std::mem::{ManuallyDrop, offset_of, size_of, size_of_val, zeroed};
-    use std::os::windows::io::{FromRawHandle, RawHandle};
+    use std::io::{self, BufRead, Read, Write};
+    use std::mem::{ManuallyDrop, offset_of, size_of, zeroed};
+    use std::os::windows::io::{FromRawHandle, IntoRawHandle, RawHandle};
     use std::path::{Component, Path, Prefix};
     use std::ptr::{null, null_mut};
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::mpsc::{self, TryRecvError};
     use std::thread;
     use std::time::{Duration, Instant};
     use windows_sys::Wdk::Foundation::OBJECT_ATTRIBUTES;
     use windows_sys::Wdk::Storage::FileSystem::{
-        FILE_CREATE, FILE_DIRECTORY_FILE, FILE_NON_DIRECTORY_FILE, FILE_OPEN,
-        FILE_OPEN_REPARSE_POINT, FILE_SYNCHRONOUS_IO_NONALERT, NtCreateFile,
+        FILE_CREATE, FILE_DIRECTORY_FILE, FILE_DISPOSITION_INFORMATION, FILE_NON_DIRECTORY_FILE,
+        FILE_OPEN, FILE_OPEN_REPARSE_POINT, FILE_RENAME_INFORMATION, FILE_SYNCHRONOUS_IO_NONALERT,
+        FileDispositionInformation, FileRenameInformation, NtCreateFile, NtSetInformationFile,
     };
     use windows_sys::Win32::Foundation::{
         CloseHandle, GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE, HANDLE_FLAG_INHERIT,
@@ -27,12 +29,11 @@ mod windows {
     use windows_sys::Win32::Storage::FileSystem::{
         BY_HANDLE_FILE_INFORMATION, CreateFileW, DELETE, FILE_ADD_SUBDIRECTORY,
         FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_REPARSE_POINT,
-        FILE_ATTRIBUTE_TAG_INFO, FILE_DISPOSITION_INFO, FILE_FLAG_BACKUP_SEMANTICS,
-        FILE_FLAG_OPEN_REPARSE_POINT, FILE_ID_BOTH_DIR_INFO, FILE_LIST_DIRECTORY,
-        FILE_READ_ATTRIBUTES, FILE_RENAME_INFO, FILE_SHARE_DELETE, FILE_SHARE_READ,
-        FILE_SHARE_WRITE, FileAttributeTagInfo, FileDispositionInfo, FileIdBothDirectoryInfo,
-        FileIdBothDirectoryRestartInfo, FileRenameInfo, GetFileInformationByHandle,
-        GetFileInformationByHandleEx, OPEN_EXISTING, SYNCHRONIZE, SetFileInformationByHandle,
+        FILE_ATTRIBUTE_TAG_INFO, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+        FILE_ID_BOTH_DIR_INFO, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE,
+        FILE_SHARE_READ, FILE_SHARE_WRITE, FileAttributeTagInfo, FileIdBothDirectoryInfo,
+        FileIdBothDirectoryRestartInfo, GetFileInformationByHandle, GetFileInformationByHandleEx,
+        OPEN_EXISTING, SYNCHRONIZE,
     };
     use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
     use windows_sys::Win32::System::JobObjects::{
@@ -60,6 +61,10 @@ mod windows {
     const MAX_DELETE_ENTRIES: usize = 200_000;
     const MAX_DELETE_DEPTH: usize = 256;
     const MAX_MARKER_BYTES: usize = 16 * 1024;
+    const FILE_ADD_FILE_ACCESS: u32 = 0x0002;
+    const FILE_OPEN_IF: u32 = 0x0003;
+
+    static NEXT_STAGE_WRITE: AtomicU64 = AtomicU64::new(0);
 
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -114,10 +119,29 @@ mod windows {
     }
 
     #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
     struct OwnershipMarker {
         schema_version: u32,
         job_id: String,
         stage_name: String,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct StageFile {
+        path: String,
+        content: String,
+        replace: bool,
+        skip_existing: bool,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct StageMutationRequest {
+        #[serde(flatten)]
+        stage: StageRequest,
+        directories: Vec<String>,
+        files: Vec<StageFile>,
     }
 
     #[derive(Serialize)]
@@ -126,6 +150,8 @@ mod windows {
         ok: bool,
         code: Option<&'static str>,
         system_error: Option<u32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        written_files: Option<Vec<String>>,
     }
 
     struct FsFailure {
@@ -773,7 +799,7 @@ mod windows {
         let root_access = FILE_READ_ATTRIBUTES
             | FILE_LIST_DIRECTORY
             | if parts.is_empty() {
-                FILE_ADD_SUBDIRECTORY
+                FILE_ADD_FILE_ACCESS | FILE_ADD_SUBDIRECTORY
             } else {
                 0
             };
@@ -805,7 +831,7 @@ mod windows {
             let access = FILE_READ_ATTRIBUTES
                 | FILE_LIST_DIRECTORY
                 | if index + 1 == part_count {
-                    FILE_ADD_SUBDIRECTORY
+                    FILE_ADD_FILE_ACCESS | FILE_ADD_SUBDIRECTORY
                 } else {
                     0
                 };
@@ -813,7 +839,11 @@ mod windows {
                 parent.raw(),
                 &part,
                 access | SYNCHRONIZE,
-                FILE_SHARE_READ,
+                if index + 1 == part_count {
+                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE
+                } else {
+                    FILE_SHARE_READ
+                },
                 FILE_OPEN,
                 FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
                 FILE_ATTRIBUTE_DIRECTORY,
@@ -855,18 +885,32 @@ mod windows {
         }
     }
 
+    fn file_identity(handle: HANDLE) -> io::Result<(u32, u64)> {
+        let mut info = BY_HANDLE_FILE_INFORMATION::default();
+        if unsafe { GetFileInformationByHandle(handle, &mut info) } == 0 {
+            Err(last_error())
+        } else {
+            Ok((
+                info.dwVolumeSerialNumber,
+                (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow),
+            ))
+        }
+    }
+
     fn delete_open_handle(handle: HANDLE) -> FsResult<()> {
-        let disposition = FILE_DISPOSITION_INFO { DeleteFile: true };
-        if unsafe {
-            SetFileInformationByHandle(
+        let disposition = FILE_DISPOSITION_INFORMATION { DeleteFile: true };
+        let mut io_status = IO_STATUS_BLOCK::default();
+        let status = unsafe {
+            NtSetInformationFile(
                 handle,
-                FileDispositionInfo,
-                (&disposition as *const FILE_DISPOSITION_INFO).cast(),
-                size_of::<FILE_DISPOSITION_INFO>() as u32,
+                &mut io_status,
+                (&disposition as *const FILE_DISPOSITION_INFORMATION).cast(),
+                size_of::<FILE_DISPOSITION_INFORMATION>() as u32,
+                FileDispositionInformation,
             )
-        } == 0
-        {
-            Err(fs_last_error("native_fs_failed"))
+        };
+        if status < 0 {
+            Err(fs_failure("native_fs_failed", Some(status as u32)))
         } else {
             Ok(())
         }
@@ -984,36 +1028,47 @@ mod windows {
             FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
             FILE_ATTRIBUTE_DIRECTORY,
         )?;
-        let marker = open_relative(
-            stage_handle.raw(),
-            ".ownership.json",
-            GENERIC_READ | GENERIC_WRITE | FILE_READ_ATTRIBUTES | DELETE,
-            FILE_SHARE_READ,
-            FILE_CREATE,
-            FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
-            FILE_ATTRIBUTE_NORMAL,
-        )?;
-        let marker_data = serde_json::to_vec(&serde_json::json!({
-            "schemaVersion": 1,
-            "jobId": request.job_id,
-            "stageName": stage_name,
-        }))
-        .map_err(|_| fs_failure("native_fs_failed", None))?;
-        let mut marker_file =
-            unsafe { std::fs::File::from_raw_handle(marker.into_raw() as RawHandle) };
-        use std::io::Write;
-        marker_file
-            .write_all(&marker_data)
-            .map_err(|_| fs_last_error("native_fs_failed"))?;
+        let mut marker_created = false;
+        let marker_result = (|| {
+            let marker = open_relative(
+                stage_handle.raw(),
+                ".ownership.json",
+                GENERIC_READ | GENERIC_WRITE | FILE_READ_ATTRIBUTES | DELETE,
+                FILE_SHARE_READ,
+                FILE_CREATE,
+                FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
+                FILE_ATTRIBUTE_NORMAL,
+            )?;
+            marker_created = true;
+            let marker_data = serde_json::to_vec(&serde_json::json!({
+                "schemaVersion": 1,
+                "jobId": request.job_id,
+                "stageName": stage_name,
+            }))
+            .map_err(|_| fs_failure("native_fs_failed", None))?;
+            let mut marker_file =
+                unsafe { std::fs::File::from_raw_handle(marker.into_raw() as RawHandle) };
+            marker_file
+                .write_all(&marker_data)
+                .and_then(|()| marker_file.sync_all())
+                .map_err(|_| fs_failure("native_fs_failed", None))?;
+            Ok(())
+        })();
+        if let Err(error) = marker_result {
+            if rollback_new_stage(stage_handle.raw(), marker_created) {
+                return Err(error);
+            }
+            return Err(fs_failure("stage_orphaned", error.system_error));
+        }
         Ok(())
     }
 
     fn enumerate_names(directory: HANDLE, count: &mut usize) -> FsResult<Vec<String>> {
         let mut names = Vec::new();
-        let mut storage = vec![0usize; 16 * 1024];
+        let mut storage = vec![0usize; (16 * 1024) / size_of::<usize>()];
         let mut info_class = FileIdBothDirectoryRestartInfo;
         loop {
-            let buffer_length = size_of_val(&storage);
+            let buffer_length = storage.len() * size_of::<usize>();
             if unsafe {
                 GetFileInformationByHandleEx(
                     directory,
@@ -1115,6 +1170,210 @@ mod windows {
         Ok(true)
     }
 
+    fn rollback_new_stage(stage: HANDLE, marker_created: bool) -> bool {
+        let mut count = 0usize;
+        if marker_created && remove_entry(stage, ".ownership.json", 0, &mut count, true).is_err() {
+            return false;
+        }
+        match enumerate_names(stage, &mut count) {
+            Ok(names) if names.is_empty() => delete_open_handle(stage).is_ok(),
+            _ => false,
+        }
+    }
+
+    fn stage_path_parts(path: &str) -> FsResult<Vec<&str>> {
+        if path.is_empty()
+            || path.len() > 1024
+            || path.starts_with('/')
+            || path.contains(['\\', ':', '\0'])
+        {
+            return Err(fs_failure("unsafe_path", None));
+        }
+        let parts: Vec<_> = path.split('/').collect();
+        if parts.len() > 64
+            || parts.iter().any(|part| {
+                part.is_empty()
+                    || *part == "."
+                    || *part == ".."
+                    || part.ends_with(['.', ' '])
+                    || part.contains(['\\', '/', ':', '\0'])
+            })
+        {
+            return Err(fs_failure("unsafe_path", None));
+        }
+        Ok(parts)
+    }
+
+    fn open_stage_directory(parent: HANDLE, name: &str) -> FsResult<Handle> {
+        let directory = open_relative(
+            parent,
+            name,
+            FILE_READ_ATTRIBUTES
+                | FILE_LIST_DIRECTORY
+                | FILE_ADD_FILE_ACCESS
+                | FILE_ADD_SUBDIRECTORY,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            FILE_OPEN_IF,
+            FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
+            FILE_ATTRIBUTE_DIRECTORY,
+        )?;
+        let attrs = get_attributes(directory.raw()).map_err(|_| fs_last_error("unsafe_path"))?;
+        if attrs.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0
+            || attrs.FileAttributes & FILE_ATTRIBUTE_DIRECTORY == 0
+        {
+            return Err(fs_failure("unsafe_path", None));
+        }
+        Ok(directory)
+    }
+
+    fn create_stage_directories(stage: HANDLE, paths: &[String]) -> FsResult<()> {
+        if paths.len() > 4096 {
+            return Err(fs_failure("invalid_request", None));
+        }
+        for path in paths {
+            let parts = stage_path_parts(path)?;
+            let mut parent = stage;
+            let mut opened = Vec::with_capacity(parts.len());
+            for part in parts {
+                let directory = open_stage_directory(parent, part)?;
+                parent = directory.raw();
+                opened.push(directory);
+            }
+        }
+        Ok(())
+    }
+
+    fn rename_open_handle(
+        source: HANDLE,
+        parent: HANDLE,
+        name: &str,
+        replace: bool,
+    ) -> FsResult<()> {
+        if name.is_empty() || name.contains(['\\', '/', ':', '\0']) {
+            return Err(fs_failure("unsafe_path", None));
+        }
+        let name: Vec<u16> = name.encode_utf16().collect();
+        let bytes = offset_of!(FILE_RENAME_INFORMATION, FileName) + name.len() * size_of::<u16>();
+        let mut storage = vec![0usize; bytes.div_ceil(size_of::<usize>())];
+        let info = storage.as_mut_ptr().cast::<FILE_RENAME_INFORMATION>();
+        unsafe {
+            (*info).Anonymous.ReplaceIfExists = replace;
+            (*info).RootDirectory = parent;
+            (*info).FileNameLength = (name.len() * size_of::<u16>()) as u32;
+            std::ptr::copy_nonoverlapping(name.as_ptr(), (*info).FileName.as_mut_ptr(), name.len());
+        }
+        let mut io_status = IO_STATUS_BLOCK::default();
+        let status = unsafe {
+            NtSetInformationFile(
+                source,
+                &mut io_status,
+                info.cast(),
+                bytes as u32,
+                FileRenameInformation,
+            )
+        };
+        if status < 0 {
+            let status = status as u32;
+            let code = if status == 0xC000_0035 {
+                "target_exists"
+            } else {
+                "native_fs_failed"
+            };
+            Err(fs_failure(code, Some(status)))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn existing_regular_file(parent: HANDLE, name: &str) -> FsResult<bool> {
+        let file = match open_relative(
+            parent,
+            name,
+            FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            FILE_OPEN,
+            FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
+            FILE_ATTRIBUTE_NORMAL,
+        ) {
+            Ok(file) => file,
+            Err(error) if error.code == "entry_missing" => return Ok(false),
+            Err(error) => return Err(error),
+        };
+        let attrs = get_attributes(file.raw()).map_err(|_| fs_last_error("native_fs_failed"))?;
+        if attrs.FileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY) != 0 {
+            return Err(fs_failure("unsafe_path", None));
+        }
+        Ok(true)
+    }
+
+    fn write_stage_file(stage: HANDLE, job_id: &str, file: StageFile) -> FsResult<bool> {
+        let parts = stage_path_parts(&file.path)?;
+        let (name, parents) = parts
+            .split_last()
+            .ok_or_else(|| fs_failure("unsafe_path", None))?;
+        let mut parent = stage;
+        let mut opened = Vec::with_capacity(parents.len());
+        for part in parents {
+            let directory = open_stage_directory(parent, part)?;
+            parent = directory.raw();
+            opened.push(directory);
+        }
+
+        let exists = existing_regular_file(parent, name)?;
+        if file.skip_existing && !file.replace && exists {
+            return Ok(false);
+        }
+        if file.replace && exists {
+            // Atomic replacement below changes only this directory entry; it never follows a link.
+        } else if !file.replace && exists && !file.skip_existing {
+            return Err(fs_failure("target_exists", None));
+        }
+
+        let sequence = NEXT_STAGE_WRITE.fetch_add(1, Ordering::Relaxed);
+        let temporary = format!(".pg-write-{job_id}-{}-{sequence}", std::process::id());
+        let temporary_handle = open_relative(
+            parent,
+            &temporary,
+            DELETE | FILE_READ_ATTRIBUTES | GENERIC_WRITE,
+            FILE_SHARE_READ,
+            FILE_CREATE,
+            FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
+            FILE_ATTRIBUTE_NORMAL,
+        )?;
+        let raw = temporary_handle.into_raw();
+        let mut temporary_file = unsafe { std::fs::File::from_raw_handle(raw as RawHandle) };
+        let write_result = temporary_file
+            .write_all(file.content.as_bytes())
+            .and_then(|()| temporary_file.sync_all());
+        let temporary_handle = Handle::new(temporary_file.into_raw_handle() as HANDLE)
+            .map_err(|_| fs_failure("native_fs_failed", None))?;
+        if write_result.is_err() {
+            let _ = delete_open_handle(temporary_handle.raw());
+            return Err(fs_failure("native_fs_failed", None));
+        }
+        if let Err(error) = rename_open_handle(temporary_handle.raw(), parent, name, file.replace) {
+            let _ = delete_open_handle(temporary_handle.raw());
+            return Err(error);
+        }
+        Ok(true)
+    }
+
+    fn prepare_stage(request: StageMutationRequest) -> FsResult<Vec<String>> {
+        if request.files.len() > 4096 {
+            return Err(fs_failure("invalid_request", None));
+        }
+        let stage = validate_stage(&request.stage)?;
+        create_stage_directories(stage.stage_handle.raw(), &request.directories)?;
+        let mut written = Vec::new();
+        for file in request.files {
+            let path = file.path.clone();
+            if write_stage_file(stage.stage_handle.raw(), &request.stage.job_id, file)? {
+                written.push(path);
+            }
+        }
+        Ok(written)
+    }
+
     fn read_marker(stage_name: &str, handle: &Handle, job_id: &str) -> FsResult<()> {
         let attrs = get_attributes(handle.raw()).map_err(|_| fs_last_error("stage_ownership"))?;
         if attrs.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0
@@ -1190,8 +1449,12 @@ mod windows {
         let stage_handle = open_relative(
             parent_handle.raw(),
             stage_name,
-            DELETE | FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY | FILE_ADD_SUBDIRECTORY,
-            FILE_SHARE_READ,
+            DELETE
+                | FILE_READ_ATTRIBUTES
+                | FILE_LIST_DIRECTORY
+                | FILE_ADD_FILE_ACCESS
+                | FILE_ADD_SUBDIRECTORY,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
             FILE_OPEN,
             FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
             FILE_ATTRIBUTE_DIRECTORY,
@@ -1230,9 +1493,20 @@ mod windows {
     fn cleanup_stage(request: StageRequest) -> FsResult<()> {
         let stage = validate_stage(&request)?;
         let mut count = 0usize;
-        for name in enumerate_names(stage.stage_handle.raw(), &mut count)? {
-            remove_entry(stage.stage_handle.raw(), &name, 1, &mut count, false)?;
+        let names = enumerate_names(stage.stage_handle.raw(), &mut count)?;
+        for name in names
+            .iter()
+            .filter(|name| !name.eq_ignore_ascii_case(".ownership.json"))
+        {
+            remove_entry(stage.stage_handle.raw(), name, 1, &mut count, false)?;
         }
+        remove_entry(
+            stage.stage_handle.raw(),
+            ".ownership.json",
+            0,
+            &mut count,
+            true,
+        )?;
         delete_open_handle(stage.stage_handle.raw())?;
         let _ = (&stage._parent_chain, stage.volume);
         Ok(())
@@ -1289,27 +1563,26 @@ mod windows {
         {
             return Err(fs_failure("unsafe_path", None));
         }
-        let name: Vec<u16> = project_name.encode_utf16().collect();
-        let bytes = offset_of!(FILE_RENAME_INFO, FileName) + name.len() * size_of::<u16>();
-        let mut storage = vec![0usize; bytes.div_ceil(size_of::<usize>())];
-        let info = storage.as_mut_ptr().cast::<FILE_RENAME_INFO>();
-        unsafe {
-            (*info).Anonymous.ReplaceIfExists = false;
-            (*info).RootDirectory = parent_handle.raw();
-            (*info).FileNameLength = (name.len() * size_of::<u16>()) as u32;
-            std::ptr::copy_nonoverlapping(name.as_ptr(), (*info).FileName.as_mut_ptr(), name.len());
-        }
-        let renamed = unsafe {
-            SetFileInformationByHandle(source.raw(), FileRenameInfo, info.cast(), bytes as u32)
-        };
-        if renamed == 0 {
-            let error = unsafe { GetLastError() };
-            let code = if error == 80 || error == 183 {
-                "target_exists"
-            } else {
-                "native_fs_failed"
-            };
-            return Err(fs_failure(code, Some(error)));
+        let source_identity =
+            file_identity(source.raw()).map_err(|_| fs_last_error("unsafe_path"))?;
+        rename_open_handle(source.raw(), parent_handle.raw(), project_name, false)?;
+        let target = open_relative(
+            parent_handle.raw(),
+            project_name,
+            FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            FILE_OPEN,
+            FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
+            FILE_ATTRIBUTE_DIRECTORY,
+        )
+        .map_err(|_| fs_failure("finalize_unconfirmed", None))?;
+        let target_attrs =
+            get_attributes(target.raw()).map_err(|_| fs_failure("finalize_unconfirmed", None))?;
+        if target_attrs.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0
+            || target_attrs.FileAttributes & FILE_ATTRIBUTE_DIRECTORY == 0
+            || file_identity(target.raw()).ok() != Some(source_identity)
+        {
+            return Err(fs_failure("finalize_unconfirmed", None));
         }
         Ok(())
     }
@@ -1333,6 +1606,7 @@ mod windows {
                 ok: false,
                 code: Some("elevated_caller"),
                 system_error: None,
+                written_files: None,
             });
             return 1;
         }
@@ -1344,6 +1618,7 @@ mod windows {
                         ok: false,
                         code: Some("invalid_request"),
                         system_error: None,
+                        written_files: None,
                     });
                     return 1;
                 }
@@ -1354,6 +1629,7 @@ mod windows {
                         ok: true,
                         code: None,
                         system_error: None,
+                        written_files: None,
                     })
                     .is_ok()
                     {
@@ -1367,6 +1643,46 @@ mod windows {
                         ok: false,
                         code: Some(error.code),
                         system_error: error.system_error,
+                        written_files: None,
+                    });
+                    1
+                }
+            };
+        }
+        if mode == "--prepare-stage" {
+            let request = match read_fs_request::<StageMutationRequest>() {
+                Ok(request) => request,
+                Err(_) => {
+                    let _ = write_json(&FsResponse {
+                        ok: false,
+                        code: Some("invalid_request"),
+                        system_error: None,
+                        written_files: None,
+                    });
+                    return 1;
+                }
+            };
+            return match prepare_stage(request) {
+                Ok(written_files) => {
+                    if write_json(&FsResponse {
+                        ok: true,
+                        code: None,
+                        system_error: None,
+                        written_files: Some(written_files),
+                    })
+                    .is_ok()
+                    {
+                        0
+                    } else {
+                        1
+                    }
+                }
+                Err(error) => {
+                    let _ = write_json(&FsResponse {
+                        ok: false,
+                        code: Some(error.code),
+                        system_error: error.system_error,
+                        written_files: None,
                     });
                     1
                 }
@@ -1379,6 +1695,7 @@ mod windows {
                     ok: false,
                     code: Some("invalid_request"),
                     system_error: None,
+                    written_files: None,
                 });
                 return 1;
             }
@@ -1395,6 +1712,7 @@ mod windows {
                     ok: true,
                     code: None,
                     system_error: None,
+                    written_files: None,
                 })
                 .is_ok()
                 {
@@ -1408,6 +1726,7 @@ mod windows {
                     ok: false,
                     code: Some(error.code),
                     system_error: error.system_error,
+                    written_files: None,
                 });
                 1
             }
@@ -1441,7 +1760,11 @@ mod windows {
         }
         if matches!(
             mode.as_str(),
-            "--create-stage" | "--cleanup-support" | "--cleanup-stage" | "--finalize-stage"
+            "--create-stage"
+                | "--prepare-stage"
+                | "--cleanup-support"
+                | "--cleanup-stage"
+                | "--finalize-stage"
         ) {
             return run_fs_operation(&mode);
         }

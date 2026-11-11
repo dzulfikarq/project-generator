@@ -3,76 +3,63 @@
 | Field | Result |
 |---|---|
 | Date | 2026-11-12 |
-| Code baseline | `53d71068ecb93a959cf31809559fdd9a170143a2` (`origin/main`) |
-| Platform | Windows 11 Pro, version `10.0.26300`, build `26300`; registry `ProductName` reports Windows 10 Pro, conflicting with CIM caption |
+| Code baseline | `eaf1a72` plus changes recorded in this evidence set |
+| Platform | Windows 11 Pro, version `10.0.26300`, build `26300`, AMD64; registry `ProductName` conflicts with CIM caption |
 | Toolchain | Node.js `22.22.1`; npm `10.9.4`; rustc `1.99.1 (58cf8f9c3 2026-10-13)`; Cargo `1.99.1 (5f94df478 2026-08-27)` |
-| Caller | **Elevated** — native probe says true; `whoami /groups` shows High Mandatory Level and enabled Administrators group |
-| Status | **BLOCKED / NO-GO** — this session cannot execute native workload/filesystem integration or generation without violating elevation guard |
+| Caller | **Non-elevated** — native probe `{"elevated":false}`; Medium Integrity (`S-1-16-8192`) |
+| Status | **PARTIAL / NO-GO** — runtime tests and both local E2Es ran; finalize/junction root cause and independent review findings remain open; no release approval |
 | Recipe state | FE-01 and FE-02 remain `planned`; no promotion |
 
 ## Evidence artifacts
 
-- Raw `npm test` output: [`phase-01.8-windows-native-runtime-verification.log`](phase-01.8-windows-native-runtime-verification.log), SHA-256 `B7A6DBC95053A3F8B6F65FDFCC297C2A02131F6DD6CB4C05C8BD84702CB5777B`.
-- Built ignored supervisor `packages/core/native/pg-windows-supervisor.exe`, SHA-256 `ED04477B6591A86020C2141BD050EBE0065270B7E905D09CF74C7A66B60B69B5`.
+- Final passing raw `npm test` output: [`phase-01.8-windows-native-runtime-verification-non-elevated-final.txt`](phase-01.8-windows-native-runtime-verification-non-elevated-final.txt), SHA-256 `93BB8A2C29B436D3D87995578C211DB3B375CDB20F970083018ADA4ADB4D91B3`.
+- Built ignored supervisor: `packages/core/native/pg-windows-supervisor.exe`, SHA-256 `BAFFA9F2825DB0B8AAD1751BB2BE25BFE5D3503EE628C2C73935E9D72836BFC6`.
+- Per-recipe E2E reports: [FE-01](FE-01/2026-11-12-phase-01.8-native-e2e.md), [FE-02](FE-02/2026-11-12-phase-01.8-native-e2e.md).
+- Transient finalize anomaly record: [`phase-01.8-finalize-junction-anomaly.md`](phase-01.8-finalize-junction-anomaly.md).
+- Separate security review findings: [`phase-01.8-independent-security-review.md`](phase-01.8-independent-security-review.md); review withheld approval.
 
 ## Commands and results
 
-| Command | Exit | Observed result |
+| Command / check | Exit | Observed result |
 |---|---:|---|
-| `packages/core/native/pg-windows-supervisor.exe --check-elevation` | 0 | `{"elevated":true}`; independent `whoami /groups` shows `High Mandatory Level` |
-| `npm test` | 0 | Sidecar release build and TS builds passed; core 15 passed / 10 skipped / 0 failed; CLI 3 passed / 0 skipped / 0 failed |
-| `npm run typecheck` | 0 | Core and CLI typechecks passed |
+| `pg-windows-supervisor.exe --check-elevation` | 0 | `{"elevated":false}`; `whoami /groups` confirms Medium Mandatory Level |
+| `npm test` (final recorded run) | 0 | Core: 30 passed, 1 expected elevated-only skip, 0 failed; CLI: 3 passed, 0 skipped/failed |
+| `npm run typecheck` | 0 | Core and CLI passed |
 | `npm run lint` | 0 | ESLint passed |
-| `cargo test --locked --manifest-path native/windows-supervisor/Cargo.toml` | 0 | Both Rust targets built; 0 Rust unit tests defined |
+| `cargo test --locked --manifest-path native/windows-supervisor/Cargo.toml` | 0 | Both Rust targets built; no Rust unit tests defined |
 | `cargo clippy --locked --manifest-path native/windows-supervisor/Cargo.toml -- -D warnings` | 0 | Passed |
 | `cargo fmt --manifest-path native/windows-supervisor/Cargo.toml -- --check` | 0 | Passed |
+| Focused finalize/junction test | 0 | 100 consecutive reruns passed with post-rename file-identity verification; original cause remains unknown |
+| FE-01 native E2E | 0 | 23 events; npm install, lint, typecheck, build, HTTP smoke and verified finalize passed; no stage leftovers |
+| FE-02 native E2E | 0 | 22 events; npm install, lint, build/typecheck, HTTP smoke and verified finalize passed; no stage leftovers |
 
-The 10 skips were exactly the elevated-guarded integration cases below; no other skips occurred:
+The single expected skip is the elevated-caller rejection case, which skips when the current caller is not elevated. No other integration skip occurred in the final run. A separate full-suite run failed once in `no-replace finalize contains concurrent project junction replacement`; later full-suite and focused reruns passed. See anomaly record. Do not count reruns as erasing the failure.
 
-1. Owned process cancellation.
-2. Timeout termination of detached descendants.
-3. Root exit with remaining detached descendants.
-4. Unrelated process survival during cancellation.
-5. Explicit `CREATE_BREAKAWAY_FROM_JOB` attempt.
-6. No-replace finalize preserves occupied target.
-7. Successful no-replace finalize.
-8. Parent junction swap during stage creation.
-9. Junction swap during support cleanup.
-10. Project junction swap during finalize.
+## Native runtime coverage
 
-Elevated-caller rejection tests passed. They verify generation stops before staging/workload creation; they do not verify normal non-elevated operation. Static junction rejection, case-insensitive collision, forged in-process ownership rejection, schema tests, and plan tests passed.
+Non-elevated execution exercised process cancellation, timeout, detached descendants, natural root exit, unrelated-process survival, explicit breakaway rejection, forced supervisor death, real npm lifecycle-install cancellation, stage creation rollback after marker failure, handle-rooted writes, cleanup failure/retry, junction swaps, no-replace finalization, and outside sentinels. The npm cancellation test confirmed lifecycle and detached descendants terminated and owned staging could then be removed. The forced-supervisor-death test confirmed Job Object closure terminated owned processes.
 
-## Not run
+The directory enumeration defect was confirmed and fixed: code passed `size_of_val(&Vec)` (the Vec header, 24 bytes) as native query-buffer length instead of backing-buffer length, producing Windows `ERROR_BAD_LENGTH` (`24`). The native operation now passes `storage.len() * size_of::<usize>()`. Marker rollback, marker cleanup ordering, and timeout-race handling were also corrected and covered by focused tests.
 
-- All 10 process/filesystem integration cases above: **SKIPPED**, not passed.
-- Real npm install cancellation; forced supervisor death; injected cleanup/marker-write failure; outside-sentinel runtime races.
-- FE-01 React + Vite and FE-02 Next.js generation through the native supervisor, including install, typecheck/lint/build, and HTTP/browser smoke.
-- Clean-machine packaging and independent human security review.
+After the anomaly, native finalize gained a post-rename target check: destination must be a non-reparse directory with the same volume/file identity as the opened staging source. Failure returns `GEN_FINALIZE_UNCONFIRMED`, causing core to retain staging. This is a fail-closed guard, not a root-cause fix; separate review notes the identity is captured only when finalize opens the staged path and does not prove it is the previously validated directory.
 
-The current process token is elevated. No elevation guard was bypassed and no workload or scaffold was started. Prior Phase 01.6 E2E reports predate the native supervisor and are not Phase 01.8 runtime evidence.
+## Finalize/junction anomaly — unresolved
 
-## Targeted source review (not independent)
+One full-suite run returned `ENOENT` while reading finalized `project/generated.txt`. A separate stress run also observed native finalize report success with an empty target while the populated source directory remained under staging. Outside sentinel stayed unchanged. Root cause is unknown; treat this as a correctness/safety defect, not a cleared flake.
 
-Review inspected Job Object setup/termination, elevation checks, native stage operations, TS response handling, and cleanup paths in `native/windows-supervisor/src/main.rs`, `packages/core/src/native-supervisor.ts`, `packages/core/src/runner.ts`, `packages/core/src/staging.ts`, and `packages/core/src/job.ts`.
+Follow-up: a full suite passed after adding the identity postcondition; the focused race test passed 100 consecutive runs; both FE E2Es passed against the patched supervisor. Later isolated handle/file-identity stress attempts did not reproduce the issue. None establishes the original failing interleaving's cause or proves it cannot recur. See linked anomaly record and separate review findings. **Do not approve recipe promotion or release on this evidence.**
 
-- Positive source-level checks: workload is created suspended with Job Object assignment in process attributes; helper verifies membership and kill-on-close/no-breakaway configuration; elevated query errors fail closed; TS preserves staging when process termination or finalize outcome is unconfirmed; no PID/`taskkill` fallback exists.
-- Open filesystem risk: normal Node staging writes and checks remain path-based (`job.ts`, `project-docs.ts`). Handle-rooted native create/cleanup/finalize does not protect these writes from concurrent reparse-point replacement and does not sandbox lifecycle scripts.
-- Failure-recovery observation, not fault-injection evidence: native stage creation creates the directory before creating/writing `.ownership.json`. If marker creation/write fails, helper returns an error while core has not registered a live `OwnedStage`; an unmarked partial stage may remain without automatic cleanup. This appears fail-closed for user data but leaves recovery/visibility unresolved.
-- This review was performed by the implementation session and is **not an independent security review**. DEC-014/015 approval gates remain open.
+## Remaining limits and review gates
 
-## Reproduction gate
-
-Run from a standard-user Windows session or a terminal whose native probe reports not elevated. Do not alter or bypass the helper guard.
-
-1. Build with `npm run build`; require `pg-windows-supervisor.exe --check-elevation` to return exit `0` and `{"elevated":false}`.
-2. Run `npm test`; require all 10 guarded integrations to execute with no skips among those cases and 0 failures. The elevated-only rejection test is expected to skip under a non-elevated token; treat any other skip as unexplained. Preserve full output and SHA-256.
-3. Add/run dedicated non-elevated fixtures for real npm install cancellation, forced helper termination, and cleanup failure injection; verify owned descendants terminate and uncertain staging is retained.
-4. Run FE-01 and FE-02 separately with fresh temporary destinations and `--development-allow-planned`; record install, lint, typecheck/build, HTTP smoke, output hashes, and job logs. Do not promote either recipe from test success alone.
-5. Obtain independent security review of remaining path-based writes, marker-failure recovery, process/helper failure behavior, and packaging.
+- Separate read-only security review agent: **OBTAINED; NO APPROVAL**. Findings and limits are in the linked review report. Human/release sign-off remains unestablished; implementing-session review does not count.
+- Open review findings: inherited staging ACL can permit cross-principal tampering when parent ACL allows it; cleanup can lose marker if a concurrent writer adds an entry after enumeration; finalize identity is not bound to the previously validated project object; NTSTATUS/IO_STATUS_BLOCK completion handling needs review.
+- Clean-machine packaging and sidecar distribution: **NOT RUN**.
+- Ordinary filesystem reads such as generated lockfile inspection remain path-based; native handle-rooted mutations do not sandbox npm lifecycle scripts.
+- No browser automation; HTTP smoke only.
+- FE-01 and FE-02 are development-only runs using `--development-allow-planned`; normal generation still blocks both.
 
 ## Recommendation
 
-- **FE-01 React + Vite: NO-GO for promotion.** Keep `planned`; no Phase 01.8 native E2E or required runtime proof.
-- **FE-02 Next.js: NO-GO for promotion.** Keep `planned`; no Phase 01.8 native E2E or required runtime proof.
-
-No recipe status, release approval, or deployment changed.
+- **FE-01 React + Vite: NO-GO for promotion.** Keep `planned` pending resolution of independent-review findings, finalize anomaly investigation, required external acceptance, and full recipe acceptance.
+- **FE-02 Next.js: NO-GO for promotion.** Same gates; local E2E does not establish product support.
+- Preserve failure evidence and repeat race investigation before any release-readiness claim. No recipe state or release approval changed.

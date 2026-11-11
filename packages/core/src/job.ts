@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { appendFileSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { access, lstat, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { access, lstat, readFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, win32 } from 'node:path'
@@ -9,7 +9,7 @@ import { runDoctor } from './doctor.js'
 import { createPlan } from './plan.js'
 import { writeProjectDocs, writeProjectManifest } from './project-docs.js'
 import { runNodeProcess, startNodeProcess, type ProcessResult, type SafeProcessOptions } from './runner.js'
-import { createOwnedStage, cleanupOwnedStage, cleanupStageSupportFiles, moveDirectoryNoReplace, type OwnedStage } from './staging.js'
+import { createOwnedStage, cleanupOwnedStage, cleanupStageSupportFiles, mutateOwnedStage, moveDirectoryNoReplace, type OwnedStage } from './staging.js'
 import { resolveNpmTool, supportsNpm } from './toolchain.js'
 import { assertGenerationAllowed } from './native-supervisor.js'
 import { resolveSelection } from './resolver.js'
@@ -143,11 +143,16 @@ async function prepareDirectories(stage: OwnedStage): Promise<{ tools: string; h
   const cache = win32.join(stage.path, '.npm-cache')
   const userConfig = win32.join(stage.path, '.npmrc-user')
   const globalConfig = win32.join(stage.path, '.npmrc-global')
-  for (const directory of [tools, home, temp, cache]) await mkdir(directory)
-  await mkdir(win32.join(home, 'AppData', 'Roaming'), { recursive: true })
-  await mkdir(win32.join(home, 'AppData', 'Local'), { recursive: true })
-  await writeFile(userConfig, 'registry=https://registry.npmjs.org/\n', { flag: 'wx' })
-  await writeFile(globalConfig, 'registry=https://registry.npmjs.org/\n', { flag: 'wx' })
+  await mutateOwnedStage(stage, [
+    '.tools',
+    '.home/AppData/Roaming',
+    '.home/AppData/Local',
+    '.tmp',
+    '.npm-cache',
+  ], [
+    { path: '.npmrc-user', content: 'registry=https://registry.npmjs.org/\n' },
+    { path: '.npmrc-global', content: 'registry=https://registry.npmjs.org/\n' },
+  ])
   return { tools, home, temp, cache, userConfig, globalConfig }
 }
 
@@ -234,8 +239,11 @@ async function checkToolPin(tools: string, recipe: RecipeManifestV1): Promise<st
   }
 }
 
-async function writeToolPackage(tools: string, name: string, version: string): Promise<void> {
-  await writeFile(win32.join(tools, 'package.json'), JSON.stringify({ name: 'project-generator-staging-tools', private: true, version: '0.0.0', dependencies: { [name]: version } }, null, 2), { flag: 'wx' })
+async function writeToolPackage(stage: OwnedStage, name: string, version: string): Promise<void> {
+  await mutateOwnedStage(stage, [], [{
+    path: '.tools/package.json',
+    content: JSON.stringify({ name: 'project-generator-staging-tools', private: true, version: '0.0.0', dependencies: { [name]: version } }, null, 2),
+  }])
 }
 
 function npmRootFromCli(cliPath: string): string {
@@ -352,7 +360,7 @@ async function executeScaffold(
   signal?: AbortSignal,
 ): Promise<void> {
   const npmRoot = npmRootFromCli(npmCliPath)
-  await writeToolPackage(dirs.tools, resolved.recipe.scaffold.packageName, resolved.recipe.scaffold.version)
+  await writeToolPackage(stage, resolved.recipe.scaffold.packageName, resolved.recipe.scaffold.version)
   const scaffoldInstall = await runNpm([
     'install', '--prefix', dirs.tools, '--package-lock=true', '--ignore-scripts',
     `${resolved.recipe.scaffold.packageName}@${resolved.recipe.scaffold.version}`,
@@ -418,7 +426,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
 
     stageStart('configuring')
     throwIfCancelled(options.signal, currentStage)
-    const generatedFiles = await writeProjectDocs(projectPath, resolved, process.version.replace(/^v/, ''), npmTool)
+    const generatedFiles = await writeProjectDocs(stage, resolved, process.version.replace(/^v/, ''), npmTool)
     stageFinish('configuring', 'passed')
 
     stageStart('installing')
@@ -463,7 +471,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     emitValidation(emit, smoke, resolved.recipe.frontend)
     const allPassed = validations.every((item) => item.status === 'pass')
     if (!allPassed) throw userError('GEN_VALIDATE_FAILED', 'validating', 'One or more required checks did not pass.', 'Review the local redacted job log and retry.')
-    await writeProjectManifest(projectPath, resolved, process.version.replace(/^v/, ''), npmTool, validations, generatedFiles)
+    await writeProjectManifest(stage, resolved, process.version.replace(/^v/, ''), npmTool, validations, generatedFiles)
     stageFinish('validating', 'passed')
 
     stageStart('finalizing')

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
-import { lstat, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import { win32 } from 'node:path'
+import { mutateOwnedStage, type OwnedStage } from './staging.js'
 import type { NpmTool } from './toolchain.js'
 import type { ResolvedSelection, ValidationOutcome } from './types.js'
 
@@ -56,50 +57,28 @@ function generatedContent(resolved: ResolvedSelection, nodeVersion: string, npmV
   return files
 }
 
-async function writeDeclaredFile(root: string, relativePath: string, content: string, replace: boolean): Promise<boolean> {
-  const parts = relativePath.split('/')
-  if (parts.some((part) => !part || part === '.' || part === '..' || part.includes('\\'))) throw new Error('Invalid declared generated path.')
-  const target = win32.join(root, ...parts)
-  let current = root
-  for (const part of parts.slice(0, -1)) {
-    current = win32.join(current, part)
-    try {
-      await mkdir(current)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-    }
-    const entry = await lstat(current)
-    if (!entry.isDirectory() || entry.isSymbolicLink()) throw new Error('Generated documentation path contains a reparse point.')
-  }
-  try {
-    const existing = await lstat(target)
-    if (!existing.isFile() || existing.isSymbolicLink()) throw new Error('Generated documentation path is not a regular file.')
-    if (!replace) return false
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-  }
-  await writeFile(target, content, { flag: replace ? 'w' : 'wx' })
-  return true
-}
-
-export async function writeProjectDocs(projectPath: string, resolved: ResolvedSelection, nodeVersion: string, npm: NpmTool): Promise<string[]> {
+export async function writeProjectDocs(stage: OwnedStage, resolved: ResolvedSelection, nodeVersion: string, npm: NpmTool): Promise<string[]> {
   const files = generatedContent(resolved, nodeVersion, npm.version)
-  const written: string[] = []
-  for (const [file, content] of files) {
-    const replaced = await writeDeclaredFile(projectPath, file, content, file === 'README.md')
-    if (replaced) written.push(file)
-  }
-  return written
+  const projectName = win32.basename(stage.childPath)
+  const prefix = `${projectName}/`
+  const written = await mutateOwnedStage(stage, [], [...files].map(([path, content]) => ({
+    path: `${prefix}${path}`,
+    content,
+    replace: path === 'README.md',
+    skipExisting: path !== 'README.md',
+  })))
+  return written.map((path) => path.slice(prefix.length))
 }
 
 export async function writeProjectManifest(
-  projectPath: string,
+  stage: OwnedStage,
   resolved: ResolvedSelection,
   nodeVersion: string,
   npm: NpmTool,
   outcomes: readonly ValidationOutcome[],
   generatedFiles: readonly string[],
 ): Promise<void> {
+  const projectPath = stage.childPath
   const entries = await readdir(projectPath)
   const presentLocks = entries.filter((entry) => lockfiles.includes(entry))
   if (presentLocks.length !== 1 || presentLocks[0] !== 'package-lock.json') throw new Error('Expected exactly one npm lockfile, package-lock.json.')
@@ -127,5 +106,8 @@ export async function writeProjectManifest(
     generatedFiles: [...generatedFiles, '.project-generator/manifest.json'],
     validation: outcomes,
   }
-  await writeDeclaredFile(projectPath, '.project-generator/manifest.json', `${JSON.stringify(manifest, null, 2)}\n`, false)
+  await mutateOwnedStage(stage, [], [{
+    path: `${win32.basename(stage.childPath)}/.project-generator/manifest.json`,
+    content: `${JSON.stringify(manifest, null, 2)}\n`,
+  }])
 }

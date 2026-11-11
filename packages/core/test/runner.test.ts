@@ -2,10 +2,12 @@ import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { resolve, win32 } from 'node:path'
+import { dirname, resolve, win32 } from 'node:path'
 import test, { type TestContext } from 'node:test'
 import { callSupervisor, readSupervisorResponse, sendSupervisorRequest, spawnSupervisor } from '../src/native-supervisor.js'
 import { runNodeProcess } from '../src/runner.js'
+import { resolveNpmTool } from '../src/toolchain.js'
+import { cleanupOwnedStage, createOwnedStage, mutateOwnedStage } from '../src/staging.js'
 
 function processAlive(pid: number): boolean {
   try {
@@ -133,6 +135,121 @@ test('cancellation terminates owned Node process tree on Windows', { skip: proce
   }
 })
 
+test('cancelling real npm install kills lifecycle descendants and permits stage cleanup', { skip: process.platform !== 'win32' }, async (t) => {
+  if (await skipElevatedWorkload(t)) return
+  const npm = await resolveNpmTool()
+  assert.ok(npm, 'supported npm CLI must be installed beside Node')
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-npm-cancel-'))
+  const stage = await createOwnedStage(parent, win32.join(parent, 'project'), 'project', 'npm-cancel')
+  const projectPath = stage.childPath
+  const home = win32.join(stage.path, '.home')
+  const temp = win32.join(stage.path, '.tmp')
+  const cache = win32.join(stage.path, '.npm-cache')
+  const marker = win32.join(stage.path, 'install-pids.json')
+  const stopFile = win32.join(stage.path, 'stop-install-child')
+  const childCode = `const fs = require('node:fs'); setInterval(() => { if (fs.existsSync(${JSON.stringify(stopFile)})) process.exit(0) }, 25)`
+  const installCode = `const { spawn } = require('node:child_process'); const { writeFileSync } = require('node:fs'); const child = spawn(${JSON.stringify(process.execPath)}, ['-e', ${JSON.stringify(childCode)}], { detached: true, stdio: 'ignore', windowsHide: true }); child.unref(); writeFileSync(${JSON.stringify(marker)}, JSON.stringify({ parent: process.pid, child: child.pid })); setInterval(() => {}, 1000);`
+  await mutateOwnedStage(stage, ['project', 'slow-package', '.home', '.tmp', '.npm-cache'], [
+    { path: 'project/package.json', content: JSON.stringify({ name: 'npm-cancel-fixture', version: '1.0.0', private: true, dependencies: { 'slow-install-fixture': 'file:../slow-package' } }) },
+    { path: 'slow-package/package.json', content: JSON.stringify({ name: 'slow-install-fixture', version: '1.0.0', scripts: { install: 'node install.cjs' } }) },
+    { path: 'slow-package/install.cjs', content: installCode },
+  ])
+  const controller = new AbortController()
+  let execution: ReturnType<typeof runNodeProcess> | undefined
+  let lifecyclePid: number | undefined
+  let childPid: number | undefined
+  try {
+    execution = runNodeProcess({
+      scriptPath: npm.cliPath,
+      allowedScriptRoot: dirname(dirname(npm.cliPath)),
+      cwd: projectPath,
+      allowedCwdRoot: stage.path,
+      args: ['install', '--offline', '--no-audit', '--no-fund', '--cache', cache],
+      homeDirectory: home,
+      tempDirectory: temp,
+      timeoutMs: 60_000,
+      signal: controller.signal,
+    })
+    for (let attempt = 0; attempt < 400 && lifecyclePid === undefined; attempt += 1) {
+      try {
+        const pids = JSON.parse(await readFile(marker, 'utf8')) as { parent?: number; child?: number }
+        lifecyclePid = pids.parent
+        childPid = pids.child
+      } catch {
+        await new Promise((resolveWait) => setTimeout(resolveWait, 50))
+      }
+    }
+    assert.ok(lifecyclePid && childPid, 'npm lifecycle script and detached child should start')
+    controller.abort()
+    await assert.rejects(execution, (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && error.code === 'GEN_CANCELLED')
+    for (let attempt = 0; attempt < 50 && (processAlive(lifecyclePid) || processAlive(childPid)); attempt += 1) {
+      await new Promise((resolveWait) => setTimeout(resolveWait, 100))
+    }
+    assert.equal(processAlive(lifecyclePid), false, 'cancellation must terminate npm lifecycle process')
+    assert.equal(processAlive(childPid), false, 'cancellation must terminate detached lifecycle descendant')
+    await cleanupOwnedStage(stage)
+    await assert.rejects(access(stage.path))
+  } finally {
+    controller.abort()
+    await execution?.catch(() => undefined)
+    await writeFile(stopFile, 'stop').catch(() => undefined)
+    await stopFixtureDescendant(stopFile, childPid)
+    await cleanupOwnedStage(stage).catch(() => undefined)
+    await rm(parent, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+  }
+})
+
+test('forced supervisor death closes Job Object and kills owned descendants', { skip: process.platform !== 'win32' }, async (t) => {
+  if (await skipElevatedWorkload(t)) return
+  const root = await mkdtemp(win32.join(tmpdir(), 'pg-supervisor-death-'))
+  const script = win32.join(root, 'parent.cjs')
+  const parentPidFile = win32.join(root, 'parent.pid')
+  const childPidFile = win32.join(root, 'child.pid')
+  const stopFile = win32.join(root, 'stop-child')
+  const childCode = `const fs = require('node:fs'); setInterval(() => { if (fs.existsSync(${JSON.stringify(stopFile)})) process.exit(0) }, 25)`
+  const parentCode = `const { spawn } = require('node:child_process'); const { writeFileSync } = require('node:fs'); const child = spawn(${JSON.stringify(process.execPath)}, ['-e', ${JSON.stringify(childCode)}], { detached: true, stdio: 'ignore', windowsHide: true }); child.unref(); writeFileSync(${JSON.stringify(parentPidFile)}, String(process.pid)); writeFileSync(${JSON.stringify(childPidFile)}, String(child.pid)); setInterval(() => {}, 1000);`
+  await writeFile(script, parentCode)
+  const supervisor = spawnSupervisor('--run')
+  const completion = readSupervisorResponse(supervisor, 30_000)
+  let parentPid: number | undefined
+  let childPid: number | undefined
+  try {
+    await new Promise<void>((resolveSpawn, rejectSpawn) => {
+      supervisor.once('spawn', () => resolveSpawn())
+      supervisor.once('error', rejectSpawn)
+    })
+    const systemRoot = process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows'
+    sendSupervisorRequest(supervisor, {
+      executable: process.execPath,
+      args: [script],
+      cwd: root,
+      env: { SystemRoot: systemRoot, WINDIR: systemRoot, PATH: win32.join(systemRoot, 'System32') },
+      timeoutMs: 20_000,
+    })
+    for (let attempt = 0; attempt < 100 && (parentPid === undefined || childPid === undefined); attempt += 1) {
+      try {
+        parentPid = Number(await readFile(parentPidFile, 'utf8'))
+        childPid = Number(await readFile(childPidFile, 'utf8'))
+      } catch {
+        await new Promise((resolveWait) => setTimeout(resolveWait, 50))
+      }
+    }
+    assert.ok(parentPid && childPid, 'owned parent and descendant should start')
+    assert.equal(supervisor.kill(), true, 'test must terminate supervisor process')
+    await completion.catch(() => undefined)
+    for (let attempt = 0; attempt < 100 && (processAlive(parentPid) || processAlive(childPid)); attempt += 1) {
+      await new Promise((resolveWait) => setTimeout(resolveWait, 100))
+    }
+    assert.equal(processAlive(parentPid), false, 'supervisor death must terminate owned root')
+    assert.equal(processAlive(childPid), false, 'supervisor death must terminate owned descendant')
+  } finally {
+    if (supervisor.exitCode === null && supervisor.signalCode === null) supervisor.kill()
+    await completion.catch(() => undefined)
+    await stopFixtureDescendant(stopFile, childPid)
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+  }
+})
+
 test('timeout terminates detached descendants in the owned Job Object', { skip: process.platform !== 'win32' }, async (t) => {
   if (await skipElevatedWorkload(t)) return
   const root = await mkdtemp(win32.join(tmpdir(), 'pg-process-timeout-'))
@@ -245,7 +362,7 @@ test('cancelling generator does not terminate an unrelated process', { skip: pro
 test('Job Object rejects explicit CREATE_BREAKAWAY_FROM_JOB descendants', { skip: process.platform !== 'win32' }, async (t) => {
   if (await skipElevatedWorkload(t)) return
   const root = await mkdtemp(win32.join(tmpdir(), 'pg-breakaway-probe-'))
-  const probe = resolve('native/windows-supervisor/target/release/breakaway-probe.exe')
+  const probe = resolve(import.meta.dirname, '../../../../native/windows-supervisor/target/release/breakaway-probe.exe')
   const marker = win32.join(root, 'breakaway-result')
   const stopFile = win32.join(root, 'stop-escaped-child')
   const supervisor = spawnSupervisor('--run')
@@ -268,10 +385,10 @@ test('Job Object rejects explicit CREATE_BREAKAWAY_FROM_JOB descendants', { skip
         await new Promise((resolveWait) => setTimeout(resolveWait, 50))
       }
     }
-    assert.ok(result, 'breakaway probe should attempt child creation')
-    if (result.startsWith('escaped:')) escapedPid = Number(result.slice('escaped:'.length))
     supervisor.stdin?.write('{"kind":"cancel"}\n')
     const completed = await completion
+    assert.ok(result, `breakaway probe should attempt child creation; supervisor=${JSON.stringify(completed.response)} exit=${completed.exitCode}`)
+    if (result.startsWith('escaped:')) escapedPid = Number(result.slice('escaped:'.length))
     assert.equal(completed.response.terminationConfirmed, true)
     assert.equal(completed.response.cancelled, true)
     assert.match(result, /^blocked:/, 'owned Job Object must reject breakaway without opt-in')

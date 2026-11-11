@@ -1,0 +1,253 @@
+
+> project-generator-desktop@0.1.0 test
+> npm run build && npm run test --workspace @project-generator/core && npm run test --workspace @project-generator/cli
+
+
+> project-generator-desktop@0.1.0 build
+> npm run build:supervisor && npm run build --workspace @project-generator/core && npm run build --workspace @project-generator/cli
+
+
+> project-generator-desktop@0.1.0 build:supervisor
+> node scripts/build-windows-supervisor.mjs
+
+    Finished `release` profile [optimized] target(s) in 0.08s
+
+> @project-generator/core@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @project-generator/cli@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @project-generator/core@0.1.0 test
+> node --test dist/test/*.test.js
+
+TAP version 13
+# Subtest: production generation blocks planned recipes before destination writes
+ok 1 - production generation blocks planned recipes before destination writes
+  ---
+  duration_ms: 22.8044
+  type: 'test'
+  ...
+# Subtest: elevated generation fails before staging
+ok 2 - elevated generation fails before staging # SKIP current Windows caller is not elevated
+  ---
+  duration_ms: 105.8751
+  type: 'test'
+  ...
+# Subtest: redacts fake credentials and private paths from process output
+ok 3 - redacts fake credentials and private paths from process output
+  ---
+  duration_ms: 0.8824
+  type: 'test'
+  ...
+# Subtest: generation plan discloses unsandboxed npm lifecycle script execution
+ok 4 - generation plan discloses unsandboxed npm lifecycle script execution
+  ---
+  duration_ms: 2.085
+  type: 'test'
+  ...
+# Subtest: cancellation during runner path checks is not lost
+ok 5 - cancellation during runner path checks is not lost
+  ---
+  duration_ms: 18.3866
+  type: 'test'
+  ...
+# Subtest: native preflight blocks workload when caller token is elevated
+ok 6 - native preflight blocks workload when caller token is elevated
+  ---
+  duration_ms: 291.4945
+  type: 'test'
+  ...
+# Subtest: cancellation terminates owned Node process tree on Windows
+ok 7 - cancellation terminates owned Node process tree on Windows
+  ---
+  duration_ms: 196.0375
+  type: 'test'
+  ...
+# Subtest: cancelling real npm install kills lifecycle descendants and permits stage cleanup
+ok 8 - cancelling real npm install kills lifecycle descendants and permits stage cleanup
+  ---
+  duration_ms: 1764.1763
+  type: 'test'
+  ...
+# Subtest: forced supervisor death closes Job Object and kills owned descendants
+ok 9 - forced supervisor death closes Job Object and kills owned descendants
+  ---
+  duration_ms: 161.0602
+  type: 'test'
+  ...
+# Subtest: timeout terminates detached descendants in the owned Job Object
+ok 10 - timeout terminates detached descendants in the owned Job Object
+  ---
+  duration_ms: 1571.2371
+  type: 'test'
+  ...
+# Subtest: natural root exit detects and terminates remaining detached descendants
+ok 11 - natural root exit detects and terminates remaining detached descendants
+  ---
+  duration_ms: 425.8899
+  type: 'test'
+  ...
+# Subtest: cancelling generator does not terminate an unrelated process
+ok 12 - cancelling generator does not terminate an unrelated process
+  ---
+  duration_ms: 312.3061
+  type: 'test'
+  ...
+# Subtest: Job Object rejects explicit CREATE_BREAKAWAY_FROM_JOB descendants
+ok 13 - Job Object rejects explicit CREATE_BREAKAWAY_FROM_JOB descendants
+  ---
+  duration_ms: 111.6306
+  type: 'test'
+  ...
+# Subtest: rejects a junction in the destination path on Windows
+ok 14 - rejects a junction in the destination path on Windows
+  ---
+  duration_ms: 18.4948
+  type: 'test'
+  ...
+# Subtest: refuses forged marker cleanup without in-process ownership
+ok 15 - refuses forged marker cleanup without in-process ownership
+  ---
+  duration_ms: 11.2322
+  type: 'test'
+  ...
+# Subtest: marker creation failure rolls back newly created staging
+ok 16 - marker creation failure rolls back newly created staging
+  ---
+  duration_ms: 161.1551
+  type: 'test'
+  ...
+# Subtest: native stage writes stay rooted and preserve skip-existing files
+ok 17 - native stage writes stay rooted and preserve skip-existing files
+  ---
+  duration_ms: 147.2021
+  type: 'test'
+  ...
+# Subtest: native staging writes do not follow a concurrently swapped junction
+ok 18 - native staging writes do not follow a concurrently swapped junction
+  ---
+  duration_ms: 144.5972
+  type: 'test'
+  ...
+# Subtest: cleanup failure retains ownership marker and retry can finish cleanup
+ok 19 - cleanup failure retains ownership marker and retry can finish cleanup
+  ---
+  duration_ms: 206.2052
+  type: 'test'
+  ...
+# Subtest: destination collision check is case-insensitive on Windows
+ok 20 - destination collision check is case-insensitive on Windows
+  ---
+  duration_ms: 4.7557
+  type: 'test'
+  ...
+# Subtest: Windows no-replace finalize preserves an occupied target
+ok 21 - Windows no-replace finalize preserves an occupied target
+  ---
+  duration_ms: 129.9234
+  type: 'test'
+  ...
+# Subtest: Windows no-replace finalize moves only validated staging content
+ok 22 - Windows no-replace finalize moves only validated staging content
+  ---
+  duration_ms: 110.9197
+  type: 'test'
+  ...
+# Subtest: stage creation rejects parent junction swaps without creating outside entries
+ok 23 - stage creation rejects parent junction swaps without creating outside entries
+  ---
+  duration_ms: 70.6988
+  type: 'test'
+  ...
+# Subtest: support cleanup contains concurrent junction replacement within staging
+ok 24 - support cleanup contains concurrent junction replacement within staging
+  ---
+  duration_ms: 139.7996
+  type: 'test'
+  ...
+# Subtest: no-replace finalize contains concurrent project junction replacement
+ok 25 - no-replace finalize contains concurrent project junction replacement
+  ---
+  duration_ms: 123.1101
+  type: 'test'
+  ...
+# Subtest: accepts and resolves FE-01 and FE-02 without filesystem access
+ok 26 - accepts and resolves FE-01 and FE-02 without filesystem access
+  ---
+  duration_ms: 3.3547
+  type: 'test'
+  ...
+# Subtest: rejects malformed types, unknown fields, unsupported managers and bad enums
+ok 27 - rejects malformed types, unknown fields, unsupported managers and bad enums
+  ---
+  duration_ms: 0.9116
+  type: 'test'
+  ...
+# Subtest: blocks incompatible stacks and contradictory choices with structured errors
+ok 28 - blocks incompatible stacks and contradictory choices with structured errors
+  ---
+  duration_ms: 0.6197
+  type: 'test'
+  ...
+# Subtest: validates Windows path forms, spaces, Unicode, traversal, reserved names, and length
+ok 29 - validates Windows path forms, spaces, Unicode, traversal, reserved names, and length
+  ---
+  duration_ms: 0.7025
+  type: 'test'
+  ...
+# Subtest: plan is read-only even when parent path does not exist
+ok 30 - plan is read-only even when parent path does not exist
+  ---
+  duration_ms: 0.5061
+  type: 'test'
+  ...
+# Subtest: toolchain version checks follow pinned scaffold engine ranges
+ok 31 - toolchain version checks follow pinned scaffold engine ranges
+  ---
+  duration_ms: 0.3693
+  type: 'test'
+  ...
+1..31
+# tests 31
+# suites 0
+# pass 30
+# fail 0
+# cancelled 0
+# skipped 1
+# todo 0
+# duration_ms 4997.8833
+
+> @project-generator/cli@0.1.0 test
+> node --test dist/test/*.test.js
+
+TAP version 13
+# Subtest: catalog emits local versioned JSON without network
+ok 1 - catalog emits local versioned JSON without network
+  ---
+  duration_ms: 92.5827
+  type: 'test'
+  ...
+# Subtest: plan reads config but does not create a missing destination
+ok 2 - plan reads config but does not create a missing destination
+  ---
+  duration_ms: 102.8455
+  type: 'test'
+  ...
+# Subtest: doctor reports actual Node/npm and absent destination without writes
+ok 3 - doctor reports actual Node/npm and absent destination without writes
+  ---
+  duration_ms: 105.726
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 388.3289

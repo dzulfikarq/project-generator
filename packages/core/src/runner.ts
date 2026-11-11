@@ -182,6 +182,7 @@ export async function runNodeProcess(options: SafeProcessOptions): Promise<Proce
       throw failure
     }
     const completed = await Promise.race([running.result, interruption])
+    if (failure) throw failure
     if (completed.timedOut) throw new GeneratorError({ code: 'GEN_PROCESS_TIMEOUT', stage: 'process', message: 'A reviewed tool exceeded its time limit.', nextAction: 'Check network/tool health and retry.', targetModified: false })
     if (options.signal?.aborted) {
       await running.stop()
