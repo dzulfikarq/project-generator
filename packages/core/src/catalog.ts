@@ -41,7 +41,7 @@ export const ADAPTERS: readonly AdapterManifestV1[] = [
     supportedOS: ['windows'],
     versionConstraints: { node: '>=20.9.0', npm: '>=10.0.0', 'create-next-app': '16.4.6' },
     packageManagers: ['npm'],
-    prerequisites: [nodeRequirement, npmRequirement],
+    prerequisites: [{ ...nodeRequirement, versionRange: '>=20.9.0' }, npmRequirement],
     capabilities: ['app-router', 'typescript', 'tailwind', 'npm-lockfile', 'build', 'lint', 'http-smoke'],
     compatibleWith: ['styling.tailwind'],
     incompatibleWith: ['styling.css', 'database.*', 'backend.*', 'template.*'],

@@ -5,6 +5,7 @@ import { createPlan } from '../src/plan.js'
 import { resolveSelection } from '../src/resolver.js'
 import { normalizeWindowsParent, resolveOutputPath } from '../src/paths.js'
 import { GeneratorError } from '../src/errors.js'
+import { supportsNodeForNext, supportsNodeForVite, supportsNpm } from '../src/toolchain.js'
 
 const reactConfig = {
   schemaVersion: 1,
@@ -62,7 +63,10 @@ test('validates Windows path forms, spaces, Unicode, traversal, reserved names, 
   for (const path of ['C:\\Projects\\..\\escape', 'C:\\Projects\\NUL', '\\\\server\\share', '\\\\?\\C:\\temp']) {
     assert.throws(() => normalizeWindowsParent(path), GeneratorError)
   }
+  assert.throws(() => normalizeWindowsParent('C:\\Projects\\trailing.'), GeneratorError)
+  assert.throws(() => normalizeWindowsParent('C:\\Projects\\trailing '), GeneratorError)
   assert.throws(() => resolveOutputPath('C:\\Projects', 'CON'), GeneratorError)
+  assert.throws(() => resolveOutputPath('C:\\Projects', 'nul.txt'), GeneratorError)
   assert.throws(() => resolveOutputPath(`C:\\${'x'.repeat(220)}`, 'sample-web'), GeneratorError)
 })
 
@@ -75,4 +79,14 @@ test('plan is read-only even when parent path does not exist', () => {
   const plan = createPlan(config)
   assert.equal(JSON.stringify(config), before)
   assert.equal(plan.targetPath, 'Z:\\not-created\\unicode-雪\\sample-web')
+})
+
+test('toolchain version checks follow pinned scaffold engine ranges', () => {
+  assert.equal(supportsNodeForVite('20.18.1'), false)
+  assert.equal(supportsNodeForVite('20.19.0'), true)
+  assert.equal(supportsNodeForVite('21.7.0'), false)
+  assert.equal(supportsNodeForVite('22.12.0'), true)
+  assert.equal(supportsNodeForNext('20.9.0'), true)
+  assert.equal(supportsNpm('9.9.9'), false)
+  assert.equal(supportsNpm('10.0.0'), true)
 })
