@@ -1,0 +1,323 @@
+# Adapter Contract — Project Generator Core
+
+| Field | Value |
+|---|---|
+| Version | Draft 0.1, schema proposal 1 |
+| Date | 2026-11-11 |
+| Status | **Proposed design**; no TypeScript interfaces or engine have been implemented |
+| Applicable components | Generator Core CLI; bundled platform/framework/styling/database/template adapters |
+
+## 1. Design principles
+
+1. **CLI-first / UI-agnostic:** core runs without Tauri GUI; GUI subscribes to structured events and can cancel jobs.
+2. **Deterministic inputs:** input config + pinned adapter versions + pinned official CLI/template versions → reproducible *plan*, and reproducible output as far as upstream package registries/OS allow.
+3. **One recipe, one evidence set:** supported status comes from observed verification, not marketing status.
+4. **Plan before execution:** no writes, installs, network access or process execution while only previewing.
+5. **Explicit side effects:** identify downloads, process starts, Git operations and optional Docker actions.
+6. **Safe by construction:** internal allowlisted adapters, no arbitrary plugin scripts, shells or user-provided shell fragments.
+7. **Separation of concerns:** framework scaffolding, styling, database integration, project docs and Forma template installation are independent contract stages.
+8. **No invented validation:** report `not_run`/`skipped` distinctly from `pass`.
+
+## 2. Adapter families
+
+| Family | Example | Responsibility |
+|---|---|---|
+| `frontend` | `frontend.react-vite` | Official scaffold invocation, frontend runtime and lifecycle |
+| `backend` | `backend.go-gin` | Backend project layout, service and routes |
+| `database` | `database.postgresql` | DB env, driver, health check, optional Docker artifacts |
+| `data-access` | `data-access.prisma-postgres` | ORM/driver, schema, migration, seed and validation |
+| `styling` | `styling.bootstrap` | CSS build system, component lifecycle, install |
+| `ui-library` | `ui.shadcn` | Framework-aware UI dependency/configuration |
+| `template` | `template.forma` | Authenticated registry resolution and version-pinned install |
+| `tooling` | `tooling.eslint` | Lint, formatting, test setup and scripts |
+| `documentation` | `docs.standard` | Generated project documentation from *actual* output manifest |
+| `workspace` | `workspace.fullstack` | Fullstack root layout, cross-app config, API sample orchestration |
+
+V1 does not execute unreviewed third-party adapters. New adapters are repository-controlled, reviewed and versioned; any future plugin SDK requires its own security/permission decision.
+
+## 3. Proposed TypeScript-facing contract (illustrative, not code implemented)
+
+```ts
+type SupportState =
+  | 'cataloged' | 'planned' | 'experimental'
+  | 'tested' | 'blocked' | 'retired';
+
+type AdapterKind =
+  | 'frontend' | 'backend' | 'database' | 'data-access'
+  | 'styling' | 'ui-library' | 'template'
+  | 'tooling' | 'documentation' | 'workspace';
+
+type PackageManager =
+  | 'npm' | 'yarn' | 'pnpm' | 'bun'
+  | 'composer' | 'go' | 'uv' | 'pub'
+  | 'maven' | 'gradle' | 'nuget';
+
+type ValidationState = 'pass' | 'fail' | 'skipped' | 'not_run';
+
+interface ToolRequirement {
+  executableId: string;   // e.g. node, npm, php, composer, go
+  versionRange: string;    // explicitly test resolved version
+  optional: boolean;
+  reason: string;
+}
+
+interface AdapterManifestV1 {
+  schemaVersion: 1;
+  id: string;                    // stable e.g. frontend.vue-vite
+  adapterVersion: string;        // semver of adapter implementation
+  kind: AdapterKind;
+  displayName: string;
+  supportState: SupportState;    // release metadata, never self-certified
+  supportedOS: ('windows' | 'macos' | 'linux')[];
+  versionConstraints: Record<string, string>;
+  packageManagers: PackageManager[];
+  prerequisites: ToolRequirement[];
+  capabilities: string[];       // tested actions only
+  compatibleWith: string[];     // stable adapter ids or recipe constraints
+  incompatibleWith: string[];
+  recipeEvidenceIds: string[];  // required for TEST state
+}
+
+interface ProjectSelectionV1 {
+  schemaVersion: 1;
+  project: {
+    name: string;
+    description?: string;
+    parentDirectory: string;
+    type: 'frontend' | 'backend' | 'fullstack' | 'mobile';
+  };
+  frontend?: { adapterId: string; language?: 'ts' | 'js'; manager?: PackageManager };
+  backend?: { adapterId: string; manager?: PackageManager };
+  database?: {
+    adapterId: string;
+    accessAdapterId?: string;
+    mode: 'none' | 'existing-service' | 'docker-compose';
+  };
+  styling?: { adapterId: string; uiLibraryId?: string };
+  template?: { adapterId: 'template.forma'; templateId: string; commitSha: string };
+  documentation: 'minimal' | 'standard' | 'full';
+  git: { initialize: boolean; initialCommit: boolean };
+}
+
+interface GeneratorAdapterV1 {
+  manifest: AdapterManifestV1;
+  inspect(selection: Readonly<ProjectSelectionV1>): Promise<AdapterInspection>;
+  plan(selection: Readonly<ProjectSelectionV1>, environment: EnvironmentReport): Promise<PlannedStep[]>;
+  validateOutput(context: Readonly<ValidationContext>): Promise<ValidationResult[]>;
+}
+
+interface PlannedStep {
+  id: string;
+  ownerAdapterId: string;
+  phase: 'stage'|'scaffold'|'configure'|'install'|'validate'|'finalize';
+  action: 'spawn-allowlisted'|'write-file'|'copy-reviewed-artifact'|'run-check'|'finalize';
+  dependsOn: string[];
+  readableSummary: string;
+  sideEffects: string[];
+  consentKind?: 'network'|'docker'|'git'|'external-tool';
+}
+
+interface ValidationResult {
+  id: string;
+  status: ValidationState;
+  command?: string; // sanitized display only
+  evidencePath?: string;
+  message: string;
+}
+```
+
+**Implementation detail pending review:** Windows-specific executable aliases (`npm.cmd`, `npx.cmd`, `composer.bat`) and spawn mechanisms must be resolved via an allowlisted Windows runner. **Do not** treat user input as a shell command or enable `shell: true` to work around `.cmd` execution without separate threat analysis.
+
+## 4. Recipe manifest — one selectable product output
+
+A **recipe** is a tested composition, separate from individual adapters. Example:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "fs-vue-laravel-mysql-v1",
+  "status": "planned",
+  "platform": "windows",
+  "front": "frontend.vue-vite",
+  "back": "backend.laravel",
+  "data": {
+    "database": "database.mysql",
+    "access": "data-access.eloquent-mysql"
+  },
+  "styling": "styling.bootstrap",
+  "managers": { "frontend": "npm", "backend": "composer", "assets": "npm" },
+  "checks": ["frontend-build", "backend-health", "api-connectivity", "docs-truthfulness"],
+  "evidenceIds": []
+}
+```
+
+A client may never change a recipe to `tested` by merely writing a manifest flag. Status promotion requires test report references, exact platform/versions, reviewer/CI policy and confirmation that outputs passed independently. A recipe is not a cartesian product.
+
+## 5. Resolver rules
+
+Order of operations (all read-only through the review stage):
+
+1. Validate selection schema and normalize project name.
+2. Canonicalize target parent path and verify destination non-existence.
+3. Resolve selected adapters and exact version ranges.
+4. Check OS/runtime requirements, manager compatibility and recipe availability.
+5. Check framework/styling/UI combinations, separate backend and data mapper/DB pairing.
+6. Check Forma template compatibility, signed/pinned source identity and available auth/cache.
+7. Compute dependency DAG, file ownership rules, expected lockfiles and validations.
+8. Emit a stable sanitized plan and explicit side-effect list.
+9. If unsupported, return typed explanation and alternatives; do not auto-change selection.
+
+A plan is not an execution authorization. Executing requires an explicit user action after review, and any separate high-impact step (such as starting Docker) requires its declared consent. Where underlying installers run package lifecycle scripts, the UI must disclose this possibility.
+
+## 6. Engine pipeline and job state
+
+```text
+Idle
+  ↓ plan (READ-ONLY)
+Planned ── invalid ──→ Blocked
+  ↓ explicit Generate
+Preflight → Staging → Scaffolding → Configuring
+  → Installing → Validating → Finalizing → Complete
+                   ↘ Failed / Cancelled / Partial
+```
+
+- `plan` and `preflight` **must not** modify the requested output directory. Preflight may inspect tool versions and network reachability without installing dependencies.
+- `staging` creates an isolated, marked generator-owned directory on the target volume, when feasible.
+- `scaffolding` invokes reviewed CLIs or copies vetted starters with version-pinned sources. Noninteractive mode required.
+- `configuring` writes env **examples**, scripts, integration samples and template files; no hardcoded real passwords.
+- `installing` uses the correct ecosystem manager and produces lockfiles as specified.
+- `validating` records status/evidence of tests; optional unavailable service test is `skipped` with explanation, never `pass`.
+- `finalizing` renames/moves staged output only after safety checks and against still-nonexistent destination. If a destination appeared after plan, fail without overwriting.
+- `Complete` requires the advertised recipe acceptance checks to pass. If output exists but prerequisites prevent verification, report `Partial`/`Unverified` and don't claim ready.
+
+### Cancellation and rollback
+
+- Send a stop signal to the owned child process tree; Windows process-tree semantics require dedicated implementation and tests.
+- Perform bounded cleanup only in a staging directory with an owner sentinel and exact canonical path match; never delete arbitrary paths from error logs or user input.
+- A locked staging directory is retained as an explicit recoverable artifact with a cleanup recommendation, not forcibly erased.
+- Once finalized, do not silently delete the user's output even if optional Git init or later actions fail. Report partial completion.
+- Retrying creates a fresh staging path and cannot mutate or overwrite the existing destination.
+
+## 7. File ownership and conflict policy
+
+Each adapter must declare files it may create or transform, and any ordering dependency. A framework's native scaffold owns its base files; later adapters use reviewed transformations (AST/structured edits where practical) or version-aware patches. If two adapters claim incompatible ownership of one file, resolution fails during planning.
+
+- Reject traversal (`..`), absolute path injection, reserved Windows names (`CON`, `NUL`, etc.), trailing spaces/dots where invalid, symlink/junction escapes, unexpected UNC/device paths, case-insensitive collisions and blocked extensions.
+- Target destination cannot be a live repository root or nonempty directory unless a future explicit merge/import workflow is designed.
+- Do not modify global user config (`npm config`, PowerShell ExecutionPolicy, global Git config) during generation.
+- Windows drive-letter and spaces must be preserved; avoid assumptions that `/` paths or shell quoting are portable.
+- Validate generated paths **after** native scaffolding and before finalize; include subdirectories created by tools.
+
+## 8. Process execution boundary
+
+The desktop frontend never receives a generic `execute(command: string)` primitive. It sends typed commands (`generate(planId)`, `cancel(jobId)`, `openProject(projectId)`). The native bridge only invokes an allowlisted CLI engine; the engine only spawns allowed binaries with vetted argument arrays and working directories under controlled staging.
+
+Security requirements:
+
+- Validate executable path, version and digital provenance where possible; reject unexpected binaries with same name on PATH for risky operations.
+- Pass arguments as distinct argv elements; prohibit shell metacharacters as a control plane and never splice raw user strings into shell lines.
+- Enforce Tauri 2 capability scopes; dangerous shell commands are denied by default until explicitly permitted.
+- Stream stdout/stderr after redaction; avoid logging environment secrets, auth headers and private registry URLs containing tokens.
+- No automatic elevated process/UAC; no command requiring administrator rights as a hidden prerequisite.
+- Timeouts and cancellation rules per step, with clear retry/resume behavior.
+- Third-party `postinstall`/build scripts can execute code; disclose this and prefer trusted package registries/locked dependencies.
+
+## 9. Forma adapter requirements
+
+**Not part of this contract:** creating/updating template definitions or hosting the registry. These belong to Forma.
+
+Proposed integration:
+
+1. Authenticated metadata fetch from private GitHub or local verified cache.
+2. Resolve exact `templateId`, version, full commit SHA, target adapter, dependency manifests and installer version.
+3. Check supported target and package manager; validate manifest schema and SHA-256 artifacts.
+4. Install only through the existing vetted Forma installer, not arbitrary copy of React source into another framework.
+5. Run final build, typecheck, browser smoke where relevant and document evidence.
+6. Record template and source provenance without credentials; avoid automatic template updates post-generation.
+
+A Forma template being `tested` in the Forma project does **not** mean its Project Generator end-to-end integration is tested; both sides need evidence.
+
+## 10. Structured event contract
+
+```ts
+type JobStatus =
+  | 'queued'|'running'|'completed'|'partial'|'failed'|'cancelled';
+
+type StageStatus = 'pending'|'running'|'passed'|'failed'|'skipped';
+
+interface JobEventV1 {
+  schemaVersion: 1;
+  jobId: string;
+  sequence: number;    // monotonic per job
+  timestamp: string;  // ISO 8601
+  type: 'job-started'|'stage-started'|'stage-progress'|
+        'stage-finished'|'validation'|'warning'|'error'|'job-finished';
+  stageId?: string;
+  stageStatus?: StageStatus;
+  percent?: number;   // optional, not falsified when progress unknowable
+  message: string;    // redacted user-safe text
+  code?: string;
+}
+```
+
+- Events append-only in bounded local job logs, sequence-ordered and resumable for UI reconnect.
+- Progress may be indeterminate rather than a fabricated percentage.
+- Error IDs include `GEN_PATH_EXISTS`, `GEN_PATH_UNSAFE`, `GEN_TOOL_MISSING`, `GEN_TOOL_UNSUPPORTED`, `GEN_RECIPE_UNTESTED`, `GEN_INCOMPATIBLE`, `GEN_INSTALL_FAILED`, `GEN_CANCELLED`, `GEN_FORMA_AUTH`, `GEN_FORMA_INTEGRITY`, `GEN_VALIDATE_FAILED`, `GEN_STAGING_LEFTOVER`.
+- Every error maps to user-visible stage, cause, whether output was modified, and next action.
+
+## 11. Reproducibility manifest
+
+Proposed generated file: `.project-generator/manifest.json` (must not contain credentials):
+
+```json
+{
+  "schemaVersion": 1,
+  "generatorVersion": "<exact-version>",
+  "recipeId": "fe-react-vite-v1",
+  "recipeStatusAtCreation": "tested",
+  "createdAt": "<ISO-8601>",
+  "platform": "win32-x64",
+  "selectedAdapters": [
+    { "id": "frontend.react-vite", "version": "<exact-adapter-version>" }
+  ],
+  "toolVersions": { "node": "<resolved-version>", "npm": "<resolved-version>" },
+  "upstreamSources": [{ "source": "create-vite", "resolvedVersion": "<exact>" }],
+  "template": null,
+  "validation": [{ "id": "frontend-build", "status": "pass" }]
+}
+```
+
+For fully reproducible builds, also retain generated lockfiles and checksums for immutable template artifacts. A selected semver range alone is not sufficient. Do not leak local absolute paths if user exports a project report.
+
+## 12. QA obligations per adapter
+
+Mandatory for a `TEST` recipe:
+
+1. Unit schema tests for valid/invalid combinations and manifest invariants.
+2. Isolated plan snapshot tests (without network/filesystem writes).
+3. Windows path tests: `C:\Users\Test User\...`, `E:\Projects\...`, Unicode segment, device name, dot, junction, long path.
+4. Real independent scaffold and install in a clean directory.
+5. Real check commands appropriate to output (lint/typecheck/build/test, `go test`, Composer/PHP checks, uv/Python checks).
+6. Smoke test: frontend renders; backend endpoint responds; DB integration optionally requires a reachable test service and must not be reported as passed otherwise.
+7. Cancel/rollback and destination collision tests; no destroyed user files.
+8. Documentation assertions: commands work and referenced paths exist.
+9. Log scrubbing checks and an offline/no-auth failure scenario where applicable.
+10. Store pinned versions, exit codes, test artifacts and approved status change.
+
+See `docs/qa/acceptance-matrix.md` for traceability.
+
+## 13. Prohibited shortcuts
+
+- Never set a feature to `tested` after merely running `npm install`.
+- Never use a generic shell command string from a UI form or plugin manifest.
+- Never silently change selected frameworks, package manager, database or template on failure.
+- Never place passwords, private GitHub tokens, or `.env` credentials into generated docs/repository.
+- Never call Docker or initialize GitHub remote without explicit user action.
+- Never claim unsupported native iOS build capability on Windows.
+- Never add dependencies to a different language ecosystem to fake package-manager uniformity.
+
+## 14. Future evolution
+
+- Adapter contract version bump requires compatibility migration with test vectors.
+- Third-party adapter SDK needs signed packages, sandbox/process isolation, permission model and release governance; not part of V1.
+- Remote creation/deploy and AI project generation require separate PRDs and permission boundaries.

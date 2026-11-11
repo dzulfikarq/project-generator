@@ -1,0 +1,78 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { parseSelection } from '../src/schema.js'
+import { createPlan } from '../src/plan.js'
+import { resolveSelection } from '../src/resolver.js'
+import { normalizeWindowsParent, resolveOutputPath } from '../src/paths.js'
+import { GeneratorError } from '../src/errors.js'
+
+const reactConfig = {
+  schemaVersion: 1,
+  project: { name: 'sample-web', type: 'frontend', parentDirectory: 'E:\\Projects' },
+  frontend: { adapterId: 'frontend.react-vite', language: 'ts', manager: 'npm' },
+  styling: { adapterId: 'styling.css' },
+  documentation: 'minimal',
+  git: { initialize: false, initialCommit: false },
+}
+
+const nextConfig = {
+  ...reactConfig,
+  frontend: { adapterId: 'frontend.nextjs-app', language: 'ts', manager: 'npm' },
+  styling: { adapterId: 'styling.tailwind' },
+}
+
+test('accepts and resolves FE-01 and FE-02 without filesystem access', () => {
+  assert.equal(resolveSelection(parseSelection(reactConfig)).recipe.id, 'FE-01')
+  assert.equal(resolveSelection(parseSelection(nextConfig)).recipe.id, 'FE-02')
+  const plan = createPlan(parseSelection(reactConfig))
+  assert.equal(plan.recipeStatus, 'planned')
+  assert.equal(plan.executionAvailable, false)
+  assert.equal(plan.targetPath, 'E:\\Projects\\sample-web')
+})
+
+test('rejects malformed types, unknown fields, unsupported managers and bad enums', () => {
+  const cases = [
+    { ...reactConfig, schemaVersion: '1' },
+    { ...reactConfig, surprise: true },
+    { ...reactConfig, frontend: { ...reactConfig.frontend, manager: 1 } },
+    { ...reactConfig, styling: { ...reactConfig.styling, extra: 1 } },
+    { ...reactConfig, project: { ...reactConfig.project, type: 'desktop' } },
+  ]
+  for (const config of cases) assert.throws(() => parseSelection(config), GeneratorError)
+})
+
+test('blocks incompatible stacks and contradictory choices with structured errors', () => {
+  const parsed = parseSelection({
+    ...reactConfig,
+    styling: { adapterId: 'styling.tailwind' },
+  })
+  assert.throws(() => resolveSelection(parsed), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  const contradictory = parseSelection({ ...reactConfig, git: { initialize: false, initialCommit: true } })
+  assert.throws(() => resolveSelection(contradictory), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  const unsupportedManager = parseSelection({
+    ...reactConfig,
+    frontend: { ...reactConfig.frontend, manager: 'pnpm' },
+  })
+  assert.throws(() => resolveSelection(unsupportedManager), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+})
+
+test('validates Windows path forms, spaces, Unicode, traversal, reserved names, and length', () => {
+  assert.equal(normalizeWindowsParent('E:\\Projects\\My Workspace'), 'E:\\Projects\\My Workspace')
+  assert.equal(resolveOutputPath('E:\\Projects\\Málaga', 'sample-web'), 'E:\\Projects\\Málaga\\sample-web')
+  for (const path of ['C:\\Projects\\..\\escape', 'C:\\Projects\\NUL', '\\\\server\\share', '\\\\?\\C:\\temp']) {
+    assert.throws(() => normalizeWindowsParent(path), GeneratorError)
+  }
+  assert.throws(() => resolveOutputPath('C:\\Projects', 'CON'), GeneratorError)
+  assert.throws(() => resolveOutputPath(`C:\\${'x'.repeat(220)}`, 'sample-web'), GeneratorError)
+})
+
+test('plan is read-only even when parent path does not exist', () => {
+  const config = parseSelection({
+    ...reactConfig,
+    project: { ...reactConfig.project, parentDirectory: 'Z:\\not-created\\unicode-雪' },
+  })
+  const before = JSON.stringify(config)
+  const plan = createPlan(config)
+  assert.equal(JSON.stringify(config), before)
+  assert.equal(plan.targetPath, 'Z:\\not-created\\unicode-雪\\sample-web')
+})

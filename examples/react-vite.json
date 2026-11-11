@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "name": "sample-react",
+    "type": "frontend",
+    "parentDirectory": "C:\\Projects"
+  },
+  "frontend": {
+    "adapterId": "frontend.react-vite",
+    "language": "ts",
+    "manager": "npm"
+  },
+  "styling": {
+    "adapterId": "styling.css"
+  },
+  "documentation": "minimal",
+  "git": {
+    "initialize": false,
+    "initialCommit": false
+  }
+}
