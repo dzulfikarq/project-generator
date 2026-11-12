@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Date | 2026-11-12 |
-| State | Phase 01 CLI implemented; formal architecture/release review not yet complete |
+| State | Phase 01 CLI and bounded DEC-017 recovery implementation present; formal release review not complete |
 | Governance | See [`governance.md`](governance.md) |
 
 This project adopts EvoPilot's **decision accountability** pattern but uses standard English spelling (`decision`, `decisions`). A user-selected direction can be recorded as **Accepted Discovery** without implying implementation completion, test passage or formal release approval.
@@ -27,7 +27,7 @@ This project adopts EvoPilot's **decision accountability** pattern but uses stan
 | DEC-014 | Windows scoped process runner | Proposed | [DEC-014](DEC-014-windows-process-runner.md) | Run native process integration on non-elevated Windows and complete security review; see DEC-015 |
 | DEC-015 | Native Windows process/filesystem safety boundary | Proposed | [DEC-015](DEC-015-windows-native-safety-boundary.md) | Validate skipped race/process tests, packaging, residual path-based staging writes, and independent review |
 | DEC-016 | npm lifecycle script execution policy | Accepted Discovery | [DEC-016](DEC-016-npm-lifecycle-script-policy.md) | Interim explicit-generate disclosure policy; review before desktop UI/release |
-| DEC-017 | Windows staging crash recovery | Proposed | [DEC-017](DEC-017-windows-staging-crash-recovery.md) | Approve write-ahead journal/recovery architecture; resolve literal filesystem-confinement claim separately |
+| DEC-017 | Windows staging crash recovery | Accepted — bounded implementation | [DEC-017](DEC-017-windows-staging-crash-recovery.md), [Phase 01.10 evidence](../qa/evidence/phase-01.10-windows-recovery-implementation.md) | Review residual ACL boundary; keep lifecycle isolation, power-loss durability, anomaly diagnosis and recipe/release approval open |
 
 ## Open items
 
@@ -37,6 +37,6 @@ This project adopts EvoPilot's **decision accountability** pattern but uses stan
 - OPEN-004: Forma private GitHub authentication and permission policy.
 - OPEN-005: Optional Docker Compose start behavior and DB readiness semantics.
 - OPEN-006: Approve and validate native process containment and handle-safe staging operations before closing Windows safety blockers.
-- OPEN-007: Approve and implement crash-recoverable staging/finalization; independently decide whether lifecycle scripts require OS filesystem isolation.
+- OPEN-007: Run second-account ACL denial test when another standard account is available; decide whether lifecycle scripts require OS filesystem isolation.
 
 Proposed decisions remain unapproved even where Phase 01 code now uses that approach. Implementation or passing tests do not substitute for decision approval. Record real authorization before changing status.

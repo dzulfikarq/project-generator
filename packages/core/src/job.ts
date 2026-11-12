@@ -9,7 +9,7 @@ import { runDoctor } from './doctor.js'
 import { createPlan } from './plan.js'
 import { writeProjectDocs, writeProjectManifest } from './project-docs.js'
 import { runNodeProcess, startNodeProcess, type ProcessResult, type SafeProcessOptions } from './runner.js'
-import { bindOwnedStageProjectIdentity, createOwnedStage, cleanupOwnedStage, cleanupStageSupportFiles, mutateOwnedStage, moveDirectoryNoReplace, verifyOwnedStageProjectIdentity, type OwnedStage } from './staging.js'
+import { bindOwnedStageProjectIdentity, createOwnedStage, cleanupOwnedStage, cleanupStageSupportFiles, markOwnedStageGenerating, mutateOwnedStage, moveDirectoryNoReplace, verifyOwnedStageProjectIdentity, type OwnedStage } from './staging.js'
 import { resolveNpmTool, supportsNpm } from './toolchain.js'
 import { assertGenerationAllowed } from './native-supervisor.js'
 import { resolveSelection } from './resolver.js'
@@ -400,6 +400,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     throwIfCancelled(options.signal, currentStage)
     const target = doctor.target
     stage = await createOwnedStage(win32.dirname(target.path), target.path, selection.project.name, jobId)
+    await markOwnedStageGenerating(stage)
     const dirs = await prepareDirectories(stage)
     stageFinish('staging', 'passed')
 

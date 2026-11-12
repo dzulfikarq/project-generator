@@ -1,14 +1,233 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
-import { mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { randomBytes, randomUUID } from 'node:crypto'
+import { lstat, mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { win32 } from 'node:path'
+import { resolve, win32 } from 'node:path'
 import test, { type TestContext } from 'node:test'
 import { GeneratorError } from '../src/errors.js'
 import { callSupervisor } from '../src/native-supervisor.js'
 import { assertNoReparsePoints, inspectTarget } from '../src/paths.js'
-import { bindOwnedStageProjectIdentity, checkFsResult, cleanupOwnedStage, cleanupStageSupportFiles, createOwnedStage, moveDirectoryNoReplace, mutateOwnedStage, verifyOwnedStageProjectIdentity } from '../src/staging.js'
+import { applyRecovery, bindOwnedStageProjectIdentity, checkFsResult, cleanupOwnedStage, cleanupStageSupportFiles, createOwnedStage, inspectRecovery, markOwnedStageGenerating, moveDirectoryNoReplace, mutateOwnedStage, verifyOwnedStageProjectIdentity } from '../src/staging.js'
 import type { OwnedStage } from '../src/staging.js'
+
+const debugSupervisorPath = resolve(import.meta.dirname, '../../../../native/windows-supervisor/target/debug/pg-windows-supervisor.exe')
+
+function debugCrash(mode: string, request: Record<string, unknown>): void {
+  const result = spawnSync(debugSupervisorPath, [mode], {
+    input: `${JSON.stringify(request)}\n`,
+    encoding: 'utf8',
+    timeout: 30_000,
+    windowsHide: true,
+  })
+  assert.equal(result.error, undefined, result.error?.message)
+  assert.equal(result.status, 86, `expected debug supervisor crash at ${String(request.testCrashAt)}; output=${result.stdout} ${result.stderr}`)
+}
+
+function stageRequest(stage: OwnedStage, projectName = win32.basename(stage.targetPath)): Record<string, unknown> {
+  return {
+    jobId: stage.jobId,
+    transactionNonce: stage.transactionNonce,
+    journalRootPath: stage.journalRootPath,
+    stagePath: stage.path,
+    parentPath: stage.parentPath,
+    projectName,
+    targetPath: stage.targetPath,
+  }
+}
+
+function transactionRequest(parentPath: string, projectName: string, jobId = randomUUID()): Record<string, unknown> & { jobId: string; stagePath: string; targetPath: string; transactionNonce: string; journalRootPath: string } {
+  const localAppData = process.env.LOCALAPPDATA
+  assert.ok(localAppData && win32.isAbsolute(localAppData), 'LOCALAPPDATA is required on Windows')
+  return {
+    jobId,
+    transactionNonce: randomBytes(32).toString('hex'),
+    journalRootPath: win32.join(localAppData, '.project-generator-transactions'),
+    stagePath: win32.join(parentPath, `.project-generator-stage-${jobId}`),
+    sourcePath: win32.join(parentPath, `.project-generator-stage-${jobId}`, projectName),
+    parentPath,
+    projectName,
+    targetPath: win32.join(parentPath, projectName),
+  }
+}
+
+async function createJournal(request: Record<string, unknown>): Promise<void> {
+  const result = await callSupervisor('--create-journal', request)
+  assert.equal(result.exitCode, 0)
+  assert.equal(result.response.ok, true)
+}
+
+async function removeJournalForTest(journalRoot: string, jobId: string): Promise<void> {
+  await rm(win32.join(journalRoot, `.transaction-${jobId}.jsonl`), { force: true }).catch(() => undefined)
+}
+
+test('Windows crash/restart recovery preserves ambiguous and outside data', { skip: process.platform !== 'win32' }, async (t) => {
+  if (await skipElevatedStageOperation(t)) return
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-recovery-crash-'))
+  const journalRoot = win32.join(process.env.LOCALAPPDATA!, '.project-generator-transactions')
+  const sentinel = win32.join(parent, 'outside-sentinel.txt')
+  const jobIds: string[] = []
+  await writeFile(sentinel, 'preserve-me')
+  const track = (jobId: string): void => { jobIds.push(jobId) }
+  const readyStage = async (name: string): Promise<OwnedStage> => {
+    const stage = await createOwnedStage(parent, win32.join(parent, name), name)
+    track(stage.jobId)
+    await markOwnedStageGenerating(stage)
+    await mkdir(stage.childPath)
+    await writeFile(win32.join(stage.childPath, 'generated.txt'), name)
+    await bindOwnedStageProjectIdentity(stage, name)
+    await cleanupStageSupportFiles(stage)
+    return stage
+  }
+  try {
+    const intent = transactionRequest(parent, 'before-create')
+    track(intent.jobId)
+    debugCrash('--create-journal', { ...intent, testCrashAt: 'afterJournalIntent' })
+    const intentReport = (await inspectRecovery(intent.jobId))[0]!
+    assert.equal(intentReport.phase, 'createIntent')
+    assert.equal(intentReport.canDiscardJournal, true)
+    await applyRecovery(intent.jobId, 'cleanup', intent.jobId)
+
+    const unmarked = transactionRequest(parent, 'unmarked-stage')
+    track(unmarked.jobId)
+    await createJournal(unmarked)
+    debugCrash('--create-stage', { ...unmarked, testCrashAt: 'afterStageDirectory' })
+    const unmarkedReport = (await inspectRecovery(unmarked.jobId))[0]!
+    assert.equal(unmarkedReport.state, 'unverifiedStage')
+    assert.equal(unmarkedReport.canCleanupStage, false)
+    await assert.rejects(applyRecovery(unmarked.jobId, 'cleanup', unmarked.jobId))
+    await rm(unmarked.stagePath, { recursive: true, force: true })
+    await removeJournalForTest(journalRoot, unmarked.jobId)
+
+    const marked = transactionRequest(parent, 'marker-persisted')
+    track(marked.jobId)
+    await createJournal(marked)
+    debugCrash('--create-stage', { ...marked, testCrashAt: 'afterStageMarker' })
+    const markedReport = (await inspectRecovery(marked.jobId))[0]!
+    assert.equal(markedReport.state, 'journalReconcileRequired')
+    assert.equal(markedReport.canCleanupStage, true)
+    await applyRecovery(marked.jobId, 'cleanup', marked.jobId)
+    assert.deepEqual(await inspectRecovery(marked.jobId), [])
+    await assert.rejects(lstat(marked.stagePath), { code: 'ENOENT' })
+
+    const projectMarker = await createOwnedStage(parent, win32.join(parent, 'project-marker-persisted'), 'project-marker-persisted')
+    track(projectMarker.jobId)
+    await markOwnedStageGenerating(projectMarker)
+    await mkdir(projectMarker.childPath)
+    await writeFile(win32.join(projectMarker.childPath, 'generated.txt'), 'project-marker')
+    debugCrash('--bind-stage-identity', { ...stageRequest(projectMarker), testCrashAt: 'afterProjectMarker' })
+    const projectMarkerReport = (await inspectRecovery(projectMarker.jobId))[0]!
+    assert.equal(projectMarkerReport.state, 'journalReconcileRequired')
+    assert.equal(projectMarkerReport.canCleanupStage, true)
+    debugCrash('--recovery-apply', {
+      journalRootPath: projectMarker.journalRootPath,
+      jobId: projectMarker.jobId,
+      action: 'cleanup',
+      confirmJobId: projectMarker.jobId,
+      testCrashAt: 'afterProjectIdentityRebind',
+    })
+    const reboundReport = (await inspectRecovery(projectMarker.jobId))[0]!
+    assert.equal(reboundReport.phase, 'projectBound')
+    assert.equal(reboundReport.state, 'stagingPresent')
+    assert.equal(reboundReport.canCleanupStage, true)
+    await applyRecovery(projectMarker.jobId, 'cleanup', projectMarker.jobId)
+    assert.deepEqual(await inspectRecovery(projectMarker.jobId), [])
+    await assert.rejects(lstat(projectMarker.path), { code: 'ENOENT' })
+
+    const lostResponse = transactionRequest(parent, 'lost-create-response')
+    track(lostResponse.jobId)
+    await createJournal(lostResponse)
+    debugCrash('--create-stage', { ...lostResponse, testCrashAt: 'afterJournalAppend' })
+    const lostResponseReport = (await inspectRecovery(lostResponse.jobId))[0]!
+    assert.equal(lostResponseReport.state, 'stageCreated')
+    assert.equal(lostResponseReport.canCleanupStage, true)
+    assertRestrictedAcl(journalRoot, true)
+    assertRestrictedAcl(win32.join(journalRoot, `.transaction-${lostResponse.jobId}.jsonl`), true)
+    await applyRecovery(lostResponse.jobId, 'cleanup', lostResponse.jobId)
+
+    const generation = await createOwnedStage(parent, win32.join(parent, 'generation-interrupted'), 'generation-interrupted')
+    track(generation.jobId)
+    await markOwnedStageGenerating(generation)
+    debugCrash('--prepare-stage', {
+      ...stageRequest(generation),
+      directories: [],
+      files: [{ path: 'partial-generation.txt', content: 'partial', replace: false, skipExisting: false }],
+      testCrashAt: 'afterStageMutation',
+    })
+    const generationReport = (await inspectRecovery(generation.jobId))[0]!
+    assert.equal(generationReport.state, 'generationInterrupted')
+    await applyRecovery(generation.jobId, 'cleanup', generation.jobId)
+
+    const beforeFinalize = await readyStage('before-finalize')
+    debugCrash('--finalize-stage', { ...stageRequest(beforeFinalize), testCrashAt: 'beforeFinalizeRename' })
+    const beforeFinalizeReport = (await inspectRecovery(beforeFinalize.jobId))[0]!
+    assert.equal(beforeFinalizeReport.canFinalize, true)
+    await applyRecovery(beforeFinalize.jobId, 'finalize', beforeFinalize.jobId)
+    assert.equal(await readFile(win32.join(beforeFinalize.targetPath, 'generated.txt'), 'utf8'), 'before-finalize')
+
+    const afterFinalize = await readyStage('after-finalize')
+    debugCrash('--finalize-stage', { ...stageRequest(afterFinalize), testCrashAt: 'afterFinalizeRename' })
+    const afterFinalizeReport = (await inspectRecovery(afterFinalize.jobId))[0]!
+    assert.equal(afterFinalizeReport.state, 'committedWrapperNeedsCleanup')
+    await applyRecovery(afterFinalize.jobId, 'cleanup', afterFinalize.jobId)
+    assert.equal(await readFile(win32.join(afterFinalize.targetPath, 'generated.txt'), 'utf8'), 'after-finalize')
+
+    const beforeAcl = await readyStage('before-finalize-acl')
+    icacls(beforeAcl.childPath, '/inheritance:e')
+    assertRestrictedAcl(beforeAcl.childPath, false)
+    debugCrash('--finalize-stage', { ...stageRequest(beforeAcl), testCrashAt: 'afterFinalizeRenameBeforeAcl' })
+    assertRestrictedAcl(beforeAcl.targetPath, false)
+    const beforeAclReport = (await inspectRecovery(beforeAcl.jobId))[0]!
+    assert.equal(beforeAclReport.state, 'targetAclUnverified')
+    assert.equal(beforeAclReport.canCleanupStage, false)
+    assert.equal(beforeAclReport.canDiscardJournal, false)
+    await assert.rejects(applyRecovery(beforeAcl.jobId, 'cleanup', beforeAcl.jobId))
+    assert.equal(await readFile(win32.join(beforeAcl.targetPath, 'generated.txt'), 'utf8'), 'before-finalize-acl')
+
+    const collision = await readyStage('recovery-collision')
+    debugCrash('--finalize-stage', { ...stageRequest(collision), testCrashAt: 'beforeFinalizeRename' })
+    await mkdir(collision.targetPath)
+    await writeFile(win32.join(collision.targetPath, 'user.txt'), 'do-not-overwrite')
+    const collisionReport = (await inspectRecovery(collision.jobId))[0]!
+    assert.equal(collisionReport.canFinalize, false)
+    await assert.rejects(applyRecovery(collision.jobId, 'finalize', collision.jobId))
+    await applyRecovery(collision.jobId, 'cleanup', collision.jobId)
+    assert.equal(await readFile(win32.join(collision.targetPath, 'user.txt'), 'utf8'), 'do-not-overwrite')
+
+    const markerCrash = await createOwnedStage(parent, win32.join(parent, 'marker-cleanup-crash'), 'marker-cleanup-crash')
+    track(markerCrash.jobId)
+    debugCrash('--cleanup-stage', { ...stageRequest(markerCrash), testCrashAt: 'afterOwnershipMarkerRemoval' })
+    const markerReport = (await inspectRecovery(markerCrash.jobId))[0]!
+    assert.equal(markerReport.state, 'cleanupInterrupted')
+    await applyRecovery(markerCrash.jobId, 'cleanup', markerCrash.jobId)
+
+    const rootCrash = await createOwnedStage(parent, win32.join(parent, 'root-cleanup-crash'), 'root-cleanup-crash')
+    track(rootCrash.jobId)
+    debugCrash('--cleanup-stage', { ...stageRequest(rootCrash), testCrashAt: 'afterStageRootRemoval' })
+    const rootReport = (await inspectRecovery(rootCrash.jobId))[0]!
+    assert.equal(rootReport.state, 'cleanupFinishedJournalPending')
+    debugCrash('--recovery-apply', {
+      journalRootPath: rootCrash.journalRootPath,
+      jobId: rootCrash.jobId,
+      action: 'cleanup',
+      confirmJobId: rootCrash.jobId,
+      testCrashAt: 'beforeJournalRemoval',
+    })
+    assert.equal((await inspectRecovery(rootCrash.jobId))[0]!.canDiscardJournal, true)
+    debugCrash('--recovery-apply', {
+      journalRootPath: rootCrash.journalRootPath,
+      jobId: rootCrash.jobId,
+      action: 'cleanup',
+      confirmJobId: rootCrash.jobId,
+      testCrashAt: 'afterJournalRemoval',
+    })
+    assert.deepEqual(await inspectRecovery(rootCrash.jobId), [])
+    assert.equal(await readFile(sentinel, 'utf8'), 'preserve-me')
+  } finally {
+    for (const jobId of jobIds) await removeJournalForTest(journalRoot, jobId)
+    await rm(parent, { recursive: true, force: true })
+  }
+})
 
 async function skipElevatedStageOperation(t: TestContext): Promise<boolean> {
   const { response, exitCode } = await callSupervisor('--check-elevation', undefined, 15_000)
@@ -221,7 +440,7 @@ test('cleanup failure retains ownership marker and retry can finish cleanup', { 
     icacls(protectedFile, '/reset')
     assert.equal(await readFile(protectedFile, 'utf8'), 'owned data')
     await cleanupOwnedStage(stage)
-    await assert.rejects(readdir(stage.path))
+    await assert.rejects(lstat(stage.path), { code: 'ENOENT' })
   } finally {
     icacls(parent, '/reset', '/t', '/c')
     await cleanupOwnedStage(stage).catch(() => undefined)
@@ -255,12 +474,15 @@ test('cleanup race never leaves a stage without ownership evidence', { skip: pro
     await writer
   }
   try {
-    const entries = await readdir(stage.path)
-    assert.ok(entries.includes('.ownership.json'), 'retained stage must keep ownership marker')
-    await cleanupOwnedStage(stage)
-  } catch (error) {
-    if (error instanceof GeneratorError) throw error
-    assert.equal((error as NodeJS.ErrnoException).code, 'ENOENT', 'successful cleanup must remove stage')
+    const entries = await readdir(stage.path).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return undefined
+      throw error
+    })
+    if (entries) {
+      assert.ok(entries.includes('.ownership.json'), 'retained stage must keep ownership marker')
+      await cleanupOwnedStage(stage)
+    }
+    await assert.rejects(lstat(stage.path), { code: 'ENOENT' }, 'successful cleanup must remove stage')
   } finally {
     await cleanupOwnedStage(stage).catch(() => undefined)
     await rm(parent, { recursive: true, force: true })
@@ -362,7 +584,7 @@ test('finalize rejects replaced ordinary project directory and retains stage mar
   if (await skipElevatedStageOperation(t)) return
   const parent = await mkdtemp(win32.join(tmpdir(), 'pg-project-identity-'))
   const target = win32.join(parent, 'project')
-  const stage = await createOwnedStage(parent, target, 'project', 'identity-replaced')
+  const stage = await createOwnedStage(parent, target, 'project', `identity-replaced-${randomUUID()}`)
   const displaced = win32.join(stage.path, 'project-original')
   await mkdir(stage.childPath)
   await writeFile(win32.join(stage.childPath, 'generated.txt'), 'validated')
@@ -391,6 +613,7 @@ test('finalize rejects replaced ordinary project directory and retains stage mar
   } finally {
     await cleanupOwnedStage(stage).catch(() => undefined)
     await rm(parent, { recursive: true, force: true })
+    await removeJournalForTest(stage.journalRootPath, stage.jobId)
   }
 })
 

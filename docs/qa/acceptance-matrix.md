@@ -12,17 +12,17 @@ Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PAS
 | Test ID | Requirement | Acceptance procedure / expected evidence | Current status |
 |---|---|---|---|
 | GEN-001 | PRD-001–004 | Invalid framework/database/ORM/style rejected at plan stage; target untouched | PARTIAL — FE-01/FE-02 schema/resolver only |
-| GEN-002 | PRD-002,NFR-001–002 | Existing directory, path traversal, Windows reserved names, junction escape rejected | PARTIAL — non-elevated native create/write/cleanup/finalize exercised; protected ACL, handle-bound manifest identity, returned-error cleanup recovery, finalize protocol consistency and outside sentinels covered; create/cleanup crash recovery is absent, and original finalize anomaly remains unexplained; see [Phase 01.9 architecture analysis](evidence/phase-01.9-windows-recovery-architecture.md) |
+| GEN-002 | PRD-002,NFR-001–002 | Existing directory, path traversal, Windows reserved names, junction escape rejected | PARTIAL — non-elevated native create/write/cleanup/finalize and bounded process-crash recovery exercised; journal/marker identity rebind, pre-marker preservation, post-rename ACL failure, cleanup interruption, and outside sentinels covered; cross-account ACL denial remains untested and historical finalize anomaly unexplained; see [Phase 01.10 recovery evidence](evidence/phase-01.10-windows-recovery-implementation.md) |
 | GEN-003 | PRD-005,PRD-012 | npm default for Node; unsupported managers rejected; correct lockfile | PASS — FE-01/FE-02 npm only |
 | GEN-004 | PRD-007 | Missing Node/Go/PHP/Composer/Python/uv reported with fix action, no hidden install | PARTIAL — Node/npm positive detection; missing-tool scenarios incomplete |
 | GEN-005 | PRD-008–009 | Review shows accurate steps; scaffold is deterministic and noninteractive | PARTIAL — read-only plan tests and pinned FE scaffolds; plan-preview audit incomplete |
 | GEN-006 | PRD-010–011,NFR-009 | Cancelling running scaffold stops owned process tree and cleans only owned staging | PARTIAL — non-elevated cancellation, timeout, detached descendants, breakaway rejection, forced helper death, and real npm lifecycle-install cancellation passed; one expected elevated-only skip; broader independent acceptance remains open |
-| GEN-007 | PRD-013,NFR-010 | Generate from pinned scaffold; compile/build/typecheck/smoke selected recipe; record independent review separately | PASS — latest local FE-01/FE-02 native Windows E2Es passed their listed checks; finalize anomaly and independent acceptance remain separate blockers; reports linked below |
+| GEN-007 | PRD-013,NFR-010 | Generate from pinned scaffold; compile/build/typecheck/smoke selected recipe; record independent review separately | PASS — latest local FE-01/FE-02 native Windows E2Es passed their listed checks; finalize anomaly and independent acceptance remain separate blockers; [FE-01 Phase 01.10](evidence/FE-01/2026-11-12-phase-01.10-native-e2e.md), [FE-02 Phase 01.10](evidence/FE-02/2026-11-12-phase-01.10-native-e2e.md) |
 | GEN-008 | PRD-014 | Minimal, Standard, Full docs contain working actual commands and truthful status | PARTIAL — Standard/Full observed; Minimal and broader doc assertions remain |
 | GEN-009 | PRD-016,NFR-003 | Exact tool versions, adapter IDs, source integrity and lock hash persisted where applicable; no secrets | PASS — FE-01/FE-02 manifests; no Forma template selected |
 | GEN-010 | PRD-017 | SQL migration and DB driver work against test service; none mode has no DB artifacts | NOT RUN — no database adapters in Phase 01 |
 | GEN-011 | PRD-018 | Fullstack UI can call actual API endpoint; root scripts work on Windows | NOT RUN |
-| GEN-012 | PRD-019,NFR-004–005 | No arbitrary commands/token logging; file ownership and consent controls enforced | PARTIAL — non-elevated native filesystem/process tests ran; lifecycle scripts remain unsandboxed, leaving a high conditional outside-write-confinement blocker; path-based reads and independent review findings remain open |
+| GEN-012 | PRD-019,NFR-004–005 | No arbitrary commands/token logging; file ownership and consent controls enforced | PARTIAL — lifecycle scripts remain unsandboxed; no outside-write isolation is claimed. Journal ACL cross-account denial remains untested; same-user code remains outside this boundary. Path-based reads and independent acceptance remain open; see [DEC-017](../decisions/DEC-017-windows-staging-crash-recovery.md) |
 | GEN-013 | PRD-020,NFR-008 | Offline caches work if complete; otherwise transparent network/prerequisite error | NOT RUN |
 | GEN-014 | PRD-021 | Private Forma auth; SHA/manifest verified; React Vite/Next templates build and smoke | NOT RUN |
 | GEN-015 | PRD-024 | Optional Docker Compose generated correctly; services never started without action | NOT RUN |
@@ -73,10 +73,17 @@ Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PAS
 
 ## Phase 01.9 recovery architecture checkpoint
 
-- Read-only source/evidence analysis recommends a protected sibling transaction journal and identity-based recovery while retaining the existing wrapped staging layout and handle-relative no-replace rename. See [DEC-017](../decisions/DEC-017-windows-staging-crash-recovery.md) and [analysis evidence](evidence/phase-01.9-windows-recovery-architecture.md).
-- No implementation or crash-recovery tests were run. Architecture approval is pending. Unverified stages must remain untouched; no automatic recovery is currently available.
+- At this checkpoint, read-only source/evidence analysis recommended a protected sibling transaction journal and identity-based recovery while retaining the existing wrapped staging layout and handle-relative no-replace rename. See [DEC-017](../decisions/DEC-017-windows-staging-crash-recovery.md) and [analysis evidence](evidence/phase-01.9-windows-recovery-architecture.md).
+- At that checkpoint, no implementation or crash-recovery tests had run, architecture approval was pending, and automatic recovery was unavailable; unverified stages remained untouched.
 - Only one enabled local Windows account was available; second-standard-account ACL denial was not tested. Existing ACL descriptor tests do not substitute for that runtime check.
 - Absolute prevention of writes outside owned staging is not supported while lifecycle scripts remain unsandboxed. Resolve isolation scope before any per-recipe GO decision. FE-01/FE-02 remain `planned` / NO-GO.
+
+## Phase 01.10 bounded crash-recovery implementation
+
+- DEC-017 bounded scope was approved and implemented: write-ahead sibling journal, stage/project identity binding, explicit inspect/apply recovery, and process-crash regression hooks. Existing Rust supervisor and handle-relative no-replace finalize operation remain in place.
+- Windows verification: `npm test` PASS (core 36 passed, 1 expected elevated-only skip; CLI 6 passed); `npm run typecheck`, `npm run lint`, Cargo check/test/Clippy, and format check PASS. Details and crash cases: [implementation evidence](evidence/phase-01.10-windows-recovery-implementation.md).
+- Recovery inspection after FE-01/FE-02 reruns returned no pending transactions. Latest local E2Es passed listed checks: [FE-01](evidence/FE-01/2026-11-12-phase-01.10-native-e2e.md), [FE-02](evidence/FE-02/2026-11-12-phase-01.10-native-e2e.md). They used the development-only override; recipes remain `planned` / NO-GO.
+- **Unverified/blocked:** cross-account ACL denial (only one enabled account available); lifecycle-script filesystem isolation; power-loss durability; historical finalize anomaly diagnosis. These are not claimed as solved. No release approval.
 
 ## Evidence protocol
 

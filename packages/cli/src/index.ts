@@ -2,7 +2,7 @@
 import { lstat, readFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { resolve, win32 } from 'node:path'
-import { catalog, createPlan, generateProject, GeneratorError, parseSelectionJson, runDoctor } from '@project-generator/core'
+import { applyRecovery, catalog, createPlan, generateProject, GeneratorError, inspectRecovery, parseSelectionJson, runDoctor } from '@project-generator/core'
 
 const usage = `Project Generator CLI 0.1.0
 
@@ -12,6 +12,8 @@ Usage:
   project-generator doctor --config <file> [--json]
   project-generator generate --config <file> --jsonl [--development-allow-planned]
   project-generator inspect --output <folder> [--json]
+  project-generator recovery inspect [--job-id <id>] [--json]
+  project-generator recovery apply --job-id <id> --action <cleanup|finalize> --confirm-job <id> [--json]
 
 Phase 01 recipes: FE-01 React + Vite + TypeScript + npm + CSS; FE-02 Next.js App Router + TypeScript + npm + Tailwind.
 Both recipes remain planned until independent Windows acceptance and review. Normal generation refuses planned recipes.
@@ -206,6 +208,39 @@ async function main(args: string[]): Promise<number> {
       if (flags.includes('--json')) writeJson({ schemaVersion: 1, ok: true, data: report })
       else writeJson(report)
       return 0
+    }
+    if (command === 'recovery') {
+      const [operation, ...recoveryFlags] = flags
+      if (operation === 'inspect') {
+        validateFlags(recoveryFlags, ['--job-id'], ['--json'])
+        const jobId = option(recoveryFlags, '--job-id')
+        const reports = await inspectRecovery(jobId)
+        if (recoveryFlags.includes('--json')) writeJson({ schemaVersion: 1, ok: true, data: reports })
+        else if (reports.length === 0) process.stdout.write('No pending recovery transactions.\n')
+        else for (const report of reports) {
+          process.stdout.write(`${report.jobId} ${report.state} (${report.phase})\n`)
+          process.stdout.write(`  Parent: ${report.parentPath}\n  Stage: ${report.stagePath}\n  Source: ${report.sourcePath}\n  Target: ${report.targetPath}\n`)
+          process.stdout.write(`  ${report.detail}\n`)
+          if (report.canFinalize) process.stdout.write(`  Explicit action: project-generator recovery apply --job-id ${report.jobId} --action finalize --confirm-job ${report.jobId}\n`)
+          if (report.canCleanupStage || report.canDiscardJournal) process.stdout.write(`  Explicit action: project-generator recovery apply --job-id ${report.jobId} --action cleanup --confirm-job ${report.jobId}\n`)
+        }
+        return 0
+      }
+      if (operation === 'apply') {
+        validateFlags(recoveryFlags, ['--job-id', '--action', '--confirm-job'], ['--json'])
+        const jobId = option(recoveryFlags, '--job-id')
+        const action = option(recoveryFlags, '--action')
+        const confirmJobId = option(recoveryFlags, '--confirm-job')
+        if (!jobId || !confirmJobId || (action !== 'cleanup' && action !== 'finalize')) {
+          throw new GeneratorError({ code: 'GEN_CLI_USAGE', stage: 'cli', message: 'recovery apply requires --job-id, --action cleanup|finalize, and --confirm-job.', nextAction: 'Run recovery inspect first, then confirm exact job ID.', targetModified: false })
+        }
+        await applyRecovery(jobId, action, confirmJobId)
+        const result = { jobId, action, status: 'completed' }
+        if (recoveryFlags.includes('--json')) writeJson({ schemaVersion: 1, ok: true, data: result })
+        else process.stdout.write(`Recovery ${action} completed for ${jobId}.\n`)
+        return 0
+      }
+      throw new GeneratorError({ code: 'GEN_CLI_USAGE', stage: 'cli', message: 'recovery requires inspect or apply.', nextAction: 'Run project-generator recovery inspect --help.', targetModified: false })
     }
     throw new GeneratorError({ code: 'GEN_CLI_USAGE', stage: 'cli', message: `Unsupported command or output mode: ${command}`, nextAction: 'Run project-generator --help.', targetModified: false })
   } catch (error) {

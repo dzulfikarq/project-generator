@@ -10,11 +10,12 @@ const manifest = join(root, 'native', 'windows-supervisor', 'Cargo.toml')
 const binary = join(root, 'native', 'windows-supervisor', 'target', 'release', 'pg-windows-supervisor.exe')
 const outputDirectory = join(root, 'packages', 'core', 'native')
 const output = join(outputDirectory, 'pg-windows-supervisor.exe')
+const debugOnly = process.argv.includes('--debug-only')
 const cargo = process.env.CARGO ?? [join(homedir(), '.cargo', 'bin', 'cargo.exe'), 'cargo'].find((path) => path === 'cargo' || existsSync(path))
 
 if (!cargo) throw new Error('Rust Cargo is required to build the Windows process supervisor.')
 
-const args = ['build', '--locked', '--release', '--manifest-path', manifest]
+const args = ['build', '--locked', ...(debugOnly ? [] : ['--release']), '--manifest-path', manifest]
 const programFilesX86 = process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)'
 const vswhere = join(programFilesX86, 'Microsoft Visual Studio', 'Installer', 'vswhere.exe')
 let vcvars
@@ -32,5 +33,6 @@ const result = vcvars
 if (result.error) throw result.error
 if (result.status !== 0) process.exit(result.status ?? 1)
 
+if (debugOnly) process.exit(0)
 mkdirSync(outputDirectory, { recursive: true })
 copyFileSync(binary, output)

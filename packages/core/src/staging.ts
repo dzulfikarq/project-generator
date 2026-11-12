@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { win32 } from 'node:path'
 import { GeneratorError } from './errors.js'
 import { callSupervisor, type SupervisorResult } from './native-supervisor.js'
@@ -7,6 +7,8 @@ const liveStages = new WeakSet<OwnedStage>()
 
 export interface OwnedStage {
   readonly jobId: string
+  readonly transactionNonce: string
+  readonly journalRootPath: string
   readonly path: string
   readonly childPath: string
   readonly parentPath: string
@@ -28,10 +30,13 @@ function stagingError(code: string, stage: string, message: string, nextAction: 
 function requestFor(stage: OwnedStage, projectName = win32.basename(stage.targetPath)): Record<string, string> {
   return {
     jobId: stage.jobId,
+    transactionNonce: stage.transactionNonce,
+    journalRootPath: stage.journalRootPath,
     stagePath: stage.path,
     parentPath: stage.parentPath,
     projectName,
     targetPath: stage.targetPath,
+    sourcePath: stage.childPath,
   }
 }
 
@@ -105,18 +110,34 @@ async function nativeFs(mode: string, request: unknown, operation: 'bind' | 'cre
 }
 
 export async function createOwnedStage(parentPath: string, targetPath: string, projectName: string, jobId: string = randomUUID()): Promise<OwnedStage> {
+  const localAppData = process.env.LOCALAPPDATA
+  if (!localAppData || !win32.isAbsolute(localAppData)) {
+    throw stagingError('GEN_JOURNAL_UNAVAILABLE', 'staging', 'Protected transaction journal location is unavailable.', 'Restore the Windows LOCALAPPDATA environment and retry.')
+  }
+  const transactionNonce = randomBytes(32).toString('hex')
+  const journalRootPath = win32.join(localAppData, '.project-generator-transactions')
   const stagePath = win32.join(parentPath, `.project-generator-stage-${jobId}`)
   const stage = Object.freeze({
     jobId,
+    transactionNonce,
+    journalRootPath,
     path: stagePath,
     childPath: win32.join(stagePath, projectName),
     parentPath,
     targetPath,
     markerPath: win32.join(stagePath, '.ownership.json'),
   })
+  await nativeFs('--create-journal', {
+    ...requestFor(stage, projectName),
+  }, 'create')
   await nativeFs('--create-stage', { ...requestFor(stage, projectName) }, 'create')
   liveStages.add(stage)
   return stage
+}
+
+export async function markOwnedStageGenerating(stage: OwnedStage): Promise<void> {
+  if (!liveStages.has(stage)) throw stagingError('GEN_STAGING_LEFTOVER', 'staging', 'Refused generation phase update without a live in-process staging record.', 'Inspect staging manually; do not write to an unverified path.')
+  await nativeFs('--journal-phase', { ...requestFor(stage), phase: 'generating' }, 'write')
 }
 
 export async function cleanupStageSupportFiles(stage: OwnedStage): Promise<void> {
@@ -157,4 +178,46 @@ export async function moveDirectoryNoReplace(stage: OwnedStage): Promise<void> {
   if (process.platform !== 'win32') throw stagingError('GEN_FINALIZE_UNSUPPORTED', 'finalizing', 'Fail-if-exists finalization is supported on Windows only.', 'Run generation on Windows.')
   if (!liveStages.has(stage)) throw stagingError('GEN_STAGING_LEFTOVER', 'finalizing', 'Refused finalization without a live in-process staging record.', 'Inspect staging manually; do not move an unverified path.')
   await nativeFs('--finalize-stage', requestFor(stage, win32.basename(stage.targetPath)), 'finalize')
+}
+
+export interface RecoveryReport {
+  jobId: string
+  phase: string
+  state: string
+  parentPath: string
+  stagePath: string
+  sourcePath: string
+  targetPath: string
+  canFinalize: boolean
+  canCleanupStage: boolean
+  canDiscardJournal: boolean
+  detail: string
+}
+
+function journalRootPath(): string {
+  const localAppData = process.env.LOCALAPPDATA
+  if (!localAppData || !win32.isAbsolute(localAppData)) {
+    throw stagingError('GEN_JOURNAL_UNAVAILABLE', 'recovery', 'Protected transaction journal location is unavailable.', 'Restore the Windows LOCALAPPDATA environment.')
+  }
+  return win32.join(localAppData, '.project-generator-transactions')
+}
+
+export async function inspectRecovery(jobId?: string): Promise<RecoveryReport[]> {
+  const result = await callSupervisor('--recovery-inspect', { journalRootPath: journalRootPath(), ...(jobId ? { jobId } : {}) })
+  if (result.exitCode !== 0 || result.response.ok !== true || !Array.isArray(result.response.reports)) {
+    throw stagingError('GEN_RECOVERY_INSPECT_FAILED', 'recovery', 'Native recovery inspection could not verify the transaction journal.', 'Preserve stage and target paths; inspect manually.')
+  }
+  return result.response.reports as RecoveryReport[]
+}
+
+export async function applyRecovery(jobId: string, action: 'cleanup' | 'finalize', confirmJobId: string): Promise<void> {
+  if (jobId !== confirmJobId) {
+    throw stagingError('GEN_RECOVERY_CONFIRMATION_REQUIRED', 'recovery', 'Recovery confirmation must exactly match the transaction job ID.', 'Pass --confirm-job with the complete job ID shown by recovery inspect.')
+  }
+  await nativeFs('--recovery-apply', {
+    journalRootPath: journalRootPath(),
+    jobId,
+    action,
+    confirmJobId,
+  }, action === 'finalize' ? 'finalize' : 'cleanup')
 }
