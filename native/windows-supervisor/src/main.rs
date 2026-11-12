@@ -14,26 +14,33 @@ mod windows {
     use std::time::{Duration, Instant};
     use windows_sys::Wdk::Foundation::OBJECT_ATTRIBUTES;
     use windows_sys::Wdk::Storage::FileSystem::{
-        FILE_CREATE, FILE_DIRECTORY_FILE, FILE_DISPOSITION_INFORMATION, FILE_NON_DIRECTORY_FILE,
-        FILE_OPEN, FILE_OPEN_REPARSE_POINT, FILE_RENAME_INFORMATION, FILE_SYNCHRONOUS_IO_NONALERT,
-        FileDispositionInformation, FileRenameInformation, NtCreateFile, NtSetInformationFile,
+        FILE_CREATE, FILE_DIRECTORY_FILE, FILE_NON_DIRECTORY_FILE, FILE_OPEN,
+        FILE_OPEN_REPARSE_POINT, FILE_RENAME_INFORMATION, FILE_SYNCHRONOUS_IO_NONALERT,
+        FileRenameInformation, NtCreateFile, NtSetInformationFile,
     };
     use windows_sys::Win32::Foundation::{
         CloseHandle, GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE, HANDLE_FLAG_INHERIT,
-        INVALID_HANDLE_VALUE, SetHandleInformation, WAIT_FAILED, WAIT_OBJECT_0,
+        HLOCAL, INVALID_HANDLE_VALUE, LocalFree, SetHandleInformation, WAIT_FAILED, WAIT_OBJECT_0,
     };
     use windows_sys::Win32::Foundation::{OBJ_CASE_INSENSITIVE, UNICODE_STRING};
+    use windows_sys::Win32::Security::Authorization::{
+        ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
+        GetSecurityInfo, SDDL_REVISION_1, SE_FILE_OBJECT, SetSecurityInfo,
+    };
     use windows_sys::Win32::Security::{
-        GetTokenInformation, SECURITY_ATTRIBUTES, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation,
+        DACL_SECURITY_INFORMATION, GetSecurityDescriptorControl, GetSecurityDescriptorDacl,
+        GetTokenInformation, PROTECTED_DACL_SECURITY_INFORMATION, SE_DACL_PROTECTED,
+        SECURITY_ATTRIBUTES, TOKEN_ELEVATION, TOKEN_QUERY, TOKEN_USER, TokenElevation, TokenUser,
     };
     use windows_sys::Win32::Storage::FileSystem::{
         BY_HANDLE_FILE_INFORMATION, CreateFileW, DELETE, FILE_ADD_SUBDIRECTORY,
         FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_REPARSE_POINT,
-        FILE_ATTRIBUTE_TAG_INFO, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
-        FILE_ID_BOTH_DIR_INFO, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE,
-        FILE_SHARE_READ, FILE_SHARE_WRITE, FileAttributeTagInfo, FileIdBothDirectoryInfo,
+        FILE_ATTRIBUTE_TAG_INFO, FILE_DISPOSITION_INFO, FILE_FLAG_BACKUP_SEMANTICS,
+        FILE_FLAG_OPEN_REPARSE_POINT, FILE_ID_BOTH_DIR_INFO, FILE_LIST_DIRECTORY,
+        FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+        FileAttributeTagInfo, FileDispositionInfo, FileIdBothDirectoryInfo,
         FileIdBothDirectoryRestartInfo, GetFileInformationByHandle, GetFileInformationByHandleEx,
-        OPEN_EXISTING, SYNCHRONIZE,
+        OPEN_EXISTING, SYNCHRONIZE, SetFileInformationByHandle,
     };
     use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
     use windows_sys::Win32::System::JobObjects::{
@@ -61,7 +68,10 @@ mod windows {
     const MAX_DELETE_ENTRIES: usize = 200_000;
     const MAX_DELETE_DEPTH: usize = 256;
     const MAX_MARKER_BYTES: usize = 16 * 1024;
+    const MAX_SCAFFOLD_MANIFEST_BYTES: usize = 1024 * 1024;
     const FILE_ADD_FILE_ACCESS: u32 = 0x0002;
+    const FILE_READ_CONTROL_ACCESS: u32 = 0x0002_0000;
+    const FILE_WRITE_DAC_ACCESS: u32 = 0x0004_0000;
     const FILE_OPEN_IF: u32 = 0x0003;
 
     static NEXT_STAGE_WRITE: AtomicU64 = AtomicU64::new(0);
@@ -118,12 +128,21 @@ mod windows {
         target_path: String,
     }
 
-    #[derive(Deserialize)]
+    #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+    #[serde(rename_all = "camelCase")]
+    struct FileIdentity {
+        volume_serial: u32,
+        file_index: u64,
+    }
+
+    #[derive(Serialize, Deserialize, PartialEq, Eq)]
     #[serde(rename_all = "camelCase")]
     struct OwnershipMarker {
         schema_version: u32,
         job_id: String,
         stage_name: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        project_identity: Option<FileIdentity>,
     }
 
     #[derive(Deserialize)]
@@ -154,6 +173,7 @@ mod windows {
         written_files: Option<Vec<String>>,
     }
 
+    #[derive(Debug)]
     struct FsFailure {
         code: &'static str,
         system_error: Option<u32>,
@@ -165,6 +185,15 @@ mod windows {
         _parent_chain: Vec<Handle>,
         stage_handle: Handle,
         volume: u32,
+        ownership: OwnershipMarker,
+    }
+
+    struct NativeSecurityDescriptor(*mut c_void);
+
+    impl Drop for NativeSecurityDescriptor {
+        fn drop(&mut self) {
+            unsafe { LocalFree(self.0 as HLOCAL) };
+        }
     }
 
     impl RunResponse {
@@ -885,32 +914,186 @@ mod windows {
         }
     }
 
-    fn file_identity(handle: HANDLE) -> io::Result<(u32, u64)> {
+    fn file_identity(handle: HANDLE) -> io::Result<FileIdentity> {
         let mut info = BY_HANDLE_FILE_INFORMATION::default();
         if unsafe { GetFileInformationByHandle(handle, &mut info) } == 0 {
             Err(last_error())
         } else {
-            Ok((
-                info.dwVolumeSerialNumber,
-                (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow),
-            ))
+            Ok(FileIdentity {
+                volume_serial: info.dwVolumeSerialNumber,
+                file_index: (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow),
+            })
+        }
+    }
+
+    fn current_user_sid_string() -> FsResult<String> {
+        let mut raw_token = null_mut();
+        if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut raw_token) } == 0 {
+            return Err(fs_last_error("stage_acl_failed"));
+        }
+        let token = Handle::new(raw_token).map_err(|_| fs_last_error("stage_acl_failed"))?;
+        let mut required = 0u32;
+        unsafe {
+            GetTokenInformation(token.raw(), TokenUser, null_mut(), 0, &mut required);
+        }
+        if required < size_of::<TOKEN_USER>() as u32 || required > 64 * 1024 {
+            return Err(fs_failure("stage_acl_failed", None));
+        }
+        let mut buffer = vec![0usize; (required as usize).div_ceil(size_of::<usize>())];
+        if unsafe {
+            GetTokenInformation(
+                token.raw(),
+                TokenUser,
+                buffer.as_mut_ptr().cast(),
+                required,
+                &mut required,
+            )
+        } == 0
+        {
+            return Err(fs_last_error("stage_acl_failed"));
+        }
+        let user = unsafe { &*buffer.as_ptr().cast::<TOKEN_USER>() };
+        let mut sid_string = null_mut();
+        if unsafe { ConvertSidToStringSidW(user.User.Sid, &mut sid_string) } == 0 {
+            return Err(fs_last_error("stage_acl_failed"));
+        }
+        let mut length = 0usize;
+        unsafe {
+            while *sid_string.add(length) != 0 {
+                length += 1;
+            }
+        }
+        let result = String::from_utf16(unsafe { std::slice::from_raw_parts(sid_string, length) })
+            .map_err(|_| fs_failure("stage_acl_failed", None));
+        unsafe { LocalFree(sid_string as HLOCAL) };
+        result
+    }
+
+    fn protected_stage_security_descriptor() -> FsResult<NativeSecurityDescriptor> {
+        let user_sid = current_user_sid_string()?;
+        let sddl = format!("O:{user_sid}D:P(A;OICI;FA;;;{user_sid})(A;OICI;FA;;;SY)");
+        let sddl: Vec<u16> = sddl.encode_utf16().chain(Some(0)).collect();
+        let mut descriptor = null_mut();
+        if unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                sddl.as_ptr(),
+                SDDL_REVISION_1,
+                &mut descriptor,
+                null_mut(),
+            )
+        } == 0
+        {
+            return Err(fs_last_error("stage_acl_failed"));
+        }
+        Ok(NativeSecurityDescriptor(descriptor))
+    }
+
+    fn verify_protected_dacl(handle: HANDLE) -> FsResult<()> {
+        let mut descriptor = null_mut();
+        let result = unsafe {
+            GetSecurityInfo(
+                handle,
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                null_mut(),
+                null_mut(),
+                null_mut(),
+                null_mut(),
+                &mut descriptor,
+            )
+        };
+        if result != 0 {
+            return Err(fs_failure("stage_acl_failed", Some(result)));
+        }
+        let mut control = 0u16;
+        let mut revision = 0u32;
+        let verified = if unsafe {
+            GetSecurityDescriptorControl(descriptor, &mut control, &mut revision)
+        } == 0
+        {
+            Err(fs_last_error("stage_acl_failed"))
+        } else if control & SE_DACL_PROTECTED == 0 {
+            Err(fs_failure("stage_acl_unprotected", None))
+        } else {
+            Ok(())
+        };
+        unsafe { LocalFree(descriptor as HLOCAL) };
+        verified
+    }
+
+    fn set_protected_dacl(handle: HANDLE) -> FsResult<()> {
+        let descriptor = protected_stage_security_descriptor()?;
+        let mut dacl_present = 0;
+        let mut dacl = null_mut();
+        let mut dacl_defaulted = 0;
+        if unsafe {
+            GetSecurityDescriptorDacl(
+                descriptor.0,
+                &mut dacl_present,
+                &mut dacl,
+                &mut dacl_defaulted,
+            )
+        } == 0
+            || dacl_present == 0
+            || dacl.is_null()
+        {
+            return Err(fs_failure("stage_acl_failed", None));
+        }
+        let result = unsafe {
+            SetSecurityInfo(
+                handle,
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                null_mut(),
+                null_mut(),
+                dacl,
+                null_mut(),
+            )
+        };
+        if result != 0 {
+            return Err(fs_failure("stage_acl_failed", Some(result)));
+        }
+        verify_protected_dacl(handle)
+    }
+
+    fn checked_native_io_status(
+        status: i32,
+        io_status: &IO_STATUS_BLOCK,
+    ) -> Result<i32, FsFailure> {
+        const STATUS_PENDING: i32 = 0x0000_0103;
+        if status == STATUS_PENDING {
+            return Err(fs_failure("native_fs_unconfirmed", Some(status as u32)));
+        }
+        let completion = unsafe { io_status.Anonymous.Status };
+        if completion == STATUS_PENDING {
+            return Err(fs_failure("native_fs_unconfirmed", Some(completion as u32)));
+        }
+        let effective = if status < 0 {
+            status
+        } else if completion < 0 {
+            completion
+        } else {
+            status
+        };
+        if effective < 0 {
+            Err(fs_failure("native_fs_failed", Some(effective as u32)))
+        } else {
+            Ok(effective)
         }
     }
 
     fn delete_open_handle(handle: HANDLE) -> FsResult<()> {
-        let disposition = FILE_DISPOSITION_INFORMATION { DeleteFile: true };
-        let mut io_status = IO_STATUS_BLOCK::default();
-        let status = unsafe {
-            NtSetInformationFile(
+        let disposition = FILE_DISPOSITION_INFO { DeleteFile: true };
+        if unsafe {
+            SetFileInformationByHandle(
                 handle,
-                &mut io_status,
-                (&disposition as *const FILE_DISPOSITION_INFORMATION).cast(),
-                size_of::<FILE_DISPOSITION_INFORMATION>() as u32,
-                FileDispositionInformation,
+                FileDispositionInfo,
+                (&disposition as *const FILE_DISPOSITION_INFO).cast(),
+                size_of::<FILE_DISPOSITION_INFO>() as u32,
             )
-        };
-        if status < 0 {
-            Err(fs_failure("native_fs_failed", Some(status as u32)))
+        } == 0
+        {
+            Err(fs_last_error("native_fs_failed"))
         } else {
             Ok(())
         }
@@ -924,6 +1107,29 @@ mod windows {
         disposition: u32,
         options: u32,
         attributes: u32,
+    ) -> FsResult<Handle> {
+        open_relative_with_security(
+            parent,
+            name,
+            access,
+            share,
+            disposition,
+            options,
+            attributes,
+            null_mut(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn open_relative_with_security(
+        parent: HANDLE,
+        name: &str,
+        access: u32,
+        share: u32,
+        disposition: u32,
+        options: u32,
+        attributes: u32,
+        security_descriptor: *mut c_void,
     ) -> FsResult<Handle> {
         if name.is_empty() || name.contains(['\\', '/', ':', '\0']) || name == "." || name == ".." {
             return Err(fs_failure("unsafe_path", None));
@@ -944,6 +1150,7 @@ mod windows {
             RootDirectory: parent,
             ObjectName: &unicode,
             Attributes: OBJ_CASE_INSENSITIVE,
+            SecurityDescriptor: security_descriptor.cast(),
             ..Default::default()
         };
         let mut io_status = IO_STATUS_BLOCK::default();
@@ -963,15 +1170,28 @@ mod windows {
                 0,
             )
         };
-        if status < 0 {
-            let code = match status as u32 {
-                0xC000_0034 | 0xC000_003A => "entry_missing",
-                0xC000_0035 => "entry_exists",
-                _ => "native_fs_failed",
-            };
-            Err(fs_failure(code, Some(status as u32)))
+        let status = match checked_native_io_status(status, &io_status) {
+            Ok(status) => status,
+            Err(error) => {
+                if !raw.is_null() && raw != INVALID_HANDLE_VALUE {
+                    unsafe { CloseHandle(raw) };
+                }
+                let code = if error.code == "native_fs_unconfirmed" {
+                    error.code
+                } else {
+                    match error.system_error {
+                        Some(0xC000_0034 | 0xC000_003A) => "entry_missing",
+                        Some(0xC000_0035) => "entry_exists",
+                        _ => "native_fs_failed",
+                    }
+                };
+                return Err(fs_failure(code, error.system_error));
+            }
+        };
+        if raw.is_null() || raw == INVALID_HANDLE_VALUE {
+            Err(fs_failure("native_fs_failed", Some(status as u32)))
         } else {
-            Handle::new(raw).map_err(|_| fs_failure("native_fs_failed", Some(status as u32)))
+            Ok(Handle(raw))
         }
     }
 
@@ -1019,15 +1239,33 @@ mod windows {
         let parent = parent_chain
             .last()
             .ok_or_else(|| fs_failure("unsafe_path", None))?;
-        let stage_handle = open_relative(
+        let security = protected_stage_security_descriptor()?;
+        let stage_handle = match open_relative_with_security(
             parent.raw(),
             stage_name,
-            DELETE | FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY | FILE_ADD_SUBDIRECTORY,
+            DELETE
+                | FILE_READ_CONTROL_ACCESS
+                | FILE_READ_ATTRIBUTES
+                | FILE_LIST_DIRECTORY
+                | FILE_ADD_SUBDIRECTORY,
             FILE_SHARE_READ,
             FILE_CREATE,
             FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
             FILE_ATTRIBUTE_DIRECTORY,
-        )?;
+            security.0,
+        ) {
+            Ok(handle) => handle,
+            Err(error) if error.code == "native_fs_unconfirmed" => {
+                return Err(fs_failure("stage_orphaned", error.system_error));
+            }
+            Err(error) => return Err(error),
+        };
+        if let Err(error) = verify_protected_dacl(stage_handle.raw()) {
+            if rollback_new_stage(stage_handle.raw(), false) {
+                return Err(error);
+            }
+            return Err(fs_failure("stage_orphaned", error.system_error));
+        }
         let mut marker_created = false;
         let marker_result = (|| {
             let marker = open_relative(
@@ -1040,11 +1278,12 @@ mod windows {
                 FILE_ATTRIBUTE_NORMAL,
             )?;
             marker_created = true;
-            let marker_data = serde_json::to_vec(&serde_json::json!({
-                "schemaVersion": 1,
-                "jobId": request.job_id,
-                "stageName": stage_name,
-            }))
+            let marker_data = serde_json::to_vec(&OwnershipMarker {
+                schema_version: 1,
+                job_id: request.job_id.clone(),
+                stage_name: stage_name.to_string(),
+                project_identity: None,
+            })
             .map_err(|_| fs_failure("native_fs_failed", None))?;
             let mut marker_file =
                 unsafe { std::fs::File::from_raw_handle(marker.into_raw() as RawHandle) };
@@ -1272,17 +1511,22 @@ mod windows {
                 FileRenameInformation,
             )
         };
-        if status < 0 {
-            let status = status as u32;
-            let code = if status == 0xC000_0035 {
+        if let Err(error) = checked_native_io_status(status, &io_status) {
+            let code = if error.code == "native_fs_unconfirmed" {
+                error.code
+            } else if error.system_error == Some(0xC000_0035) {
                 "target_exists"
             } else {
                 "native_fs_failed"
             };
-            Err(fs_failure(code, Some(status)))
+            Err(fs_failure(code, error.system_error))
         } else {
             Ok(())
         }
+    }
+
+    fn rename_directory_open_handle(source: HANDLE, parent: HANDLE, name: &str) -> FsResult<()> {
+        rename_open_handle(source, parent, name, false)
     }
 
     fn existing_regular_file(parent: HANDLE, name: &str) -> FsResult<bool> {
@@ -1352,7 +1596,9 @@ mod windows {
             return Err(fs_failure("native_fs_failed", None));
         }
         if let Err(error) = rename_open_handle(temporary_handle.raw(), parent, name, file.replace) {
-            let _ = delete_open_handle(temporary_handle.raw());
+            if error.code != "native_fs_unconfirmed" {
+                let _ = delete_open_handle(temporary_handle.raw());
+            }
             return Err(error);
         }
         Ok(true)
@@ -1363,6 +1609,7 @@ mod windows {
             return Err(fs_failure("invalid_request", None));
         }
         let stage = validate_stage(&request.stage)?;
+        verify_bound_project_identity(&request.stage, &stage)?;
         create_stage_directories(stage.stage_handle.raw(), &request.directories)?;
         let mut written = Vec::new();
         for file in request.files {
@@ -1371,10 +1618,11 @@ mod windows {
                 written.push(path);
             }
         }
+        verify_bound_project_identity(&request.stage, &stage)?;
         Ok(written)
     }
 
-    fn read_marker(stage_name: &str, handle: &Handle, job_id: &str) -> FsResult<()> {
+    fn read_marker(stage_name: &str, handle: &Handle, job_id: &str) -> FsResult<OwnershipMarker> {
         let attrs = get_attributes(handle.raw()).map_err(|_| fs_last_error("stage_ownership"))?;
         if attrs.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0
             || attrs.FileAttributes & FILE_ATTRIBUTE_DIRECTORY == 0
@@ -1411,6 +1659,235 @@ mod windows {
         if marker.schema_version != 1 || marker.job_id != job_id || marker.stage_name != stage_name
         {
             return Err(fs_failure("stage_ownership", None));
+        }
+        Ok(marker)
+    }
+
+    fn validate_project_target(request: &StageRequest) -> FsResult<(&str, &str)> {
+        let project_name = request
+            .project_name
+            .as_deref()
+            .ok_or_else(|| fs_failure("unsafe_path", None))?;
+        let target_path = request
+            .target_path
+            .as_deref()
+            .ok_or_else(|| fs_failure("unsafe_path", None))?;
+        if project_name.is_empty()
+            || project_name.contains(['\\', '/', ':', '\0'])
+            || project_name == "."
+            || project_name == ".."
+            || project_name.ends_with(['.', ' '])
+        {
+            return Err(fs_failure("unsafe_path", None));
+        }
+        let target = Path::new(target_path);
+        if !target.parent().is_some_and(|parent| {
+            parent
+                .to_string_lossy()
+                .eq_ignore_ascii_case(&request.parent_path)
+        }) || !target
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case(project_name))
+        {
+            return Err(fs_failure("unsafe_path", None));
+        }
+        Ok((project_name, target_path))
+    }
+
+    fn verify_project_identity(
+        parent: HANDLE,
+        project_name: &str,
+        expected: FileIdentity,
+    ) -> FsResult<()> {
+        open_verified_project(parent, project_name, expected).map(|_| ())
+    }
+
+    fn open_verified_project(
+        parent: HANDLE,
+        project_name: &str,
+        expected: FileIdentity,
+    ) -> FsResult<Handle> {
+        let project = open_relative(
+            parent,
+            project_name,
+            FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            FILE_OPEN,
+            FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
+            FILE_ATTRIBUTE_DIRECTORY,
+        )
+        .map_err(|error| {
+            if error.code == "native_fs_unconfirmed" {
+                fs_failure("stage_identity_unconfirmed", error.system_error)
+            } else if error.code == "entry_missing" {
+                fs_failure("stage_identity_missing", error.system_error)
+            } else {
+                fs_failure("stage_identity_mismatch", error.system_error)
+            }
+        })?;
+        let attrs = get_attributes(project.raw())
+            .map_err(|_| fs_failure("stage_identity_unconfirmed", None))?;
+        let identity = file_identity(project.raw())
+            .map_err(|_| fs_failure("stage_identity_unconfirmed", None))?;
+        if attrs.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0
+            || attrs.FileAttributes & FILE_ATTRIBUTE_DIRECTORY == 0
+            || identity != expected
+        {
+            return Err(fs_failure("stage_identity_mismatch", None));
+        }
+        Ok(project)
+    }
+
+    fn verify_bound_project_identity(
+        request: &StageRequest,
+        stage: &ValidatedStage,
+    ) -> FsResult<()> {
+        let Some(expected) = stage.ownership.project_identity else {
+            return Ok(());
+        };
+        let (project_name, _) = validate_project_target(request)?;
+        verify_project_identity(stage.stage_handle.raw(), project_name, expected)
+    }
+
+    fn verify_cleanup_project_identity(
+        request: &StageRequest,
+        stage: &ValidatedStage,
+    ) -> FsResult<()> {
+        let Some(expected) = stage.ownership.project_identity else {
+            return Ok(());
+        };
+        let (project_name, _) = validate_project_target(request)?;
+        match verify_project_identity(stage.stage_handle.raw(), project_name, expected) {
+            Err(error) if error.code == "stage_identity_missing" => {
+                let parent = stage
+                    ._parent_chain
+                    .last()
+                    .ok_or_else(|| fs_failure("stage_identity_unconfirmed", None))?;
+                verify_project_identity(parent.raw(), project_name, expected).map_err(|error| {
+                    if error.code == "stage_identity_unconfirmed" {
+                        error
+                    } else {
+                        fs_failure("stage_identity_mismatch", error.system_error)
+                    }
+                })?;
+                let output = open_relative(
+                    parent.raw(),
+                    project_name,
+                    FILE_READ_CONTROL_ACCESS | FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                    FILE_OPEN,
+                    FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
+                    FILE_ATTRIBUTE_DIRECTORY,
+                )
+                .map_err(|error| {
+                    if error.code == "native_fs_unconfirmed" {
+                        fs_failure("stage_identity_unconfirmed", error.system_error)
+                    } else {
+                        fs_failure("stage_identity_mismatch", error.system_error)
+                    }
+                })?;
+                verify_protected_dacl(output.raw())
+                    .map_err(|error| fs_failure("stage_identity_unconfirmed", error.system_error))
+            }
+            result => result,
+        }
+    }
+
+    fn bind_project_identity(request: StageRequest) -> FsResult<()> {
+        let (project_name, _) = validate_project_target(&request)?;
+        let stage = validate_stage(&request)?;
+        if let Some(expected) = stage.ownership.project_identity {
+            return verify_project_identity(stage.stage_handle.raw(), project_name, expected);
+        }
+        let project = open_relative(
+            stage.stage_handle.raw(),
+            project_name,
+            FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            FILE_OPEN,
+            FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
+            FILE_ATTRIBUTE_DIRECTORY,
+        )
+        .map_err(|error| fs_failure("stage_identity_unconfirmed", error.system_error))?;
+        let attrs = get_attributes(project.raw())
+            .map_err(|_| fs_failure("stage_identity_unconfirmed", None))?;
+        let identity = file_identity(project.raw())
+            .map_err(|_| fs_failure("stage_identity_unconfirmed", None))?;
+        if attrs.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0
+            || attrs.FileAttributes & FILE_ATTRIBUTE_DIRECTORY == 0
+            || identity.volume_serial != stage.volume
+        {
+            return Err(fs_failure("stage_identity_mismatch", None));
+        }
+        let mut ownership = stage.ownership;
+        ownership.project_identity = Some(identity);
+        let content =
+            serde_json::to_string(&ownership).map_err(|_| fs_failure("native_fs_failed", None))?;
+        write_stage_file(
+            stage.stage_handle.raw(),
+            &request.job_id,
+            StageFile {
+                path: ".ownership.json".to_string(),
+                content,
+                replace: true,
+                skip_existing: false,
+            },
+        )?;
+        Ok(())
+    }
+
+    fn verify_scaffold_identity(request: StageRequest) -> FsResult<()> {
+        let (project_name, _) = validate_project_target(&request)?;
+        let stage = validate_stage(&request)?;
+        let expected = stage
+            .ownership
+            .project_identity
+            .ok_or_else(|| fs_failure("stage_identity_unconfirmed", None))?;
+        let project = open_verified_project(stage.stage_handle.raw(), project_name, expected)?;
+        let manifest = open_relative(
+            project.raw(),
+            "package.json",
+            GENERIC_READ | FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ,
+            FILE_OPEN,
+            FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
+            FILE_ATTRIBUTE_NORMAL,
+        )
+        .map_err(|error| {
+            if error.code == "native_fs_unconfirmed" {
+                fs_failure("stage_identity_unconfirmed", error.system_error)
+            } else {
+                fs_failure("scaffold_invalid", error.system_error)
+            }
+        })?;
+        let attrs = get_attributes(manifest.raw()).map_err(|error| {
+            fs_failure(
+                "stage_identity_unconfirmed",
+                error.raw_os_error().map(|code| code as u32),
+            )
+        })?;
+        if attrs.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0
+            || attrs.FileAttributes & FILE_ATTRIBUTE_DIRECTORY != 0
+        {
+            return Err(fs_failure("scaffold_invalid", None));
+        }
+        let mut content = Vec::new();
+        let file = unsafe { std::fs::File::from_raw_handle(manifest.into_raw() as RawHandle) };
+        file.take((MAX_SCAFFOLD_MANIFEST_BYTES + 1) as u64)
+            .read_to_end(&mut content)
+            .map_err(|error| {
+                fs_failure(
+                    "stage_identity_unconfirmed",
+                    error.raw_os_error().map(|code| code as u32),
+                )
+            })?;
+        if content.len() > MAX_SCAFFOLD_MANIFEST_BYTES {
+            return Err(fs_failure("scaffold_invalid", None));
+        }
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&content).map_err(|_| fs_failure("scaffold_invalid", None))?;
+        if manifest.get("name").and_then(serde_json::Value::as_str) != Some(project_name) {
+            return Err(fs_failure("scaffold_invalid", None));
         }
         Ok(())
     }
@@ -1450,6 +1927,7 @@ mod windows {
             parent_handle.raw(),
             stage_name,
             DELETE
+                | FILE_READ_CONTROL_ACCESS
                 | FILE_READ_ATTRIBUTES
                 | FILE_LIST_DIRECTORY
                 | FILE_ADD_FILE_ACCESS
@@ -1465,16 +1943,20 @@ mod windows {
         if stage_volume != parent_volume {
             return Err(fs_failure("unsafe_path", None));
         }
-        read_marker(stage_name, &stage_handle, &request.job_id)?;
+        verify_protected_dacl(stage_handle.raw())
+            .map_err(|_| fs_failure("stage_ownership", None))?;
+        let ownership = read_marker(stage_name, &stage_handle, &request.job_id)?;
         Ok(ValidatedStage {
             _parent_chain: parent_chain,
             stage_handle,
             volume: parent_volume,
+            ownership,
         })
     }
 
     fn cleanup_support(request: StageRequest) -> FsResult<()> {
         let stage = validate_stage(&request)?;
+        verify_bound_project_identity(&request, &stage)?;
         let mut count = 0usize;
         for name in [
             ".tools",
@@ -1486,12 +1968,52 @@ mod windows {
         ] {
             remove_entry(stage.stage_handle.raw(), name, 0, &mut count, true)?;
         }
+        verify_bound_project_identity(&request, &stage)?;
         let _ = (&stage._parent_chain, &stage.stage_handle, stage.volume);
         Ok(())
     }
 
+    fn restore_marker(
+        stage_name: &str,
+        stage: &Handle,
+        ownership: &OwnershipMarker,
+    ) -> FsResult<()> {
+        let content =
+            serde_json::to_vec(ownership).map_err(|_| fs_failure("stage_orphaned", None))?;
+        let marker = match open_relative(
+            stage.raw(),
+            ".ownership.json",
+            GENERIC_READ | GENERIC_WRITE | FILE_READ_ATTRIBUTES | DELETE,
+            FILE_SHARE_READ,
+            FILE_CREATE,
+            FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
+            FILE_ATTRIBUTE_NORMAL,
+        ) {
+            Ok(marker) => marker,
+            Err(error) if error.code == "entry_exists" => {
+                return if read_marker(stage_name, stage, &ownership.job_id)
+                    .is_ok_and(|found| &found == ownership)
+                {
+                    Ok(())
+                } else {
+                    Err(fs_failure("stage_orphaned", error.system_error))
+                };
+            }
+            Err(error) => return Err(fs_failure("stage_orphaned", error.system_error)),
+        };
+        let mut file = unsafe { std::fs::File::from_raw_handle(marker.into_raw() as RawHandle) };
+        file.write_all(&content)
+            .and_then(|()| file.sync_all())
+            .map_err(|_| fs_failure("stage_orphaned", None))
+    }
+
     fn cleanup_stage(request: StageRequest) -> FsResult<()> {
         let stage = validate_stage(&request)?;
+        verify_cleanup_project_identity(&request, &stage)?;
+        let stage_name = Path::new(&request.stage_path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| fs_failure("stage_ownership", None))?;
         let mut count = 0usize;
         let names = enumerate_names(stage.stage_handle.raw(), &mut count)?;
         for name in names
@@ -1500,47 +2022,48 @@ mod windows {
         {
             remove_entry(stage.stage_handle.raw(), name, 1, &mut count, false)?;
         }
-        remove_entry(
+        let remaining = enumerate_names(stage.stage_handle.raw(), &mut count)?;
+        if remaining
+            .iter()
+            .any(|name| !name.eq_ignore_ascii_case(".ownership.json"))
+        {
+            return Err(fs_failure("cleanup_incomplete", None));
+        }
+        if let Err(error) = remove_entry(
             stage.stage_handle.raw(),
             ".ownership.json",
             0,
             &mut count,
-            true,
-        )?;
-        delete_open_handle(stage.stage_handle.raw())?;
+            false,
+        ) {
+            return match restore_marker(stage_name, &stage.stage_handle, &stage.ownership) {
+                Ok(()) => Err(error),
+                Err(restore_error) => Err(fs_failure(
+                    "stage_orphaned",
+                    restore_error.system_error.or(error.system_error),
+                )),
+            };
+        }
+        if let Err(error) = delete_open_handle(stage.stage_handle.raw()) {
+            return match restore_marker(stage_name, &stage.stage_handle, &stage.ownership) {
+                Ok(()) => Err(fs_failure("cleanup_incomplete", error.system_error)),
+                Err(restore_error) => Err(fs_failure(
+                    "stage_orphaned",
+                    restore_error.system_error.or(error.system_error),
+                )),
+            };
+        }
         let _ = (&stage._parent_chain, stage.volume);
         Ok(())
     }
 
     fn finalize_stage(request: StageRequest) -> FsResult<()> {
-        let project_name = request
-            .project_name
-            .as_deref()
-            .ok_or_else(|| fs_failure("unsafe_path", None))?;
-        let target_path = request
-            .target_path
-            .as_deref()
-            .ok_or_else(|| fs_failure("unsafe_path", None))?;
-        if project_name.is_empty()
-            || project_name.contains(['\\', '/', ':', '\0'])
-            || project_name == "."
-            || project_name == ".."
-            || project_name.ends_with(['.', ' '])
-        {
-            return Err(fs_failure("unsafe_path", None));
-        }
-        let target = Path::new(target_path);
-        if !target.parent().is_some_and(|parent| {
-            parent
-                .to_string_lossy()
-                .eq_ignore_ascii_case(&request.parent_path)
-        }) || !target
-            .file_name()
-            .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case(project_name))
-        {
-            return Err(fs_failure("unsafe_path", None));
-        }
+        let (project_name, _) = validate_project_target(&request)?;
         let stage = validate_stage(&request)?;
+        let expected_identity = stage
+            .ownership
+            .project_identity
+            .ok_or_else(|| fs_failure("stage_identity_unconfirmed", None))?;
         let parent_handle = stage
             ._parent_chain
             .last()
@@ -1548,42 +2071,63 @@ mod windows {
         let source = open_relative(
             stage.stage_handle.raw(),
             project_name,
-            DELETE | FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY,
+            DELETE | FILE_READ_CONTROL_ACCESS | FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY,
             FILE_SHARE_READ,
             FILE_OPEN,
             FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
             FILE_ATTRIBUTE_DIRECTORY,
-        )?;
-        let source_attrs =
-            get_attributes(source.raw()).map_err(|_| fs_last_error("unsafe_path"))?;
+        )
+        .map_err(|error| {
+            if error.code == "native_fs_unconfirmed" {
+                fs_failure("stage_identity_unconfirmed", error.system_error)
+            } else {
+                fs_failure("stage_identity_mismatch", error.system_error)
+            }
+        })?;
+        let source_attrs = get_attributes(source.raw())
+            .map_err(|_| fs_failure("stage_identity_unconfirmed", None))?;
         if source_attrs.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0
             || source_attrs.FileAttributes & FILE_ATTRIBUTE_DIRECTORY == 0
-            || volume_serial(source.raw()).map_err(|_| fs_last_error("unsafe_path"))?
-                != stage.volume
         {
-            return Err(fs_failure("unsafe_path", None));
+            return Err(fs_failure("stage_identity_mismatch", None));
         }
-        let source_identity =
-            file_identity(source.raw()).map_err(|_| fs_last_error("unsafe_path"))?;
-        rename_open_handle(source.raw(), parent_handle.raw(), project_name, false)?;
+        if volume_serial(source.raw())
+            .map_err(|_| fs_failure("stage_identity_unconfirmed", None))?
+            != stage.volume
+        {
+            return Err(fs_failure("stage_identity_mismatch", None));
+        }
+        let source_identity = file_identity(source.raw())
+            .map_err(|_| fs_failure("stage_identity_unconfirmed", None))?;
+        if source_identity != expected_identity {
+            return Err(fs_failure("stage_identity_mismatch", None));
+        }
+        rename_directory_open_handle(source.raw(), parent_handle.raw(), project_name)?;
         let target = open_relative(
             parent_handle.raw(),
             project_name,
-            FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY,
+            FILE_READ_CONTROL_ACCESS
+                | FILE_READ_ATTRIBUTES
+                | FILE_LIST_DIRECTORY
+                | FILE_WRITE_DAC_ACCESS,
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
             FILE_OPEN,
             FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
             FILE_ATTRIBUTE_DIRECTORY,
         )
-        .map_err(|_| fs_failure("finalize_unconfirmed", None))?;
+        .map_err(|error| fs_failure("finalize_unconfirmed", error.system_error))?;
         let target_attrs =
             get_attributes(target.raw()).map_err(|_| fs_failure("finalize_unconfirmed", None))?;
         if target_attrs.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0
             || target_attrs.FileAttributes & FILE_ATTRIBUTE_DIRECTORY == 0
             || file_identity(target.raw()).ok() != Some(source_identity)
+            || source_identity != expected_identity
         {
             return Err(fs_failure("finalize_unconfirmed", None));
         }
+        set_protected_dacl(target.raw()).map_err(|_| fs_failure("finalize_unconfirmed", None))?;
+        verify_protected_dacl(target.raw())
+            .map_err(|_| fs_failure("finalize_unconfirmed", None))?;
         Ok(())
     }
 
@@ -1701,6 +2245,8 @@ mod windows {
             }
         };
         let result = match mode {
+            "--bind-stage-identity" => bind_project_identity(request),
+            "--verify-scaffold-identity" => verify_scaffold_identity(request),
             "--cleanup-support" => cleanup_support(request),
             "--cleanup-stage" => cleanup_stage(request),
             "--finalize-stage" => finalize_stage(request),
@@ -1762,6 +2308,8 @@ mod windows {
             mode.as_str(),
             "--create-stage"
                 | "--prepare-stage"
+                | "--bind-stage-identity"
+                | "--verify-scaffold-identity"
                 | "--cleanup-support"
                 | "--cleanup-stage"
                 | "--finalize-stage"
@@ -1869,6 +2417,37 @@ mod windows {
             1
         } else {
             exit_code
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn io_status(status: i32) -> IO_STATUS_BLOCK {
+            let mut block = IO_STATUS_BLOCK::default();
+            block.Anonymous.Status = status;
+            block
+        }
+
+        #[test]
+        fn native_create_requires_successful_completion_status() {
+            assert_eq!(checked_native_io_status(0, &io_status(0)).unwrap(), 0);
+            let failure =
+                checked_native_io_status(0, &io_status(0xC000_0022u32 as i32)).unwrap_err();
+            assert_eq!(failure.code, "native_fs_failed");
+            assert_eq!(failure.system_error, Some(0xC000_0022));
+        }
+
+        #[test]
+        fn native_pending_status_is_never_treated_as_success() {
+            let failure = checked_native_io_status(0x103, &io_status(0)).unwrap_err();
+            assert_eq!(failure.code, "native_fs_unconfirmed");
+            assert_eq!(failure.system_error, Some(0x103));
+
+            let completion = checked_native_io_status(0, &io_status(0x103)).unwrap_err();
+            assert_eq!(completion.code, "native_fs_unconfirmed");
+            assert_eq!(completion.system_error, Some(0x103));
         }
     }
 }

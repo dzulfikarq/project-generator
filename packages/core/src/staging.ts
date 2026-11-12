@@ -25,17 +25,22 @@ function stagingError(code: string, stage: string, message: string, nextAction: 
   return new GeneratorError({ code, stage, message, nextAction, targetModified })
 }
 
-function requestFor(stage: OwnedStage, projectName?: string): Record<string, string> {
+function requestFor(stage: OwnedStage, projectName = win32.basename(stage.targetPath)): Record<string, string> {
   return {
     jobId: stage.jobId,
     stagePath: stage.path,
     parentPath: stage.parentPath,
-    ...(projectName ? { projectName, targetPath: stage.targetPath } : {}),
+    projectName,
+    targetPath: stage.targetPath,
   }
 }
 
-function checkFsResult(result: SupervisorResult, operation: 'create' | 'cleanup' | 'finalize' | 'write'): void {
+export function checkFsResult(result: SupervisorResult, operation: 'bind' | 'create' | 'scaffold' | 'cleanup' | 'finalize' | 'write'): void {
   const { response, exitCode } = result
+  if (operation === 'finalize'
+    && !((exitCode === 0 && response.ok === true) || (exitCode === 1 && response.ok === false))) {
+    throw stagingError('GEN_FINALIZE_UNCONFIRMED', 'finalizing', 'Native finalization response and process exit status are inconsistent or incomplete; destination state is uncertain.', 'Do not clean staging or overwrite the destination; inspect both paths before retrying.', true)
+  }
   if (exitCode === 0 && response.ok === true) return
   const code = typeof response.code === 'string' ? response.code : ''
   if (code === 'elevated_caller') {
@@ -44,8 +49,19 @@ function checkFsResult(result: SupervisorResult, operation: 'create' | 'cleanup'
   if (operation === 'create' && code === 'stage_orphaned') {
     throw stagingError('GEN_STAGING_LEFTOVER', 'staging', 'Staging creation failed and its partial directory could not be safely removed.', 'Inspect the staging path associated with this job before retrying.')
   }
+  if (code === 'stage_identity_mismatch') {
+    throw stagingError('GEN_STAGE_IDENTITY_MISMATCH', 'finalizing', 'Staged project directory identity changed after scaffold creation; staging was retained.', 'Do not clean staging or overwrite the destination; inspect the stage and target before retrying.')
+  }
+  if (operation === 'bind' || code === 'stage_identity_unconfirmed') {
+    throw stagingError('GEN_STAGE_IDENTITY_UNCONFIRMED', 'scaffolding', 'Native project identity could not be bound or verified; staging was retained.', 'Do not clean staging or overwrite the destination; inspect the stage before retrying.')
+  }
+  if (operation === 'scaffold') {
+    if (code === 'scaffold_invalid') throw stagingError('GEN_SCAFFOLD_INVALID', 'scaffolding', 'Official scaffold output is missing or project identity is incorrect.', 'Review the generated package manifest and retry.')
+    throw stagingError('GEN_STAGE_IDENTITY_UNCONFIRMED', 'scaffolding', 'Native scaffold identity verification could not be confirmed; staging was retained.', 'Do not clean staging; inspect it before retrying.')
+  }
   if (operation === 'write') {
     if (code === 'unsafe_path') throw stagingError('GEN_PATH_UNSAFE', 'configuring', 'A generated file path failed native handle validation.', 'Inspect staging for reparse points and retry with a new destination.')
+    if (code === 'native_fs_unconfirmed') throw stagingError('GEN_STAGING_LEFTOVER', 'configuring', 'A native staging mutation could not be confirmed; staging was retained.', 'Inspect staging before retrying; do not remove it automatically.')
     throw stagingError('GEN_CONFIGURE_FAILED', 'configuring', 'Native staging file operation failed closed.', 'Inspect the local redacted job log and retry from a new destination.')
   }
   if (operation === 'create') {
@@ -54,6 +70,7 @@ function checkFsResult(result: SupervisorResult, operation: 'create' | 'cleanup'
   }
   if (operation === 'finalize') {
     if (code === 'finalize_unconfirmed') throw stagingError('GEN_FINALIZE_UNCONFIRMED', 'finalizing', 'Native finalization returned success, but destination identity could not be verified.', 'Do not clean staging or overwrite the destination; inspect both paths before retrying.', true)
+    if (code === 'native_fs_unconfirmed') throw stagingError('GEN_FINALIZE_UNCONFIRMED', 'finalizing', 'Native finalization operation could not be confirmed.', 'Do not clean staging or overwrite the destination; inspect both paths before retrying.', true)
     if (code === 'target_exists') throw stagingError('GEN_PATH_EXISTS', 'finalizing', 'Destination became occupied before finalization; existing files were not changed.', 'Choose a new destination and retry.')
     if (code === 'unsafe_path') throw stagingError('GEN_PATH_UNSAFE', 'finalizing', 'Staged project or destination failed native path verification.', 'Do not modify staging; inspect it before retrying.')
     throw stagingError('GEN_FINALIZE_FAILED', 'finalizing', 'Native no-replace finalization failed.', 'Inspect both destination and retained staging before retrying.')
@@ -61,7 +78,7 @@ function checkFsResult(result: SupervisorResult, operation: 'create' | 'cleanup'
   throw stagingError('GEN_STAGING_LEFTOVER', 'cleanup', 'Owned staging could not be safely removed; it was retained.', 'Inspect the recorded staging folder and remove it manually only after confirming ownership.')
 }
 
-async function nativeFs(mode: string, request: unknown, operation: 'create' | 'cleanup' | 'finalize' | 'write'): Promise<SupervisorResult> {
+async function nativeFs(mode: string, request: unknown, operation: 'bind' | 'create' | 'scaffold' | 'cleanup' | 'finalize' | 'write'): Promise<SupervisorResult> {
   let result: SupervisorResult
   try {
     result = await callSupervisor(mode, request)
@@ -73,7 +90,13 @@ async function nativeFs(mode: string, request: unknown, operation: 'create' | 'c
       throw stagingError('GEN_STAGING_LEFTOVER', 'cleanup', 'Native cleanup could not be confirmed; staging was retained.', 'Inspect the recorded staging folder and remove it manually only after confirming ownership.')
     }
     if (operation === 'write') {
-      throw stagingError('GEN_CONFIGURE_FAILED', 'configuring', 'Native staging file operation could not be confirmed.', 'Do not use partially generated staging; inspect the job log and retry from a new destination.')
+      throw stagingError('GEN_STAGING_LEFTOVER', 'configuring', 'Native staging mutation could not be confirmed; staging was retained.', 'Inspect staging before retrying; do not remove it automatically.')
+    }
+    if (operation === 'bind') {
+      throw stagingError('GEN_STAGE_IDENTITY_UNCONFIRMED', 'scaffolding', 'Native project identity could not be bound; staging was retained.', 'Do not clean staging; inspect it before retrying.')
+    }
+    if (operation === 'scaffold') {
+      throw stagingError('GEN_STAGE_IDENTITY_UNCONFIRMED', 'scaffolding', 'Native scaffold identity verification could not be confirmed; staging was retained.', 'Do not clean staging; inspect it before retrying.')
     }
     throw error
   }
@@ -101,6 +124,16 @@ export async function cleanupStageSupportFiles(stage: OwnedStage): Promise<void>
   await nativeFs('--cleanup-support', requestFor(stage), 'cleanup')
 }
 
+export async function bindOwnedStageProjectIdentity(stage: OwnedStage, projectName: string): Promise<void> {
+  if (!liveStages.has(stage)) throw stagingError('GEN_STAGING_LEFTOVER', 'scaffolding', 'Refused project identity binding without a live in-process staging record.', 'Inspect staging manually; do not clean an unverified path.')
+  await nativeFs('--bind-stage-identity', requestFor(stage, projectName), 'bind')
+}
+
+export async function verifyOwnedStageProjectIdentity(stage: OwnedStage, projectName: string): Promise<void> {
+  if (!liveStages.has(stage)) throw stagingError('GEN_STAGING_LEFTOVER', 'scaffolding', 'Refused project identity verification without a live in-process staging record.', 'Inspect staging manually; do not clean an unverified path.')
+  await nativeFs('--verify-scaffold-identity', requestFor(stage, projectName), 'scaffold')
+}
+
 export async function mutateOwnedStage(stage: OwnedStage, directories: readonly string[], files: readonly OwnedStageFile[]): Promise<string[]> {
   if (!liveStages.has(stage)) throw stagingError('GEN_STAGING_LEFTOVER', 'configuring', 'Refused staging mutation without a live in-process ownership record.', 'Inspect staging manually; do not write to an unverified path.')
   const result = await nativeFs('--prepare-stage', {
@@ -122,5 +155,6 @@ export async function cleanupOwnedStage(stage: OwnedStage): Promise<void> {
 
 export async function moveDirectoryNoReplace(stage: OwnedStage): Promise<void> {
   if (process.platform !== 'win32') throw stagingError('GEN_FINALIZE_UNSUPPORTED', 'finalizing', 'Fail-if-exists finalization is supported on Windows only.', 'Run generation on Windows.')
+  if (!liveStages.has(stage)) throw stagingError('GEN_STAGING_LEFTOVER', 'finalizing', 'Refused finalization without a live in-process staging record.', 'Inspect staging manually; do not move an unverified path.')
   await nativeFs('--finalize-stage', requestFor(stage, win32.basename(stage.targetPath)), 'finalize')
 }

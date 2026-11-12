@@ -9,7 +9,7 @@ import { runDoctor } from './doctor.js'
 import { createPlan } from './plan.js'
 import { writeProjectDocs, writeProjectManifest } from './project-docs.js'
 import { runNodeProcess, startNodeProcess, type ProcessResult, type SafeProcessOptions } from './runner.js'
-import { createOwnedStage, cleanupOwnedStage, cleanupStageSupportFiles, mutateOwnedStage, moveDirectoryNoReplace, type OwnedStage } from './staging.js'
+import { bindOwnedStageProjectIdentity, createOwnedStage, cleanupOwnedStage, cleanupStageSupportFiles, mutateOwnedStage, moveDirectoryNoReplace, verifyOwnedStageProjectIdentity, type OwnedStage } from './staging.js'
 import { resolveNpmTool, supportsNpm } from './toolchain.js'
 import { assertGenerationAllowed } from './native-supervisor.js'
 import { resolveSelection } from './resolver.js'
@@ -214,17 +214,6 @@ async function runNpm(
   return result
 }
 
-async function checkScaffoldIdentity(projectPath: string, projectName: string): Promise<void> {
-  try {
-    const entry = await lstat(projectPath)
-    if (!entry.isDirectory() || entry.isSymbolicLink()) throw new Error('Not a regular project directory.')
-    const manifest = JSON.parse(await readFile(win32.join(projectPath, 'package.json'), 'utf8')) as { name?: unknown }
-    if (manifest.name !== projectName) throw new Error('Package identity does not match the requested project name.')
-  } catch {
-    throw userError('GEN_SCAFFOLD_INVALID', 'scaffolding', 'Official scaffold output is missing or project identity is incorrect.', 'Review the local redacted job log and retry.')
-  }
-}
-
 async function checkToolPin(tools: string, recipe: RecipeManifestV1): Promise<string> {
   const lockPath = win32.join(tools, 'package-lock.json')
   try {
@@ -418,7 +407,8 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     throwIfCancelled(options.signal, currentStage)
     await executeScaffold(stage, resolved, npmTool.cliPath, dirs, log, options.signal)
     const projectPath = stage.childPath
-    await checkScaffoldIdentity(projectPath, selection.project.name)
+    await bindOwnedStageProjectIdentity(stage, selection.project.name)
+    await verifyOwnedStageProjectIdentity(stage, selection.project.name)
     const identityOutcome: ValidationOutcome = { id: 'scaffold-identity', status: 'pass', message: 'Generated package identity matches the requested name.' }
     validations.push(identityOutcome)
     emit({ type: 'validation', stageId: 'scaffolding', stageOwner: resolved.recipe.frontend, stageStatus: 'passed', message: identityOutcome.message })
@@ -494,7 +484,11 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
   } catch (error) {
     const original = asGeneratorError(error, currentStage)
     const finalizeUnconfirmed = original.code === 'GEN_FINALIZE_UNCONFIRMED'
-    const preserveStage = original.code === 'GEN_PROCESS_TREE_UNCONFIRMED' || finalizeUnconfirmed
+    const preserveStage = original.code === 'GEN_PROCESS_TREE_UNCONFIRMED'
+      || finalizeUnconfirmed
+      || original.code === 'GEN_STAGE_IDENTITY_MISMATCH'
+      || original.code === 'GEN_STAGE_IDENTITY_UNCONFIRMED'
+      || original.code === 'GEN_STAGING_LEFTOVER'
     const detail = new GeneratorError({
       ...original.toJSON(),
       stage: currentStage,
@@ -505,7 +499,11 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     if (stage && !committed && preserveStage) {
       emit({ type: 'warning', stageId: 'staging', stageOwner: 'core', code: 'GEN_STAGING_LEFTOVER', message: finalizeUnconfirmed
         ? 'Owned staging was retained because native finalization outcome could not be confirmed.'
-        : 'Owned staging was retained because process-tree termination could not be confirmed.' })
+        : original.code === 'GEN_STAGE_IDENTITY_MISMATCH' || original.code === 'GEN_STAGE_IDENTITY_UNCONFIRMED'
+          ? 'Owned staging was retained because project identity could not be verified.'
+          : original.code === 'GEN_STAGING_LEFTOVER'
+            ? 'Owned staging was retained because a native filesystem operation could not be confirmed.'
+            : 'Owned staging was retained because process-tree termination could not be confirmed.' })
     } else if (stage && !committed) {
       try {
         await cleanupOwnedStage(stage)

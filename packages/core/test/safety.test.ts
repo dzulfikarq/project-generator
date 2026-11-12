@@ -7,7 +7,7 @@ import test, { type TestContext } from 'node:test'
 import { GeneratorError } from '../src/errors.js'
 import { callSupervisor } from '../src/native-supervisor.js'
 import { assertNoReparsePoints, inspectTarget } from '../src/paths.js'
-import { cleanupOwnedStage, cleanupStageSupportFiles, createOwnedStage, moveDirectoryNoReplace, mutateOwnedStage } from '../src/staging.js'
+import { bindOwnedStageProjectIdentity, checkFsResult, cleanupOwnedStage, cleanupStageSupportFiles, createOwnedStage, moveDirectoryNoReplace, mutateOwnedStage, verifyOwnedStageProjectIdentity } from '../src/staging.js'
 import type { OwnedStage } from '../src/staging.js'
 
 async function skipElevatedStageOperation(t: TestContext): Promise<boolean> {
@@ -20,9 +20,61 @@ async function skipElevatedStageOperation(t: TestContext): Promise<boolean> {
   return false
 }
 
+test('finalize rejects contradictory supervisor response as unconfirmed', () => {
+  for (const result of [
+    { response: { ok: true }, exitCode: 1 },
+    { response: { ok: false }, exitCode: 0 },
+    { response: { ok: true }, exitCode: null },
+    { response: { ok: false }, exitCode: null },
+  ]) {
+    assert.throws(
+      () => checkFsResult(result, 'finalize'),
+      (error: unknown) => error instanceof GeneratorError
+        && error.code === 'GEN_FINALIZE_UNCONFIRMED'
+        && error.targetModified,
+    )
+  }
+  assert.throws(
+    () => checkFsResult({ response: { ok: false, code: 'target_exists' }, exitCode: 1 }, 'finalize'),
+    (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_PATH_EXISTS',
+  )
+})
+
 function icacls(...args: string[]): void {
   const systemRoot = process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows'
   execFileSync(win32.join(systemRoot, 'System32', 'icacls.exe'), args, { stdio: 'ignore', windowsHide: true })
+}
+
+interface AclInfo {
+  protected: boolean
+  userSid: string
+  entries: { sid: string; inherited: boolean; rights: string }[]
+}
+
+function readAcl(path: string): AclInfo {
+  const systemRoot = process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows'
+  const powershell = win32.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+  const script = [
+    '$acl = Get-Acl -LiteralPath $env:PG_TEST_ACL_PATH',
+    '$entries = @($acl.Access | ForEach-Object { [pscustomobject]@{ sid = $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value; inherited = $_.IsInherited; rights = $_.FileSystemRights.ToString() } })',
+    '$userSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value',
+    '[Console]::WriteLine((ConvertTo-Json -Compress -InputObject ([pscustomobject]@{ protected = $acl.AreAccessRulesProtected; userSid = $userSid; entries = $entries })))',
+  ].join('; ')
+  const output = execFileSync(powershell, ['-NoProfile', '-NonInteractive', '-Command', script], {
+    encoding: 'utf8',
+    env: { ...process.env, PG_TEST_ACL_PATH: path },
+    windowsHide: true,
+  })
+  const parsed = JSON.parse(output) as AclInfo | (Omit<AclInfo, 'entries'> & { entries: AclInfo['entries'][number] })
+  return { ...parsed, entries: Array.isArray(parsed.entries) ? parsed.entries : [parsed.entries] }
+}
+
+function assertRestrictedAcl(path: string, protectedDacl: boolean): void {
+  const acl = readAcl(path)
+  assert.equal(acl.protected, protectedDacl)
+  assert.deepEqual(new Set(acl.entries.map((entry) => entry.sid)), new Set([acl.userSid, 'S-1-5-18']))
+  assert.ok(acl.entries.every((entry) => entry.rights === 'FullControl'))
+  if (protectedDacl) assert.ok(acl.entries.every((entry) => !entry.inherited))
 }
 
 function startJunctionSwap(path: string, backup: string, target: string): () => Promise<number> {
@@ -81,20 +133,22 @@ test('refuses forged marker cleanup without in-process ownership', async () => {
   }
 })
 
-test('marker creation failure rolls back newly created staging', { skip: process.platform !== 'win32' }, async (t) => {
+test('protected stage ACL ignores inherited parent deny', { skip: process.platform !== 'win32' }, async (t) => {
   if (await skipElevatedStageOperation(t)) return
   const root = await mkdtemp(win32.join(tmpdir(), 'pg-marker-rollback-'))
   const parent = win32.join(root, 'parent')
   await mkdir(parent)
+  let stage: OwnedStage | undefined
   try {
     icacls(parent, '/deny', '*S-1-1-0:(CI)(IO)(WD)')
-    await assert.rejects(
-      createOwnedStage(parent, win32.join(parent, 'demo'), 'demo', 'marker-denied'),
-      (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_STAGE_CREATE_FAILED',
-    )
-    assert.deepEqual(await readdir(parent), [], 'failed marker creation must remove the new stage')
+    stage = await createOwnedStage(parent, win32.join(parent, 'demo'), 'demo', 'marker-denied')
+    assertRestrictedAcl(stage.path, true)
+    await readFile(stage.markerPath, 'utf8')
+    await cleanupOwnedStage(stage)
+    assert.deepEqual(await readdir(parent), [])
   } finally {
     icacls(parent, '/reset', '/t', '/c')
+    if (stage) await cleanupOwnedStage(stage).catch(() => undefined)
     await rm(root, { recursive: true, force: true })
   }
 })
@@ -175,6 +229,44 @@ test('cleanup failure retains ownership marker and retry can finish cleanup', { 
   }
 })
 
+test('cleanup race never leaves a stage without ownership evidence', { skip: process.platform !== 'win32' }, async (t) => {
+  if (await skipElevatedStageOperation(t)) return
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-cleanup-marker-race-'))
+  const stage = await createOwnedStage(parent, win32.join(parent, 'project'), 'project', 'cleanup-marker-race')
+  await mkdir(stage.childPath)
+  let active = true
+  let sequence = 0
+  let resolveStarted: (() => void) | undefined
+  const started = new Promise<void>((resolve) => { resolveStarted = resolve })
+  const writer = (async () => {
+    while (active) {
+      const name = `.racing-entry-${sequence++}`
+      await writeFile(win32.join(stage.path, name), 'racing').then(() => resolveStarted?.()).catch(() => undefined)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+  })()
+  await started
+  try {
+    await cleanupOwnedStage(stage).catch((error: unknown) => {
+      assert.ok(error instanceof GeneratorError && error.code === 'GEN_STAGING_LEFTOVER')
+    })
+  } finally {
+    active = false
+    await writer
+  }
+  try {
+    const entries = await readdir(stage.path)
+    assert.ok(entries.includes('.ownership.json'), 'retained stage must keep ownership marker')
+    await cleanupOwnedStage(stage)
+  } catch (error) {
+    if (error instanceof GeneratorError) throw error
+    assert.equal((error as NodeJS.ErrnoException).code, 'ENOENT', 'successful cleanup must remove stage')
+  } finally {
+    await cleanupOwnedStage(stage).catch(() => undefined)
+    await rm(parent, { recursive: true, force: true })
+  }
+})
+
 test('destination collision check is case-insensitive on Windows', { skip: process.platform !== 'win32' }, async () => {
   const parent = await mkdtemp(win32.join(tmpdir(), 'pg-case-collision-'))
   await mkdir(win32.join(parent, 'Existing-App'))
@@ -195,6 +287,7 @@ test('Windows no-replace finalize preserves an occupied target', { skip: process
   await mkdir(target)
   await writeFile(win32.join(target, 'user.txt'), 'user data')
   try {
+    await bindOwnedStageProjectIdentity(stage, 'occupied')
     await assert.rejects(moveDirectoryNoReplace(stage), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_PATH_EXISTS')
     assert.equal(await readFile(win32.join(target, 'user.txt'), 'utf8'), 'user data')
     assert.equal(await readFile(win32.join(stage.childPath, 'generated.txt'), 'utf8'), 'generator data')
@@ -212,10 +305,91 @@ test('Windows no-replace finalize moves only validated staging content', { skip:
   await mkdir(stage.childPath)
   await writeFile(win32.join(stage.childPath, 'generated.txt'), 'verified')
   try {
+    await bindOwnedStageProjectIdentity(stage, 'committed')
     await moveDirectoryNoReplace(stage)
     await cleanupOwnedStage(stage)
     assert.equal(await readFile(win32.join(target, 'generated.txt'), 'utf8'), 'verified')
   } finally {
+    await rm(parent, { recursive: true, force: true })
+  }
+})
+
+test('owned staging and finalized output use protected current-user ACLs', { skip: process.platform !== 'win32' }, async (t) => {
+  if (await skipElevatedStageOperation(t)) return
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-stage-acl-'))
+  const target = win32.join(parent, 'project')
+  icacls(parent, '/grant', '*S-1-1-0:(OI)(CI)(M)')
+  const stage = await createOwnedStage(parent, target, 'project', 'acl-protected')
+  await mkdir(stage.childPath)
+  await writeFile(win32.join(stage.childPath, 'generated.txt'), 'verified')
+  try {
+    assertRestrictedAcl(stage.path, true)
+    assertRestrictedAcl(stage.childPath, false)
+    await bindOwnedStageProjectIdentity(stage, 'project')
+    await moveDirectoryNoReplace(stage)
+    assertRestrictedAcl(target, true)
+    await cleanupOwnedStage(stage)
+    assert.equal(await readFile(win32.join(target, 'generated.txt'), 'utf8'), 'verified')
+  } finally {
+    await cleanupOwnedStage(stage).catch(() => undefined)
+    icacls(parent, '/reset', '/t', '/c')
+    await rm(parent, { recursive: true, force: true })
+  }
+})
+
+test('scaffold package identity is read through the bound native directory handle', { skip: process.platform !== 'win32' }, async (t) => {
+  if (await skipElevatedStageOperation(t)) return
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-scaffold-identity-'))
+  const stage = await createOwnedStage(parent, win32.join(parent, 'project'), 'project', 'scaffold-identity')
+  await mkdir(stage.childPath)
+  const manifestPath = win32.join(stage.childPath, 'package.json')
+  try {
+    await writeFile(manifestPath, JSON.stringify({ name: 'project' }))
+    await bindOwnedStageProjectIdentity(stage, 'project')
+    await verifyOwnedStageProjectIdentity(stage, 'project')
+    await writeFile(manifestPath, JSON.stringify({ name: 'different-project' }))
+    await assert.rejects(
+      verifyOwnedStageProjectIdentity(stage, 'project'),
+      (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_SCAFFOLD_INVALID',
+    )
+  } finally {
+    await cleanupOwnedStage(stage).catch(() => undefined)
+    await rm(parent, { recursive: true, force: true })
+  }
+})
+
+test('finalize rejects replaced ordinary project directory and retains stage marker', { skip: process.platform !== 'win32' }, async (t) => {
+  if (await skipElevatedStageOperation(t)) return
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-project-identity-'))
+  const target = win32.join(parent, 'project')
+  const stage = await createOwnedStage(parent, target, 'project', 'identity-replaced')
+  const displaced = win32.join(stage.path, 'project-original')
+  await mkdir(stage.childPath)
+  await writeFile(win32.join(stage.childPath, 'generated.txt'), 'validated')
+  try {
+    await bindOwnedStageProjectIdentity(stage, 'project')
+    await rename(stage.childPath, displaced)
+    await mkdir(stage.childPath)
+    await writeFile(win32.join(stage.childPath, 'generated.txt'), 'substituted')
+    await assert.rejects(
+      moveDirectoryNoReplace(stage),
+      (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_STAGE_IDENTITY_MISMATCH',
+    )
+    await assert.rejects(
+      verifyOwnedStageProjectIdentity(stage, 'project'),
+      (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_STAGE_IDENTITY_MISMATCH',
+    )
+    assert.equal(await readFile(win32.join(displaced, 'generated.txt'), 'utf8'), 'validated')
+    assert.equal(await readFile(win32.join(stage.childPath, 'generated.txt'), 'utf8'), 'substituted')
+    assert.ok(await readFile(stage.markerPath, 'utf8').then((text) => JSON.parse(text).projectIdentity))
+    await assert.rejects(
+      cleanupOwnedStage(stage),
+      (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_STAGE_IDENTITY_MISMATCH',
+    )
+    assert.ok(await readFile(stage.markerPath, 'utf8'), 'identity mismatch must retain ownership evidence')
+    await assert.rejects(readdir(target), (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT')
+  } finally {
+    await cleanupOwnedStage(stage).catch(() => undefined)
     await rm(parent, { recursive: true, force: true })
   }
 })
@@ -286,6 +460,7 @@ test('no-replace finalize contains concurrent project junction replacement', { s
   await Promise.all([mkdir(outside), mkdir(stage.childPath)])
   await writeFile(sentinel, 'outside data')
   await writeFile(win32.join(stage.childPath, 'generated.txt'), 'owned data')
+  await bindOwnedStageProjectIdentity(stage, 'project')
   const stopRace = startJunctionSwap(stage.childPath, displaced, outside)
   let finalized = false
   try {

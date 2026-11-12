@@ -11,9 +11,9 @@
 
 ## Context and problem
 
-Phase 01.6 used Node `child_process` plus `taskkill /PID /T /F` and path-based cleanup. Phase 01.7 adds a Rust helper and replaces those Windows process and staging mutation paths. Implementation exists, but adversarial Windows integration could not run in the current elevated session; this decision remains unapproved and FE-01/FE-02 remain NO-GO.
+Phase 01.6 used Node `child_process` plus `taskkill /PID /T /F` and path-based cleanup. Phase 01.7 adds a Rust helper and replaces those Windows process and staging mutation paths. Non-elevated Windows runtime and adversarial tests have since run, but the finalize/junction anomaly remains unexplained, follow-up read-only review withheld approval, and this decision remains unapproved; FE-01/FE-02 remain NO-GO.
 
-These are shared safety blockers for FE-01 and FE-02. Successful generation E2E runs do not resolve them. Native helper source and integration tests now exist; runtime/package validation and independent review remain open.
+These are shared safety controls for FE-01 and FE-02. Successful generation E2E runs do not resolve them. Native helper source and runtime integration evidence exist; clean-machine packaging, anomaly investigation, cleanup/create recovery gaps, and human approval remain open.
 
 ## Constraints
 
@@ -35,7 +35,7 @@ These are shared safety blockers for FE-01 and FE-02. Successful generation E2E 
 
 ## Filesystem design questions
 
-The helper opens each local-drive path component relative to the previously opened directory handle with `NtCreateFile` and `FILE_OPEN_REPARSE_POINT`, rejects reparse points and volume changes, enumerates cleanup entries through `GetFileInformationByHandleEx`, deletes by handle, and performs no-replace finalize with `SetFileInformationByHandle(FileRenameInfo)`. This removes path-based traversal from native create/cleanup/finalize operations. Node still writes ordinary staging contents through path-based APIs; native cleanup/finalize are not a sandbox or a claim that all staging writes are race-free. Adversarial tests must verify the outside sentinel remains untouched.
+The helper opens each local-drive path component relative to the previously opened directory handle with `NtCreateFile` and `FILE_OPEN_REPARSE_POINT`, rejects reparse points and volume changes, enumerates cleanup entries through `GetFileInformationByHandleEx`, and deletes by handle. Native scaffold identity validation opens the marker-bound project directory and reads `package.json` relative to that same directory handle. `SetFileInformationByHandle(FileRenameInfo)` for the relative directory rename returned `ERROR_INVALID_PARAMETER` (87) in this runtime. No-replace finalize therefore retains handle-relative `NtSetInformationFile`, checking both returned `NTSTATUS` and `IO_STATUS_BLOCK.Status`; pending completion is unconfirmed. The ownership marker binds scaffold directory volume/file identity; staging and finalized output receive protected current-user/SYSTEM ACLs; cleanup restores marker evidence when removal fails, but is not crash-atomic. Node still writes ordinary staging contents through path-based APIs; native cleanup/finalize are not a sandbox or a claim that all staging writes are race-free. The original finalize/junction anomaly remains unexplained.
 
 The proof must test junction/symlink swaps at each operation boundary, cross-volume substitution, locked files, cleanup after crashes, and a destination race on supported Windows 11 builds. Static junction rejection remains useful but is not evidence against swaps.
 
@@ -43,15 +43,15 @@ The proof must test junction/symlink swaps at each operation boundary, cross-vol
 
 Phase 01.7 implements option C as a local Rust helper at `native/windows-supervisor/`. It creates the workload suspended with `PROC_THREAD_ATTRIBUTE_JOB_LIST`, verifies Job Object membership before `ResumeThread`, verifies kill-on-close and absence of breakaway flags, and cancels by Job Object plus process handles. Cancellation, timeout, root-exit-with-descendants, EOF, and supervisor failures fail closed; if termination is unconfirmed, core retains staging. The helper also rejects elevated callers before generation and performs native stage creation, cleanup, and no-replace finalize. Node invokes it over bounded JSON/stdin/stdout; no Windows `taskkill` fallback remains.
 
-`npm run build` compiles the helper and copies an ignored local sidecar to `packages/core/native/`; the executable is not committed or installer-packaged. Cargo exists under the current user's `.cargo/bin` but is not on inherited `PATH`. Current session has a High Integrity administrator token, so generation is intentionally blocked. Native workload/filesystem integration tests skip in this context; do not treat compile or skip results as race/process proof.
+`npm run build` compiles the helper and copies an ignored local sidecar to `packages/core/native/`; the executable is not committed or installer-packaged. Cargo exists under the current user's `.cargo/bin` but is not on inherited `PATH`. The recorded Phase 01.8 runtime session was non-elevated Medium Integrity; native integration tests ran there. These local tests do not establish clean-machine packaging or release readiness.
 
 ## Verification gates
 
-1. **Implemented, runtime proof pending:** suspended creation, atomic Job Object assignment, membership check, kill-on-close and breakaway policy. Existing tests cover cancellation, timeout, detached descendants, unrelated process survival, and explicit breakaway attempts.
-2. **Implemented, race tests pending execution:** handle-rooted stage creation/cleanup/finalize; tests race parent/support/project paths against junction replacement and check outside sentinels.
-3. **Blocked here:** rerun those Windows tests from a non-elevated shell. Current run skipped 10 Windows workload/filesystem integration cases because the elevation guard correctly blocked this administrator token.
-4. Reproduce on clean Windows 11 x64; verify packaging/signing and forced helper/generator termination; separately cancel a real npm install and confirm no descendants remain.
-5. Independent security review must close or explicitly accept residual path-based Node staging writes and every other finding before recipe promotion or release review.
+1. **Runtime-tested locally:** suspended creation, Job Object assignment/membership, kill-on-close, cancellation, timeout, detached descendants, unrelated-process survival, and breakaway rejection. These results do not replace clean-machine acceptance.
+2. **Runtime-tested locally:** handle-rooted stage create/write/cleanup/finalize, ACL inheritance resistance, identity substitution, cleanup retry, junction swaps, and outside sentinels. The original finalize anomaly is still unresolved; see [Phase 01.8 anomaly evidence](../qa/evidence/phase-01.8-finalize-junction-anomaly.md).
+3. **Current code checks:** `npm test`, typecheck, lint, Cargo test/Clippy/format, and FE-01/FE-02 development E2Es passed; targeted results are recorded in [security-findings closure evidence](../qa/evidence/phase-01.8-security-findings-closure.md). One expected elevated-only test skip remains.
+4. Reproduce on clean Windows 11 x64; verify packaging/signing and forced helper/generator termination; investigate original finalize interleaving.
+5. Follow-up read-only review withheld approval; resolve documented cleanup/create recovery gaps and obtain required human/CI acceptance. Residual path-based Node staging reads and unsandboxed lifecycle scripts remain outside these fixes.
 
 ## Security and rollback
 
@@ -73,4 +73,4 @@ Pending human architecture, packaging, and security review. No implementation ap
 ## Revision history
 
 2026-11-12: Drafted from Phase 01.5/01.6 findings and Microsoft Win32 API investigation; no native implementation or approval claimed.
-2026-11-12: Phase 01.7 adds the Rust supervisor, handle-rooted staging operations, fail-closed CLI integration, and Windows adversarial tests. Runtime integration remains blocked by elevated test session; proposal and NO-GO status unchanged.
+2026-11-12: Phase 01.7 adds the Rust supervisor, handle-rooted staging operations, fail-closed CLI integration, and Windows adversarial tests. Phase 01.8 records non-elevated runtime execution, then adds protected ACLs, handle-bound scaffold identity validation, cleanup recovery, NTSTATUS checks, and finalize protocol validation. Follow-up review withheld approval; original anomaly and recovery gaps remain open. Proposal, FE planned status, and NO-GO status unchanged.
