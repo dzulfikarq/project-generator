@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Phase 01 CLI + Phase 02 Forma + Phase 02.6 packaging PoC + Phase 03 internal UI MVP implementation present** — UI acceptance partial; FE-01/FE-02/FM-01/FM-02 remain planned; no release approved |
+| Status | **Phase 01 CLI + Phase 02 Forma + Phase 02.6 packaging PoC + Phase 03 internal UI MVP + Phase 03.5 UX polish/native functional evidence present** — full desktop acceptance remains partial; FE-01/FE-02/FM-01/FM-02 remain planned; no release approved |
 | Version | 0.1.0 |
 | Date | 2026-11-13 |
 | Product | Universal Project Generator Desktop |
@@ -10,7 +10,7 @@
 | Documentation inspiration | EvoPilot (PRD ↔ design ↔ decision register ↔ QA evidence) |
 | Scope | CLI kernel, internal Tauri desktop UI/runtime PoC, planned React + Vite / Next.js recipes, optional Forma templates |
 
-Planning documents remain source for requirements and boundaries. Code and observed test evidence define implemented behavior. Phase 03 includes the FormaForge Forge Studio dashboard, catalog-driven wizard, metadata-only Forma gallery, review/Doctor, consent-gated job UI, results, local metadata history/settings, and fixed native open actions. The redesign has native Windows UI and cancellation evidence; full desktop acceptance remains partial. FE-01/FE-02 and separate Forma combinations FM-01/FM-02 remain `planned` pending independent recipe acceptance and review. Desktop install/update/uninstall and both runtime package modes have same-host Windows 11 PoC evidence; no clean-machine proof or release approval exists. See [Forge Studio verification](docs/qa/evidence/forge-studio-redesign.md).
+Planning documents remain source for requirements and boundaries. Code and observed test evidence define implemented behavior. Phase 03 includes the FormaForge Forge Studio dashboard, catalog-driven wizard, metadata-only Forma gallery, review/Doctor, consent-gated job UI, results, local metadata history/settings, and fixed native open actions. Phase 03.5 fixes invalid typography declarations and a clipped dashboard empty-state action; native Windows UI runs completed FE-01/FE-02 generation, collision/error/retry, cancellation, history, and open actions using explicit internal consent. Full desktop acceptance remains partial. FE-01/FE-02 and separate Forma combinations FM-01/FM-02 remain `planned` pending independent recipe acceptance and review. Desktop install/update/uninstall and both runtime package modes have same-host Windows 11 PoC evidence; no clean-machine proof or release approval exists. See [Phase 03.5 desktop acceptance](docs/qa/evidence/phase-03.5-final-desktop-acceptance.md) and [Forge Studio verification](docs/qa/evidence/forge-studio-redesign.md).
 
 ## Vision
 

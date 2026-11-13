@@ -57,6 +57,20 @@ test('Geist font and typography tokens cover UI and technical text', () => {
   assert.match(css, /code, pre, kbd, samp, \.mono-input\s*\{\s*font-family:\s*var\(--font-mono\)/)
 })
 
+test('line-height declarations reference defined typography tokens', () => {
+  const lineHeights = [...css.matchAll(/line-height\s*:\s*([^;}]+)/g)].map(([, value]) => value.trim())
+  assert.ok(lineHeights.length > 0)
+
+  for (const value of lineHeights) {
+    const token = value.match(/^var\(--([\w-]+)\)$/)?.[1]
+    assert.ok(token && Object.hasOwn(light, token), `Invalid or undefined line-height token: ${value}`)
+  }
+})
+
+test('dashboard empty state keeps its primary action inside the first viewport', () => {
+  assert.match(css, /\.page-content\[aria-labelledby="home-title"\]\s+\.empty-state\s*\{[^}]*padding:\s*16px 24px;/)
+})
+
 test('body, muted, semantic status, accent, progress, and borders meet contrast thresholds', () => {
   for (const palette of [light, dark]) {
     const surface = color('--surface', palette)
