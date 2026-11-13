@@ -26,28 +26,34 @@ Architecture specification: [`ARCHITECTURE.md`](ARCHITECTURE.md). UX specificati
 - Process-crash recovery is the accepted local-development model; power-loss durability is not claimed. Second-account ACL denial remains a public-release gate.
 - Output: evidence-backed local FM-01/FM-02 integrations using the FE-01/FE-02 framework adapters; no desktop UI, framework expansion, or public-release approval.
 
-## Phase 3 — Web/frontend breadth and styling
+## Phase 3 — Desktop UI MVP (internal)
+
+- Build dashboard, catalog-driven multi-step wizard, Forma metadata gallery, read-only plan/doctor review, consent-gated generation, event/result surface, local recent-project metadata, and basic appearance/destination settings.
+- Show only adapters actually present in the runtime catalog as real choices. Backend, database, unverified package managers, and future frameworks remain visibly unavailable; do not add adapters or promote FE/FM recipes.
+- Validate UI state, forms, compatibility, consent, accessibility semantics, CLI-backed plan/doctor/generation, cancellation, and failure/recovery behavior. Preserve no-overwrite and journal recovery boundaries.
+- Output: internal UI MVP evidence only; clean-machine and public-release gates remain open.
+
+## Phase 4 — Web/frontend breadth and styling
 
 - Add Vue+Vite, Nuxt, Angular adapters; CSS/SCSS, Tailwind, Bootstrap; framework-specific components after checks.
 - Implement npm default with Yarn/pnpm/Bun per-recipe support checks; pin CLI versions.
 - Output: tested frontend recipes; blocked invalid styling/manager choices.
 
-## Phase 4 — Backend and DB breadth
+## Phase 5 — Backend and DB breadth
 
 - Express, NestJS, Fastify, Go Gin, Laravel, FastAPI adapters.
 - DB drivers: PostgreSQL, MySQL/MariaDB, SQLite, MongoDB, with verified ORM pairings and real service checks.
 - Output: distinct backend-only recipes earning tested status; no DB readiness claims without available DB.
 
-## Phase 5 — Fullstack composition
+## Phase 6 — Fullstack composition
 
 - Implement workspace builder, frontend→backend API sample, environment templates, root dev commands, optional Docker Compose.
 - Prove Vue+Laravel+MySQL and React+Go+PostgreSQL before expanding; then Angular+Nest and Next+Nest.
 - Output: individually tested cross-language fullstack recipes.
 
-## Phase 6 — Desktop UI / Windows release
+## Phase 7 — Windows release
 
-- Tauri 2 desktop wizard, template catalogue, configuration preview, project history, settings/credentials in secure storage, progress logs, cancel/open project.
-- Run security review, accessibility checks, path collision/cancel tests and Windows installer smoke.
+- Complete clean-machine packaging, security and accessibility review; run path collision/cancel tests and Windows installer smoke.
 - Output: Windows first release containing **only tested recipes**.
 
 ## V1.1 — Mobile support
