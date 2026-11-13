@@ -18,4 +18,4 @@
 
 ## Follow-up
 
-The packaged CLI planned-recipe bypass was identified and remediated with release-profile core enforcement, CLI rejection, and release packaging checks; independent artifact review remains pending. Independent recipe acceptance remains required before promotion. Phase 04B disposition remains **GO for independent review and evidence hardening only; NO-GO for another framework/component system or recipe promotion until review gates close.**
+The packaged CLI planned-recipe bypass was remediated with release-profile core enforcement, CLI rejection, and release packaging checks; independent review of staged bundled CLI/core and compiled Tauri executable returned **SCOPED PASS**. Installer verification and independent recipe acceptance remain open. Phase 04B disposition remains **GO for independent review and evidence hardening only; NO-GO for another framework/component system or recipe promotion until review gates close.**
