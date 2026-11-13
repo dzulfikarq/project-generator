@@ -85,6 +85,12 @@ Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PAS
 - Recovery inspection after FE-01/FE-02 reruns returned no pending transactions. Latest local E2Es passed listed checks: [FE-01](evidence/FE-01/2026-11-12-phase-01.10-native-e2e.md), [FE-02](evidence/FE-02/2026-11-12-phase-01.10-native-e2e.md). They used the development-only override; recipes remain `planned` / NO-GO.
 - **Unverified/blocked:** cross-account ACL denial (only one enabled account available); lifecycle-script filesystem isolation; power-loss durability; historical finalize anomaly diagnosis. These are not claimed as solved. No release approval.
 
+## Phase 01.9 final acceptance review
+
+- Read-only review of commit `04fcab4` accepts DEC-017's bounded process-crash behavior for controlled local development; power-loss, cross-account ACL, and lifecycle isolation claims remain explicitly unsupported.
+- Historical finalize anomaly root cause remains unresolved. Current postconditions contain missing/wrong-identity targets, but direct fault injection at the finalizer success boundary remains a public-release gate. See [final acceptance review](evidence/phase-01.9-final-acceptance.md).
+- FE-01 and FE-02: **GO for development-only evidence runs; NO-GO for public support/release**. No promotion performed.
+
 ## Evidence protocol
 
 For any recipe marked `tested`, store a report under future `docs/qa/evidence/<recipe-id>/<test-run-id>.md` with:

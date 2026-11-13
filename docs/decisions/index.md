@@ -25,7 +25,7 @@ This project adopts EvoPilot's **decision accountability** pattern but uses stan
 | DEC-012 | Owned staging and no-replace finalization | Proposed | [DEC-012](DEC-012-owned-staging-finalize.md) | Windows race/cleanup tests needed |
 | DEC-013 | Typed CLI + versioned JSONL progress bridge | Proposed | [DEC-013](DEC-013-cli-events-bridge.md) | Verify schema and consumer tests |
 | DEC-014 | Windows scoped process runner | Proposed | [DEC-014](DEC-014-windows-process-runner.md) | Run native process integration on non-elevated Windows and complete security review; see DEC-015 |
-| DEC-015 | Native Windows process/filesystem safety boundary | Proposed | [DEC-015](DEC-015-windows-native-safety-boundary.md) | Validate skipped race/process tests, packaging, residual path-based staging writes, and independent review |
+| DEC-015 | Native Windows process/filesystem safety boundary | Proposed | [DEC-015](DEC-015-windows-native-safety-boundary.md) | Validate cross-account ACL behavior, targeted anomaly failure path, packaging, residual path-based writes, and broader architecture/release approval |
 | DEC-016 | npm lifecycle script execution policy | Accepted Discovery | [DEC-016](DEC-016-npm-lifecycle-script-policy.md) | Interim explicit-generate disclosure policy; review before desktop UI/release |
 | DEC-017 | Windows staging crash recovery | Accepted — bounded implementation | [DEC-017](DEC-017-windows-staging-crash-recovery.md), [Phase 01.10 evidence](../qa/evidence/phase-01.10-windows-recovery-implementation.md) | Review residual ACL boundary; keep lifecycle isolation, power-loss durability, anomaly diagnosis and recipe/release approval open |
 

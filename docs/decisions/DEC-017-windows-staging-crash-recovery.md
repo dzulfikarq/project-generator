@@ -83,6 +83,7 @@ Separate read-only review session `ses_e31cc9ab7ffeNxk47GBNjo1jLn` made no edits
 ## Evidence
 
 - [Phase 01.10 recovery implementation and verification](../qa/evidence/phase-01.10-windows-recovery-implementation.md)
+- [Phase 01.9 final acceptance review](../qa/evidence/phase-01.9-final-acceptance.md)
 - [Phase 01.10 FE-01 native E2E](../qa/evidence/FE-01/2026-11-12-phase-01.10-native-e2e.md)
 - [Phase 01.10 FE-02 native E2E](../qa/evidence/FE-02/2026-11-12-phase-01.10-native-e2e.md)
 - [Phase 01.9 recovery architecture analysis](../qa/evidence/phase-01.9-windows-recovery-architecture.md)

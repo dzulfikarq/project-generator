@@ -11,9 +11,9 @@
 
 ## Context and problem
 
-Phase 01.6 used Node `child_process` plus `taskkill /PID /T /F` and path-based cleanup. Phase 01.7 adds a Rust helper and replaces those Windows process and staging mutation paths. Non-elevated Windows runtime and adversarial tests have since run, but the finalize/junction anomaly remains unexplained, follow-up read-only review withheld approval, and this decision remains unapproved; FE-01/FE-02 remain NO-GO.
+Phase 01.6 used Node `child_process` plus `taskkill /PID /T /F` and path-based cleanup. Phase 01.7 adds a Rust helper and replaces those Windows process and staging mutation paths. Non-elevated Windows runtime and adversarial tests have since run. Scoped DEC-017 review accepts bounded process-crash recovery for local development, but the finalize/junction anomaly remains unresolved and DEC-015 remains unapproved; FE-01/FE-02 remain NO-GO for public release.
 
-These are shared safety controls for FE-01 and FE-02. Successful generation E2E runs do not resolve them. Native helper source and runtime integration evidence exist; clean-machine packaging, anomaly investigation, cleanup/create recovery gaps, and human approval remain open.
+These are shared safety controls for FE-01 and FE-02. Successful generation E2E runs do not resolve them. Native helper source and runtime integration evidence exist. DEC-017 adds identity-bound process-crash recovery with local tests; clean-machine packaging, historical anomaly containment evidence, cross-account ACL verification, and human approval remain open.
 
 ## Constraints
 
@@ -35,9 +35,9 @@ These are shared safety controls for FE-01 and FE-02. Successful generation E2E 
 
 ## Filesystem design questions
 
-The helper opens each local-drive path component relative to the previously opened directory handle with `NtCreateFile` and `FILE_OPEN_REPARSE_POINT`, rejects reparse points and volume changes, enumerates cleanup entries through `GetFileInformationByHandleEx`, and deletes by handle. Native scaffold identity validation opens the marker-bound project directory and reads `package.json` relative to that same directory handle. `SetFileInformationByHandle(FileRenameInfo)` for the relative directory rename returned `ERROR_INVALID_PARAMETER` (87) in this runtime. No-replace finalize therefore retains handle-relative `NtSetInformationFile`, checking both returned `NTSTATUS` and `IO_STATUS_BLOCK.Status`; pending completion is unconfirmed. The ownership marker binds scaffold directory volume/file identity; staging and finalized output receive protected current-user/SYSTEM ACLs; cleanup restores marker evidence when removal fails, but is not crash-atomic. Node still writes ordinary staging contents through path-based APIs; native cleanup/finalize are not a sandbox or a claim that all staging writes are race-free. The original finalize/junction anomaly remains unexplained.
+The helper opens each local-drive path component relative to the previously opened directory handle with `NtCreateFile` and `FILE_OPEN_REPARSE_POINT`, rejects reparse points and volume changes, enumerates cleanup entries through `GetFileInformationByHandleEx`, and deletes by handle. Native scaffold identity validation opens the marker-bound project directory and reads `package.json` relative to that same directory handle. `SetFileInformationByHandle(FileRenameInfo)` for the relative directory rename returned `ERROR_INVALID_PARAMETER` (87) in this runtime. No-replace finalize therefore retains handle-relative `NtSetInformationFile`, checking both returned `NTSTATUS` and `IO_STATUS_BLOCK.Status`; pending completion is unconfirmed. The ownership marker binds scaffold directory volume/file identity; staging and finalized output receive protected current-user/SYSTEM ACLs; cleanup restores marker evidence when removal fails. DEC-017 adds sibling-journal recovery for tested process-crash windows; power-loss durability and cross-account denial are unverified. Node still writes ordinary staging contents through path-based APIs; native cleanup/finalize are not a sandbox or a claim that all staging writes are race-free. The original finalize/junction anomaly remains unexplained.
 
-The proof must test junction/symlink swaps at each operation boundary, cross-volume substitution, locked files, cleanup after crashes, and a destination race on supported Windows 11 builds. Static junction rejection remains useful but is not evidence against swaps.
+Existing non-elevated evidence covers junction/symlink swaps, destination collisions, and bounded process-crash recovery. Remaining verification includes cross-account ACL denial, the targeted historical-anomaly failure path, clean-machine packaging, and any power-loss claim. Static junction rejection remains useful but is not evidence against swaps.
 
 ## Proposed direction and rationale
 
@@ -51,7 +51,7 @@ Phase 01.7 implements option C as a local Rust helper at `native/windows-supervi
 2. **Runtime-tested locally:** handle-rooted stage create/write/cleanup/finalize, ACL inheritance resistance, identity substitution, cleanup retry, junction swaps, and outside sentinels. The original finalize anomaly is still unresolved; see [Phase 01.8 anomaly evidence](../qa/evidence/phase-01.8-finalize-junction-anomaly.md).
 3. **Current code checks:** `npm test`, typecheck, lint, Cargo test/Clippy/format, and FE-01/FE-02 development E2Es passed; targeted results are recorded in [security-findings closure evidence](../qa/evidence/phase-01.8-security-findings-closure.md). One expected elevated-only test skip remains.
 4. Reproduce on clean Windows 11 x64; verify packaging/signing and forced helper/generator termination; investigate original finalize interleaving.
-5. Follow-up read-only review withheld approval; resolve documented cleanup/create recovery gaps and obtain required human/CI acceptance. Residual path-based Node staging reads and unsandboxed lifecycle scripts remain outside these fixes.
+5. DEC-017 recovery implementation received scoped read-only follow-up with no findings in reviewed controls; broader DEC-015 architecture/release approval remains pending. Validate cross-account ACL behavior, the targeted historical-anomaly failure path, clean-machine packaging, and residual path-based reads. Lifecycle scripts remain unsandboxed.
 
 ## Security and rollback
 
