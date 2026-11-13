@@ -1,6 +1,6 @@
 export type SupportState = 'cataloged' | 'planned' | 'experimental' | 'tested' | 'blocked' | 'retired'
 export type DocumentationMode = 'minimal' | 'standard' | 'full'
-export type RecipeId = 'FE-01' | 'FE-02'
+export type RecipeId = 'FE-01' | 'FE-02' | 'FM-01' | 'FM-02'
 export type StylingId = 'styling.css' | 'styling.tailwind'
 export type FrontendId = 'frontend.react-vite' | 'frontend.nextjs-app'
 
@@ -16,7 +16,7 @@ export interface ProjectSelectionV1 {
   backend?: { adapterId: string; manager?: string }
   database?: { adapterId: string; accessAdapterId?: string; mode: 'none' | 'existing-service' | 'docker-compose' }
   styling?: { adapterId: string; uiLibraryId?: string }
-  template?: { adapterId: 'template.forma'; templateId: string; commitSha: string }
+  template?: { adapterId: 'template.forma'; templateId: string; commitSha: string; variantId?: string }
   documentation: DocumentationMode
   git: { initialize: boolean; initialCommit: boolean }
 }
@@ -32,7 +32,7 @@ export interface AdapterManifestV1 {
   schemaVersion: 1
   id: string
   adapterVersion: string
-  kind: 'frontend' | 'styling'
+  kind: 'frontend' | 'styling' | 'template'
   displayName: string
   supportState: SupportState
   supportedOS: readonly ('windows' | 'macos' | 'linux')[]
@@ -60,7 +60,7 @@ export interface RecipeManifestV1 {
   frontend: FrontendId
   language: 'ts'
   manager: 'npm'
-  styling: StylingId
+  styling?: StylingId
   scaffold: ScaffoldPin
   scaffoldArgs: readonly string[]
   checks: readonly string[]
@@ -95,6 +95,7 @@ export interface GenerationPlan {
   executesDependencyLifecycleScripts: boolean
   executionAvailable: boolean
   warnings: readonly string[]
+  template?: { adapterId: 'template.forma'; templateId: string; commitSha: string }
 }
 
 export type StageId = 'preflight' | 'staging' | 'scaffolding' | 'configuring' | 'installing' | 'validating' | 'finalizing'

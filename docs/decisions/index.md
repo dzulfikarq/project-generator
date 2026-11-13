@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Date | 2026-11-12 |
-| State | Phase 01 CLI and bounded DEC-017 recovery implementation present; formal release review not complete |
+| Date | 2026-11-13 |
+| State | Phase 01 CLI, Phase 02 local Forma integration, and bounded DEC-017 recovery implementation present; formal release review not complete |
 | Governance | See [`governance.md`](governance.md) |
 
 This project adopts EvoPilot's **decision accountability** pattern but uses standard English spelling (`decision`, `decisions`). A user-selected direction can be recorded as **Accepted Discovery** without implying implementation completion, test passage or formal release approval.
@@ -28,13 +28,14 @@ This project adopts EvoPilot's **decision accountability** pattern but uses stan
 | DEC-015 | Native Windows process/filesystem safety boundary | Proposed | [DEC-015](DEC-015-windows-native-safety-boundary.md) | Validate cross-account ACL behavior, targeted anomaly failure path, packaging, residual path-based writes, and broader architecture/release approval |
 | DEC-016 | npm lifecycle script execution policy | Accepted Discovery | [DEC-016](DEC-016-npm-lifecycle-script-policy.md) | Interim explicit-generate disclosure policy; review before desktop UI/release |
 | DEC-017 | Windows staging crash recovery | Accepted — bounded implementation | [DEC-017](DEC-017-windows-staging-crash-recovery.md), [Phase 01.10 evidence](../qa/evidence/phase-01.10-windows-recovery-implementation.md) | Review residual ACL boundary; keep lifecycle isolation, power-loss durability, anomaly diagnosis and recipe/release approval open |
+| DEC-018 | Forma local CLI integration | Proposed; local implementation exists | [DEC-018](DEC-018-forma-local-integration.md), [Phase 02 evidence](../qa/evidence/phase-02-forma-local-integration.md) | Independently review credentials/cache/cancellation; no FM promotion or release approval |
 
 ## Open items
 
 - OPEN-001: Node runtime packaging strategy and Windows executable shim security.
 - OPEN-002: Public project naming, organization, license and repo setup.
 - OPEN-003: Exact first shipping recipes and release milestone scope.
-- OPEN-004: Forma private GitHub authentication and permission policy.
+- OPEN-004: Review Git for Windows Credential Manager scope, cache protections, and Forma entitlement policy; CLI accepts/stores no credentials.
 - OPEN-005: Optional Docker Compose start behavior and DB readiness semantics.
 - OPEN-006: Approve and validate native process containment and handle-safe staging operations before closing Windows safety blockers.
 - OPEN-007: Run second-account ACL denial test when another standard account is available; decide whether lifecycle scripts require OS filesystem isolation.

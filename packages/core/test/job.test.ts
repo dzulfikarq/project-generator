@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
-import { access, mkdtemp, rm } from 'node:fs/promises'
+import { access, mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, win32 } from 'node:path'
 import test, { type TestContext } from 'node:test'
 import { generateProject, redact } from '../src/job.js'
 import { callSupervisor } from '../src/native-supervisor.js'
 import { parseSelection } from '../src/schema.js'
+import { FORMA_COMMIT_SHA } from '../src/forma-catalog.js'
 import type { JobEventV1 } from '../src/types.js'
 
 test('production generation blocks planned recipes before destination writes', async () => {
@@ -28,6 +29,30 @@ test('production generation blocks planned recipes before destination writes', a
     await assert.rejects(access(win32.join(parent, 'planned-project')))
     assert.deepEqual(events.map((event) => event.sequence), events.map((_, index) => index + 1))
     assert.ok(events.some((event) => event.code === 'GEN_RECIPE_UNTESTED'))
+  } finally {
+    await rm(parent, { recursive: true, force: true })
+    if (logFile) await rm(dirname(logFile), { recursive: true, force: true })
+  }
+})
+
+test('production generation blocks planned Forma integrations before fetch or staging', async () => {
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-forma-planned-'))
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'planned-forma', type: 'frontend', parentDirectory: parent },
+    frontend: { adapterId: 'frontend.react-vite', language: 'ts', manager: 'npm' },
+    template: { adapterId: 'template.forma', templateId: 'staywise-host-dashboard', commitSha: FORMA_COMMIT_SHA },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  })
+  let logFile = ''
+  try {
+    const result = await generateProject(selection)
+    logFile = result.logFile ?? ''
+    assert.equal(result.status, 'failed')
+    assert.equal(result.error?.code, 'GEN_RECIPE_UNTESTED')
+    await assert.rejects(access(win32.join(parent, 'planned-forma')))
+    assert.deepEqual(await readdir(parent), [])
   } finally {
     await rm(parent, { recursive: true, force: true })
     if (logFile) await rm(dirname(logFile), { recursive: true, force: true })

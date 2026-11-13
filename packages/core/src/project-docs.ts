@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { readFile, readdir } from 'node:fs/promises'
 import { win32 } from 'node:path'
 import { mutateOwnedStage, type OwnedStage } from './staging.js'
+import type { FormaInstallEvidence } from './forma.js'
 import type { NpmTool } from './toolchain.js'
 import type { ResolvedSelection, ValidationOutcome } from './types.js'
 
@@ -16,7 +17,17 @@ export function expectedDocumentationFiles(mode: ResolvedSelection['selection'][
 }
 
 function recipeText(resolved: ResolvedSelection): { title: string; scaffold: string; nodeRange: string; devCommand: string; smokeCommand: string } {
-  if (resolved.recipe.id === 'FE-01') {
+  if (resolved.selection.template) {
+    const reactVite = resolved.recipe.frontend === 'frontend.react-vite'
+    return {
+      title: reactVite ? 'React + Vite + TypeScript' : 'Next.js App Router + TypeScript',
+      scaffold: `Forma template ${resolved.selection.template.templateId} at ${resolved.selection.template.commitSha}`,
+      nodeRange: reactVite ? 'Node.js 20.19+ or 22.12+' : 'Node.js 20.9+',
+      devCommand: 'npm run dev',
+      smokeCommand: reactVite ? 'npm run build' : 'npm run build',
+    }
+  }
+  if (resolved.recipe.frontend === 'frontend.react-vite') {
     return {
       title: 'React + Vite + TypeScript',
       scaffold: 'create-vite 9.3.4 (`react-ts` template)',
@@ -34,31 +45,40 @@ function recipeText(resolved: ResolvedSelection): { title: string; scaffold: str
   }
 }
 
-function generatedContent(resolved: ResolvedSelection, nodeVersion: string, npmVersion: string): Map<string, string> {
+function generatedContent(resolved: ResolvedSelection, nodeVersion: string, npmVersion: string, forma?: FormaInstallEvidence): Map<string, string> {
   const details = recipeText(resolved)
   const name = resolved.selection.project.name
-  const readme = `# ${name}\n\n${details.title} project generated from the official ${details.scaffold} scaffold.\n\n## Prerequisites\n\n- ${details.nodeRange}\n- npm 10 or newer\n\n## Run locally\n\n\`\`\`sh\nnpm install\n${details.devCommand}\n\`\`\`\n\n## Checks\n\n\`\`\`sh\nnpm run lint\nnpm run build\n\`\`\`\n\nSee [docs/SETUP.md](docs/SETUP.md) for setup and verification details.\n\nThis is a frontend-only project. No separate backend, database, deployment, or browser automation is included. npm installation may run dependency lifecycle scripts; dependencies are not sandboxed.\n`
-  const setup = `# Setup\n\n## Toolchain\n\nGenerated with ${details.scaffold}, Node.js ${nodeVersion}, and npm ${npmVersion}.\n\n## Install and run\n\n\`\`\`sh\nnpm install\n${details.devCommand}\n\`\`\`\n\n## Validate\n\n\`\`\`sh\nnpm run lint\nnpm run build\n${details.smokeCommand}\n\`\`\`\n\nThe generator's HTTP smoke check verifies an HTML response from the local server. It does not launch a browser or verify visual rendering.\n`
+  const styling = forma ? 'Forma-managed template styling and theme' : resolved.recipe.styling
+  const origin = forma
+    ? `Generated from the Forma template ${forma.id}@${forma.version} at immutable commit ${forma.commitSha}. Portable package SHA-256: ${forma.contentHash}.\n\n`
+    : `Generated from the official ${details.scaffold} scaffold.\n\n`
+  const checks = forma
+    ? `## Checks\n\n\`\`\`sh\nnpm run typecheck\nnpm run build\n\`\`\`\n\nThe Forma installer does not define a lint script; lint was not run. The generator HTTP smoke check is recorded in .project-generator/manifest.json.\n`
+    : `## Checks\n\n\`\`\`sh\nnpm run lint\nnpm run build\n\`\`\`\n`
+  const readme = `# ${name}\n\n${origin}${details.title} project.\n\n## Prerequisites\n\n- ${details.nodeRange}\n- npm 10 or newer\n\n## Run locally\n\n\`\`\`sh\nnpm install\n${details.devCommand}\n\`\`\`\n\n${checks}\nSee [docs/SETUP.md](docs/SETUP.md) for setup and verification details.\n\nThis is a frontend-only project. No separate backend, database, or deployment is included. npm installation may run dependency lifecycle scripts; dependencies are not sandboxed.\n`
+  const setup = `# Setup\n\n## Toolchain\n\nGenerated with ${details.scaffold}, Node.js ${nodeVersion}, and npm ${npmVersion}.\n${forma ? `Forma source: private GitHub repository, commit ${forma.commitSha}. Template ${forma.id}@${forma.version}; portable SHA-256 ${forma.contentHash}; theme ${forma.variantName}.\n` : ''}\n## Install and run\n\n\`\`\`sh\nnpm install\n${details.devCommand}\n\`\`\`\n\n## Validate\n\n\`\`\`sh\n${forma ? 'npm run typecheck\n' : 'npm run lint\n'}npm run build\n\`\`\`\n\nThe generator's HTTP smoke check verifies an HTML response from the local server. It does not launch a browser or verify visual rendering.\n`
   const files = new Map<string, string>([['README.md', readme], ['docs/SETUP.md', setup]])
   if (resolved.selection.documentation === 'minimal') return files
 
-  files.set('AGENTS.md', `# Agent instructions\n\n- Project: ${details.title}.\n- Package manager: npm; retain package-lock.json.\n- Run \`npm run lint\` and \`npm run build\` before reporting changes.\n- No separate backend or database is configured.\n- Generated by Project Generator; no approval or project history is implied.\n`)
-  files.set('docs/ARCHITECTURE.md', `# Architecture\n\nThis repository is a ${details.title} frontend application scaffolded by ${details.scaffold}. It uses npm and has no separate backend or database.\n\nThe framework scaffold owns application source and build configuration. The Project Generator owns this document and the setup/manifest files.\n`)
-  files.set('docs/TESTING.md', `# Testing\n\n- Lint: \`npm run lint\`.\n- Build and TypeScript validation: \`npm run build\`.\n- Local server: \`${details.devCommand}\`.\n\nThe generator performed only checks recorded in .project-generator/manifest.json. No browser automation is included.\n`)
+  files.set('AGENTS.md', `# Agent instructions\n\n- Project: ${details.title}.\n- Package manager: npm; retain package-lock.json.\n- Run ${forma ? '`npm run typecheck` and `npm run build`' : '`npm run lint` and `npm run build`'} before reporting changes.\n- No separate backend or database is configured.\n- Generated by Project Generator; no approval or project history is implied.\n`)
+  files.set('docs/ARCHITECTURE.md', `# Architecture\n\nThis repository is a ${details.title} frontend application generated from ${details.scaffold}. Styling: ${styling}. It uses npm and has no separate backend or database.\n\nThe framework/template owns application source and build configuration. The Project Generator owns this document and the setup/manifest files.\n`)
+  files.set('docs/TESTING.md', forma
+    ? `# Testing\n\n- TypeScript: \`npm run typecheck\`.\n- Production build: \`npm run build\`.\n- Local server: \`${details.devCommand}\`.\n- Lint: not installed by the pinned Forma installer; no lint command is provided.\n\nThe generator performed only checks recorded in .project-generator/manifest.json. Its HTTP smoke check is not browser automation.\n`
+    : `# Testing\n\n- Lint: \`npm run lint\`.\n- Build and TypeScript validation: \`npm run build\`.\n- Local server: \`${details.devCommand}\`.\n\nThe generator performed only checks recorded in .project-generator/manifest.json. No browser automation is included.\n`)
   if (resolved.selection.documentation === 'standard') return files
 
   files.set('CLAUDE.md', 'Read AGENTS.md and docs/ before changing this generated project. Do not claim checks passed unless you ran them.\n')
   files.set('agent.md', '# Agent notes\n\nInitial generated instructions only. No AI agent history or approval is asserted.\n')
   files.set('decision.md', '# Decision policy\n\nRecord future material decisions in docs/decisions/index.md. Generated baseline is not an approval.\n')
-  files.set('design.md', `# Design notes\n\nFramework: ${details.title}. Styling: ${resolved.recipe.styling}. No custom product UI requirements were supplied.\n`)
+  files.set('design.md', `# Design notes\n\nFramework: ${details.title}. Styling: ${styling}. No custom product UI requirements were supplied.\n`)
   files.set('docs/PRD.md', `# Project brief\n\n- Project: ${name}\n- Stack: ${details.title}\n- Scope: frontend only; no separate backend or database.\n- Status: initial generated scaffold; no product approvals are implied.\n`)
   files.set('docs/decisions/index.md', '# Decision register\n\nNo material decisions or approvals have been recorded. Add entries only when decisions occur.\n')
   files.set('docs/qa/acceptance-matrix.md', '# Verification status\n\nSee `.project-generator/manifest.json` for checks executed during generation. No release approval is implied.\n')
   return files
 }
 
-export async function writeProjectDocs(stage: OwnedStage, resolved: ResolvedSelection, nodeVersion: string, npm: NpmTool): Promise<string[]> {
-  const files = generatedContent(resolved, nodeVersion, npm.version)
+export async function writeProjectDocs(stage: OwnedStage, resolved: ResolvedSelection, nodeVersion: string, npm: NpmTool, forma?: FormaInstallEvidence): Promise<string[]> {
+  const files = generatedContent(resolved, nodeVersion, npm.version, forma)
   const projectName = win32.basename(stage.childPath)
   const prefix = `${projectName}/`
   const written = await mutateOwnedStage(stage, [], [...files].map(([path, content]) => ({
@@ -77,6 +97,7 @@ export async function writeProjectManifest(
   npm: NpmTool,
   outcomes: readonly ValidationOutcome[],
   generatedFiles: readonly string[],
+  forma?: FormaInstallEvidence,
 ): Promise<void> {
   const projectPath = stage.childPath
   const entries = await readdir(projectPath)
@@ -97,11 +118,14 @@ export async function writeProjectManifest(
     documentationMode: resolved.selection.documentation,
     selectedAdapters: [
       { id: resolved.recipe.frontend, version: '0.1.0' },
-      { id: resolved.recipe.styling, version: '0.1.0' },
+      ...(forma ? [{ id: 'template.forma', version: '0.1.0' }] : [{ id: resolved.recipe.styling!, version: '0.1.0' }]),
     ],
     packageManager: 'npm',
     toolVersions: { node: nodeVersion, npm: npm.version },
-    upstreamSources: [{ package: resolved.recipe.scaffold.packageName, resolvedVersion: resolved.recipe.scaffold.version, integrity: resolved.recipe.scaffold.integrity }],
+    upstreamSources: forma
+      ? [{ repository: 'private Forma repository', commitSha: forma.commitSha, templateId: forma.id, resolvedVersion: forma.version, integrity: { algorithm: 'sha256', contentHash: forma.contentHash } }]
+      : [{ package: resolved.recipe.scaffold.packageName, resolvedVersion: resolved.recipe.scaffold.version, integrity: resolved.recipe.scaffold.integrity }],
+    ...(forma ? { template: { adapterId: 'template.forma', id: forma.id, version: forma.version, variantId: forma.variantId, variantName: forma.variantName, license: forma.license, commitSha: forma.commitSha, sourceRepository: 'private Forma repository', integrity: { algorithm: 'sha256', contentHash: forma.contentHash } } } : {}),
     lockfiles: [{ name: 'package-lock.json', sha256: lockHash }],
     generatedFiles: [...generatedFiles, '.project-generator/manifest.json'],
     validation: outcomes,

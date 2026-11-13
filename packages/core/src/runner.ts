@@ -14,6 +14,7 @@ export interface SafeProcessOptions {
   tempDirectory: string
   timeoutMs?: number
   signal?: AbortSignal
+  extraPath?: readonly string[]
 }
 
 export interface ProcessResult {
@@ -57,11 +58,11 @@ async function checkedDirectory(directory: string, root: string): Promise<string
   return realDirectory
 }
 
-function processEnvironment(home: string, temp: string, cwd: string): NodeJS.ProcessEnv {
+function processEnvironment(home: string, temp: string, cwd: string, extraPath: readonly string[] = []): NodeJS.ProcessEnv {
   const systemRoot = process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows'
   const system32 = win32.join(systemRoot, 'System32')
   const nodeDirectory = dirname(process.execPath)
-  const pathValue = [nodeDirectory, system32, win32.join(cwd, 'node_modules', '.bin')].join(';')
+  const pathValue = [nodeDirectory, system32, win32.join(cwd, 'node_modules', '.bin'), ...extraPath].join(';')
   const drive = win32.parse(home).root.replace(/\\$/, '')
   const homePath = home.slice(drive.length)
   return {
@@ -89,9 +90,10 @@ export async function startNodeProcess(options: SafeProcessOptions): Promise<Run
   if (options.args.some((arg) => typeof arg !== 'string' || arg.includes('\0')) || options.args.join('').length > 28_000) {
     throw new GeneratorError({ code: 'GEN_RUNNER_BLOCKED', stage: 'process', message: 'Refused invalid process arguments.', nextAction: 'Use a valid generator config and retry.', targetModified: false })
   }
-  const [scriptPath, cwd] = await Promise.all([
+  const [scriptPath, cwd, extraPath] = await Promise.all([
     checkedFile(options.scriptPath, options.allowedScriptRoot),
     checkedDirectory(options.cwd, options.allowedCwdRoot),
+    Promise.all((options.extraPath ?? []).map((directory) => checkedDirectory(directory, directory))),
   ])
   if (options.signal?.aborted) throw new GeneratorError({ code: 'GEN_CANCELLED', stage: 'process', message: 'Generation was cancelled.', nextAction: 'Retry from the beginning.', targetModified: false })
   let child: ChildProcess
@@ -105,7 +107,7 @@ export async function startNodeProcess(options: SafeProcessOptions): Promise<Run
       executable: process.execPath,
       args: [scriptPath, ...options.args],
       cwd,
-      env: Object.fromEntries(Object.entries(processEnvironment(options.homeDirectory, options.tempDirectory, cwd)).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
+      env: Object.fromEntries(Object.entries(processEnvironment(options.homeDirectory, options.tempDirectory, cwd, extraPath)).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
       ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
     })
   })

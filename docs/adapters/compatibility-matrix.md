@@ -2,12 +2,12 @@
 
 | Field | Value |
 |---|---|
-| Version | Draft 0.1 — 2026-11-11 |
-| Status | **FE-01/FE-02 CLI implementation and local E2E evidence exist; no recipe promoted or release-approved** |
+| Version | Draft 0.1 — 2026-11-13 |
+| Status | **FE-01/FE-02/FM-01/FM-02 local CLI implementations and E2E evidence exist; no recipe promoted or release-approved** |
 | Main platform | Windows 11 |
 | Source of truth | This matrix + machine-readable adapter manifests + QA results |
 
-> **DO NOT equate framework popularity or an official CLI's capability with Project Generator readiness.** Phase 01 implements only FE-01/FE-02. Their local development runs are evidence, not recipe promotion or release approval; every recipe remains unavailable in normal generation.
+> **DO NOT equate framework popularity, upstream Forma checks, or one local run with Project Generator readiness.** Phase 01 standalone FE-01/FE-02 and Phase 02 Forma FM-01/FM-02 have local evidence, not independent acceptance or release approval; every recipe remains unavailable in normal generation.
 
 ## 1. Status and test gates
 
@@ -24,8 +24,8 @@ The catalog can mention `PLAN`, but normal generation is enabled only for `TEST`
 
 | ID | Framework | Project target | JS manager default | Native scaffold / baseline | Typical styling | Forma | State |
 |---|---|---|---|---|---|---|---|
-| FW-REACT | React + Vite | V1 | npm | `create-vite` (React/TS) | CSS, Tailwind, Bootstrap, SCSS, CSS Modules | Staywise candidate (externally tested) | PLAN |
-| FW-NEXT | Next.js App Router | V1 | npm | `create-next-app` | CSS Modules, Tailwind, Bootstrap, SCSS | Staywise candidate (externally tested) | PLAN |
+| FW-REACT | React + Vite | V1 | npm | `create-vite` (React/TS) | CSS, Tailwind, Bootstrap, SCSS, CSS Modules | Forma templates below | PLAN |
+| FW-NEXT | Next.js App Router | V1 | npm | `create-next-app` | CSS Modules, Tailwind, Bootstrap, SCSS | Forma templates below | PLAN |
 | FW-VUE | Vue 3 + Vite | V1 | npm | `create-vite` (Vue/TS) | Vue scoped CSS, Tailwind, Bootstrap, SCSS | No | PLAN |
 | FW-NUXT | Nuxt | V1 | npm | `create-nuxt` | CSS, Tailwind, Bootstrap, SCSS | No | PLAN |
 | FW-ANGULAR | Angular | V1 | npm | Angular CLI `ng new` | CSS, SCSS, Tailwind, Bootstrap | No | PLAN |
@@ -109,7 +109,7 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 
 ## 7. Cross-stack recipe registry (unit of release)
 
-**Every row below remains `PLAN`.** FE-01/FE-02 have implementations and local Windows E2E reports; other rows remain targets only. No recipe can be selected for normal generation until its acceptance evidence is reviewed and status is explicitly promoted.
+**Every row below remains `PLAN`.** FE-01/FE-02 and FM-01/FM-02 have implementations and local Windows E2E evidence; other rows remain targets only. No recipe can be selected for normal generation until its acceptance evidence is reviewed and status is explicitly promoted.
 
 | Recipe ID | Type | Frontend | Backend | DB / data access | Styling | Manager(s) | Launch target |
 |---|---|---|---|---|---|---|---|
@@ -128,8 +128,8 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | FS-03 | Fullstack | Angular | NestJS | PostgreSQL + Prisma | Angular Material | npm | V1 |
 | FS-04 | Fullstack | Next App Router | NestJS | PostgreSQL + Prisma | Tailwind | npm | V1 |
 | FS-05 | Fullstack | React Vite | Express | MongoDB + Mongoose | Bootstrap | npm | V1 |
-| FM-01 | Template | React Vite | None | None | Forma Staywise Coral | npm + Forma installer | V1 integration |
-| FM-02 | Template | Next App Router | None separate | None | Forma Staywise Coral | npm + Forma installer | V1 integration |
+| FM-01 | Template | React Vite | None | None | Selected Forma template | npm + Forma installer | V1 integration |
+| FM-02 | Template | Next App Router | None separate | None | Selected Forma template | npm + Forma installer | V1 integration |
 | MOB-01 | Mobile | Expo | Optional backend later | None | NativeWind / Native default | npm | V1.1 |
 | MOB-02 | Mobile | Flutter | Optional backend later | None | Material | pub | V1.1 |
 
@@ -139,13 +139,15 @@ FE-01 evidence: [Windows React + Vite run](../qa/evidence/FE-01/2026-11-11-cli-e
 
 ## 8. Forma integration matrix
 
-| Template | External prior evidence | Generator status | Allowed target |
+| Template | Forma-level compatibility at pinned source | Project Generator local integration | Allowed target |
 |---|---|---|---|
-| Staywise | Independently exported/installed and tested with React Vite / Next App Router in prior Forma work | **PLAN**, not verified in generator | React Vite, Next App Router only |
-| Any other Forma template | Require manifest and independent evidence | CAT unless tested | Framework-specific only |
+| Staywise Host Dashboard 0.1.0 | React + Vite; Next.js App Router | **PLAN** — generation, npm install, typecheck, build, HTTP and browser smokes passed | React + Vite, Next.js App Router |
+| Modern Admin 1.0.0 | React + Vite; Next.js App Router | **PLAN** — generation, npm install, typecheck, build, HTTP and browser smokes passed | React + Vite, Next.js App Router |
+| Focus Planner 0.1.0 | React + Vite; Next.js untested | **PLAN** — React + Vite generation, npm install, typecheck, build, HTTP and browser smokes passed | React + Vite only |
+| Any other Forma template | Require manifest and independent evidence | Not in pinned Project Generator catalog | Do not offer |
 | Forma React on Vue/Angular/Expo | No native adapter, wrong component contract | **BLK** | Do not offer |
 
-Registry access: authenticated private GitHub → validated manifest/hash and pinned commit → existing Forma installer → install/build/smoke → generator report. Never copy private auth data to generated source files.
+The catalog is pinned to `5cf3c4e5b7b0bc454a653f58d12237c56f2548e2`. On an explicit generation with cache miss: configured Git Credential Manager fetches only that commit; existing Forma exporter creates a portable bundle; Project Generator checks catalog metadata/content hash; existing installer validates and installs into owned staging. Cache key includes source commit, template ID/version, and package content hash. Credentials are not accepted in config or copied by Project Generator into its own docs/manifest/logs. SHA-256 is integrity checking, not publisher signature. Interrupted fetch/export can leave partial cache directories; no automatic cache deletion or overwrite is attempted. See [Phase 02 evidence](../qa/evidence/phase-02-forma-local-integration.md).
 
 ## 9. Runtime / machine prerequisites
 
@@ -166,7 +168,7 @@ Registry access: authenticated private GitHub → validated manifest/hash and pi
 3. Query styling/component/plugin compatibility with framework adapter.
 4. Check DB/driver/ORM pairing and connection/provisioning mode.
 5. Check package manager(s) and generated lockfile expectations.
-6. If a Forma template selected, check declared framework, installer version, dependencies and commit SHA.
+6. If a Forma template selected, check pinned catalog framework mapping, commit and content hash before generation; do not fetch during plan.
 7. Resolve exact recipe and status. If no tested recipe, offer the closest tested preset *without modifying selections silently*.
 8. Produce a complete plan and estimated actions; require explicit user Generate action.
 9. Run post-gen checks; do not promote a recipe based on a single successful invocation.

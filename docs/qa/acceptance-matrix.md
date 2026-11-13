@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Status | **PARTIAL** — Phase 01 local evidence exists; full acceptance/release review remains incomplete |
-| Date | 2026-11-12 |
-| Target | Windows 11, clean target dirs; independent generation and install |
+| Date | 2026-11-13 |
+| Target | Windows 11 first; record actual host and use clean target dirs for each run |
 | Rule | No PASS claims without executable evidence |
 
 Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PASS`, `FAIL` are not interchangeable. A **PASS** records the tested scope, exact recipe/tool versions, commands, exit codes and artifacts. A pass for FE-01/FE-02 does not promote either recipe or approve a release. Failure logs must be redacted.
@@ -24,7 +24,7 @@ Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PAS
 | GEN-011 | PRD-018 | Fullstack UI can call actual API endpoint; root scripts work on Windows | NOT RUN |
 | GEN-012 | PRD-019,NFR-004–005 | No arbitrary commands/token logging; file ownership and consent controls enforced | PARTIAL — lifecycle scripts remain unsandboxed; no outside-write isolation is claimed. Journal ACL cross-account denial remains untested; same-user code remains outside this boundary. Path-based reads and independent acceptance remain open; see [DEC-017](../decisions/DEC-017-windows-staging-crash-recovery.md) |
 | GEN-013 | PRD-020,NFR-008 | Offline caches work if complete; otherwise transparent network/prerequisite error | NOT RUN |
-| GEN-014 | PRD-021 | Private Forma auth; SHA/manifest verified; React Vite/Next templates build and smoke | NOT RUN |
+| GEN-014 | PRD-021 | Private Forma auth; SHA/manifest verified; React Vite/Next templates build and smoke | PARTIAL — Phase 02 local Windows integration E2Es pass for five exact template/framework pairs; not independently reviewed or promoted; see [evidence](evidence/phase-02-forma-local-integration.md) |
 | GEN-015 | PRD-024 | Optional Docker Compose generated correctly; services never started without action | NOT RUN |
 | GEN-016 | PRD-025 | Optional Git init and commit; without Git generation succeeds, no remote push | PARTIAL — no-Git FE-01/FE-02 generation only; Git bootstrap unsupported |
 | GEN-017 | PRD-026,NFR-006 | Error includes stage, stable code, next action, and target-modification status | PARTIAL — selected CLI/core errors tested; full taxonomy incomplete |
@@ -48,7 +48,7 @@ Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PAS
 
 ## Phase 01 execution snapshot
 
-- Windows 11 Pro build `26300` x64; Node.js `22.22.1`; npm `10.9.4`.
+- Phase 01 host/tool details are in linked Phase 01 evidence. Latest observed Phase 02 host reported Windows 10 Pro, build `26300`, x64; Node.js `22.22.1`; npm `10.9.4` (not evidence for the Windows 11 target).
 - After Phase 01.5 fixes and Phase 01.6 lifecycle-disclosure regression, `npm test`, `npm run typecheck`, and `npm run lint`: exit `0`. Test suite: 17 core tests and 3 CLI tests passed; zero failed or skipped.
 - Windows unit coverage includes junction rejection, case-insensitive collision, forged-stage ownership rejection, no-replace collision/success, process-tree cancellation, abort during runner path checks, and fail-closed taskkill errors (`packages/core/test/safety.test.ts`, `runner.test.ts`). Schema tests cover traversal, reserved names, long paths, spaces and Unicode (`schema.test.ts`).
 - FE-01 and FE-02 were rerun through the CLI's explicit `--development-allow-planned` flag. Per-run job IDs, scaffold integrity, manifest/lockfile hashes, and limits: [FE-01](evidence/FE-01/2026-11-11-phase-01.6-cli-e2e.md), [FE-02](evidence/FE-02/2026-11-11-phase-01.6-cli-e2e.md). Earlier reports remain available: [FE-01](evidence/FE-01/2026-11-11-cli-e2e.md), [FE-02](evidence/FE-02/2026-11-11-cli-e2e.md).
@@ -90,6 +90,12 @@ Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PAS
 - Read-only review of commit `04fcab4` accepts DEC-017's bounded process-crash behavior for controlled local development; power-loss, cross-account ACL, and lifecycle isolation claims remain explicitly unsupported.
 - Historical finalize anomaly root cause remains unresolved. Current postconditions contain missing/wrong-identity targets, but direct fault injection at the finalizer success boundary remains a public-release gate. See [final acceptance review](evidence/phase-01.9-final-acceptance.md).
 - FE-01 and FE-02: **GO for development-only evidence runs; NO-GO for public support/release**. No promotion performed.
+
+## Phase 02 Forma local integration
+
+- Five pinned Forma combinations completed local generation, npm install, TypeScript check, production build, HTTP smoke, and the template's separate browser smoke. Standalone FE-01 also passed its existing checks after integration; evidence: [Phase 02 report](evidence/phase-02-forma-local-integration.md).
+- All runs used the development-only planned-recipe override where applicable. FM-01/FM-02 and FE-01/FE-02 remain `planned`; no independent acceptance or release approval.
+- The SHA-256 manifest detected/validated package integrity in these runs; no adversarial cache-corruption test or signed-publisher verification was performed. Interrupted cache directories, lifecycle isolation, second-account ACL denial, and power-loss durability remain unverified/not claimed.
 
 ## Evidence protocol
 

@@ -6,6 +6,7 @@ import { resolveSelection } from '../src/resolver.js'
 import { normalizeWindowsParent, resolveOutputPath } from '../src/paths.js'
 import { GeneratorError } from '../src/errors.js'
 import { supportsNodeForNext, supportsNodeForVite, supportsNpm } from '../src/toolchain.js'
+import { FORMA_COMMIT_SHA, isFormaCommit } from '../src/forma-catalog.js'
 
 const reactConfig = {
   schemaVersion: 1,
@@ -29,6 +30,35 @@ test('accepts and resolves FE-01 and FE-02 without filesystem access', () => {
   assert.equal(plan.recipeStatus, 'planned')
   assert.equal(plan.executionAvailable, false)
   assert.equal(plan.targetPath, 'E:\\Projects\\sample-web')
+})
+
+test('resolves only pinned Forma template/framework pairs without network access during planning', () => {
+  assert.equal(isFormaCommit(FORMA_COMMIT_SHA.toUpperCase()), true)
+  const staywiseVite = parseSelection({
+    ...reactConfig,
+    styling: undefined,
+    template: { adapterId: 'template.forma', templateId: 'staywise-host-dashboard', commitSha: FORMA_COMMIT_SHA.toUpperCase(), variantId: 'coral' },
+  })
+  const plan = createPlan(staywiseVite)
+  assert.equal(plan.recipeId, 'FM-01')
+  assert.equal(plan.recipeStatus, 'planned')
+  assert.equal(plan.template?.commitSha.toLowerCase(), FORMA_COMMIT_SHA)
+  assert.ok(plan.networkAccess.some((entry) => entry.includes('github.com')))
+  assert.equal(resolveSelection(parseSelection({
+    ...nextConfig,
+    styling: undefined,
+    template: { adapterId: 'template.forma', templateId: 'modern-admin', commitSha: FORMA_COMMIT_SHA },
+  })).recipe.id, 'FM-02')
+  assert.throws(() => resolveSelection(parseSelection({
+    ...nextConfig,
+    styling: undefined,
+    template: { adapterId: 'template.forma', templateId: 'focus-planner', commitSha: FORMA_COMMIT_SHA },
+  })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  assert.throws(() => parseSelection({
+    ...reactConfig,
+    styling: undefined,
+    template: { adapterId: 'template.forma', templateId: 'staywise-host-dashboard', commitSha: 'main' },
+  }), GeneratorError)
 })
 
 test('rejects malformed types, unknown fields, unsupported managers and bad enums', () => {

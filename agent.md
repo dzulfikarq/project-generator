@@ -25,7 +25,7 @@ Version: Draft 0.2; 2026-11-11. Scope: documentation, design, architecture, impl
 - Built-in reviewed adapter whitelist; no arbitrary third-party adapter code execution in V1.
 - Resolver works read-only and blocks invalid combinations before output changes.
 - npm is default for JS/TS. Never pretend it replaces Go Modules, Composer, uv or pub.
-- Forma template install uses existing vetted contract, authenticated metadata, pinned source and hash validation.
+- Forma local CLI integration uses a pinned private Git commit, configured Git Credential Manager, existing exporter/installer, and content SHA-256 validation; no token input, signed-publisher claim, recipe promotion, or Forma-repo edits.
 - Windows safety: reject clobbering existing destination; stage into owned temp; cancel and rollback only owned files; no generic shell commands, unsafe path interpolation or hidden elevation.
 - Source code, logs, screenshots, generated `.env.example` and manifests must not contain real credentials.
 

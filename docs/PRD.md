@@ -4,7 +4,7 @@
 |---|---|
 | Product | Project Generator Desktop |
 | Version | **V1 — Draft 0.1** |
-| Date | 2026-11-11 |
+| Date | 2026-11-13 |
 | Status | Discovery draft, pending review and explicit implementation baseline approval |
 | Platform | Windows 11 first; x64 primary |
 | Owners/reviewers | Not assigned; do not fabricate approvals |
@@ -26,7 +26,7 @@ Developers repeatedly set up framework scaffolds, package managers, code quality
 - P0: Use **npm by default** for Node ecosystem projects; retain non-Node ecosystem-native package managers.
 - P0: Create honest, stack-specific documentation rather than generic or invented technical claims.
 - P0: Maintain traceability across requirements, adapters, tests, and release approvals.
-- P1: Integrate the existing private Forma registry/installer for verified React + Vite and Next.js adapters.
+- P1: Integrate the existing private Forma exporter/installer for independently verified template + React + Vite / Next.js combinations. Local CLI integration exists; release acceptance remains pending.
 - P1: Offer saved presets, local project history, advanced diagnostics and optional Docker Compose.
 - V1.1: Expo/React Native and Flutter workflows, followed by mobile-specific testing infrastructure.
 
@@ -86,7 +86,7 @@ All V1 framework lists below are **targets**, not shipped or tested capabilities
 - Styling: recommended framework default, plain CSS, CSS Modules / Vue scoped styles where native, Sass/SCSS, Tailwind CSS, Bootstrap.
 - UI component systems by framework: React/Next shadcn/ui, MUI, Ant Design; Vue/Nuxt PrimeVue, Vuetify; Angular Angular Material, PrimeNG; mobile uses its own UI systems.
 - Component libraries are **independent from styling**, but compatibility rules can restrict combinations; never install several design systems by default.
-- Forma: only enabled for catalog/template entries whose adapter + manifest + package manager are verified; use existing manifest, installer and SHA validation.
+- Forma: only enabled for catalog/template entries whose adapter + manifest + package manager are verified; use existing exporter, manifest, installer and SHA validation. Current CLI integrations remain planned pending independent acceptance.
 
 ## 5. Functional requirements
 
@@ -114,7 +114,7 @@ IDs are stable and used by QA, design and decision records. P0 must work for an 
 | PRD-018 | P0 | Fullstack workspace presets | Verified cross-language recipe can scaffold frontend/backend separately with API URL config |
 | PRD-019 | P0 | Security and permissions | No arbitrary shell, no secret echo, scoped process execution, no remote push without action |
 | PRD-020 | P0 | Offline/online distinction | Existing caches may work offline; downloads and installs explain network need |
-| PRD-021 | P1 | Forma integration | Authenticated private registry fetch; use SHA/manifest checks; only verified adapters |
+| PRD-021 | P1 | Forma integration | Authenticated immutable private-source fetch; use existing exporter/installer and SHA/manifest checks; only verified template/framework combinations |
 | PRD-022 | P1 | Save and reuse presets | Export/import user-selected options with schema/version migration |
 | PRD-023 | P1 | Project history | Local list with generated path, stack, status and reopen option; no code indexing |
 | PRD-024 | P1 | Docker Compose integration | Opt-in DB compose with healthcheck, ports and clear lifecycle responsibility |
@@ -204,7 +204,7 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for component boundaries, Windows stagi
 - FS-03 Angular + NestJS + PostgreSQL.
 - FS-04 Next + NestJS + PostgreSQL.
 - FS-05 React + Express + MongoDB + Mongoose.
-- FM-01 React + Vite + Forma Staywise, FM-02 Next.js + Forma Staywise (Forma externally tested, generator integration planned).
+- FM-01 React + Vite + Forma; FM-02 Next.js App Router + Forma. Generator local development integration exists for the exact template/framework combinations in [Phase 02 evidence](qa/evidence/phase-02-forma-local-integration.md); all remain planned.
 
 Each recipe requires a specific integration test and may be disabled until that evidence exists. All DB recipes must declare what is provisioned vs configured only.
 
@@ -224,7 +224,7 @@ Each recipe requires a specific integration test and may be disabled until that 
 - OPEN-001: Node CLI runtime: require system Node in V1 or bundle engine as sidecar? Need packaging PoC.
 - OPEN-002: Stable public repo name/branding and licensing.
 - OPEN-003: Public plugin SDK and sandbox, deliberately excluded from V1.
-- OPEN-004: Exact Forma private registry authentication scheme and entitlement handling.
+- OPEN-004: Review Git Credential Manager-based Forma access scope, cache protections, and entitlement policy; CLI does not store or accept credentials.
 - OPEN-005: Whether V1 shipping minimum must include every named catalog framework, or only tested prioritized presets; recommendation: tested presets govern availability.
 - OPEN-006: How to expose project-level validation for `existing-service` databases without mandatory local DB process.
 

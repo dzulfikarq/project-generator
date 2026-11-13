@@ -1,4 +1,5 @@
 import type { AdapterManifestV1, RecipeManifestV1 } from './types.js'
+import { FORMA_COMMIT_SHA, FORMA_INTEGRATIONS, FORMA_TEMPLATES } from './forma-catalog.js'
 
 const nodeRequirement = {
   executableId: 'node',
@@ -27,8 +28,8 @@ export const ADAPTERS: readonly AdapterManifestV1[] = [
     packageManagers: ['npm'],
     prerequisites: [nodeRequirement, npmRequirement],
     capabilities: ['typescript', 'plain-css', 'npm-lockfile', 'build', 'lint', 'http-smoke'],
-    compatibleWith: ['styling.css'],
-    incompatibleWith: ['styling.tailwind', 'database.*', 'backend.*', 'template.*'],
+    compatibleWith: ['styling.css', 'template.forma'],
+    incompatibleWith: ['styling.tailwind', 'database.*', 'backend.*'],
     recipeEvidenceIds: [],
   },
   {
@@ -43,8 +44,8 @@ export const ADAPTERS: readonly AdapterManifestV1[] = [
     packageManagers: ['npm'],
     prerequisites: [{ ...nodeRequirement, versionRange: '>=20.9.0' }, npmRequirement],
     capabilities: ['app-router', 'typescript', 'tailwind', 'npm-lockfile', 'build', 'lint', 'http-smoke'],
-    compatibleWith: ['styling.tailwind'],
-    incompatibleWith: ['styling.css', 'database.*', 'backend.*', 'template.*'],
+    compatibleWith: ['styling.tailwind', 'template.forma'],
+    incompatibleWith: ['styling.css', 'database.*', 'backend.*'],
     recipeEvidenceIds: [],
   },
   {
@@ -77,6 +78,22 @@ export const ADAPTERS: readonly AdapterManifestV1[] = [
     capabilities: ['tailwind'],
     compatibleWith: ['frontend.nextjs-app'],
     incompatibleWith: ['frontend.react-vite'],
+    recipeEvidenceIds: [],
+  },
+  {
+    schemaVersion: 1,
+    id: 'template.forma',
+    adapterVersion: '0.1.0',
+    kind: 'template',
+    displayName: 'Forma private templates',
+    supportState: 'planned',
+    supportedOS: ['windows'],
+    versionConstraints: { repository: 'private GitHub repository', commit: FORMA_COMMIT_SHA },
+    packageManagers: ['npm'],
+    prerequisites: [nodeRequirement, npmRequirement],
+    capabilities: ['authenticated-source', 'immutable-commit', 'sha256-integrity', 'react-vite', 'next-app-router'],
+    compatibleWith: ['frontend.react-vite', 'frontend.nextjs-app'],
+    incompatibleWith: ['frontend.vue', 'frontend.angular', 'frontend.mobile', 'backend.*'],
     recipeEvidenceIds: [],
   },
 ] as const
@@ -124,6 +141,16 @@ export const RECIPES: readonly RecipeManifestV1[] = [
   },
 ] as const
 
-export function catalog(): { schemaVersion: 1; adapters: readonly AdapterManifestV1[]; recipes: readonly RecipeManifestV1[] } {
-  return { schemaVersion: 1, adapters: ADAPTERS, recipes: RECIPES }
+export function catalog() {
+  return {
+    schemaVersion: 1,
+    adapters: ADAPTERS,
+    recipes: RECIPES,
+    forma: {
+      repository: 'Private GitHub repository; fetched through configured Git credentials.',
+      commitSha: FORMA_COMMIT_SHA,
+      integrations: FORMA_INTEGRATIONS,
+      templates: FORMA_TEMPLATES,
+    },
+  }
 }

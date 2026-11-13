@@ -2,15 +2,15 @@
 
 | Field | Value |
 |---|---|
-| Status | **Phase 01 CLI implementation present** — FE-01/FE-02 remain planned; no recipe release-approved |
+| Status | **Phase 01 CLI + Phase 02 local Forma integration present** — FE-01/FE-02/FM-01/FM-02 remain planned; no recipe release-approved |
 | Version | 0.1.0 |
-| Date | 2026-11-11 |
+| Date | 2026-11-13 |
 | Product | Universal Project Generator Desktop |
 | Target OS | Windows 11 first |
 | Documentation inspiration | EvoPilot (PRD ↔ design ↔ decision register ↔ QA evidence) |
-| Scope | CLI kernel and React + Vite / Next.js generators only; no desktop UI |
+| Scope | CLI kernel, standalone React + Vite / Next.js generation, and optional Forma templates; no desktop UI |
 
-Planning documents remain source for requirements and boundaries. Code and observed test evidence define implemented behavior. FE-01/FE-02 have local Windows generation evidence, but remain `planned` pending full independent acceptance and review.
+Planning documents remain source for requirements and boundaries. Code and observed test evidence define implemented behavior. FE-01/FE-02 and separate Forma combinations FM-01/FM-02 have local Windows generation evidence, but remain `planned` pending independent acceptance and review.
 
 ## Vision
 
@@ -48,12 +48,12 @@ Run the CLI from source with `node packages/cli/dist/src/index.js`. Example conf
 - **Planned** means a target; do not imply it works.
 - **Experimental** requires opt-in and explicitly documented incomplete tests.
 - **Tested** is earned by independent generation, install, checks and smoke tests on target Windows machines.
-- Current Forma *external* testing for Staywise / React-Vite and Next App Router does **not** establish Project Generator integration.
+- Forma's prior external tests alone do **not** establish Project Generator support. Phase 02 local integration evidence is recorded separately; it does not promote FM-01/FM-02 or standalone FE recipes.
 
 ## Product and repo boundaries
 
 - `dzulfikarq/design-templates`: Forma — template registry, dependency manifests, validated installer, templates/themes.
-- Proposed separate `project-generator` repository — desktop shell, core CLI, technology adapters, compatibility resolver, local project registry, project documentation generator.
+- This repository — core CLI, technology adapters, compatibility resolver, and project documentation generator; desktop shell remains future work.
 - EvoPilot repository is used **only as documentation process inspiration**; there is no runtime dependency.
 
 ## Default decisions
@@ -62,7 +62,7 @@ Run the CLI from source with `node packages/cli/dist/src/index.js`. Example conf
 - Go: Go modules. PHP: Composer. Python: uv (pip is a future/conditional adapter). Flutter: pub.
 - Default styling: framework-recommended CSS approach; user can choose Bootstrap, Tailwind, Sass/SCSS, etc. if compatible.
 - Output location selected by user; never overwrite existing project content.
-- No hidden downloads, Docker launch, credential access, remote push, or destructive operations.
+- No hidden downloads, Docker launch, remote push, or destructive operations. Forma fetch occurs only during explicit generation and uses the configured Git Credential Manager; config accepts no tokens.
 
 ## Source references verified during planning
 
@@ -91,3 +91,18 @@ project-generator inspect --output <folder> --json
 ```
 
 `npm run build` builds the Rust Windows supervisor and copies local sidecar into ignored `packages/core/native/`; no binary is committed or installer packaged yet. Windows Job Objects manage owned process lifetime, not filesystem/network isolation. `generate` is explicit execution consent. Planned recipes are blocked by default; `--development-allow-planned` is development-only and does not change recipe status. npm installs can execute dependency lifecycle scripts and are not sandboxed. No automatic Git, Docker, remote push, or hidden installs. See [Phase 01 evidence](docs/qa/acceptance-matrix.md).
+
+## Optional Forma templates (CLI only)
+
+`catalog --json` lists the pinned templates. Add `template` to a config with `adapterId: "template.forma"`, a catalog `templateId`, the catalog commit SHA, and optional `variantId`; omit standalone `styling`. Supported local combinations are Staywise and Modern Admin on React + Vite and Next.js App Router, plus Focus Planner on React + Vite. See [compatibility evidence](docs/qa/evidence/phase-02-forma-local-integration.md).
+
+```json
+"template": {
+  "adapterId": "template.forma",
+  "templateId": "staywise-host-dashboard",
+  "commitSha": "5cf3c4e5b7b0bc454a653f58d12237c56f2548e2",
+  "variantId": "coral"
+}
+```
+
+Forma recipes FM-01/FM-02 remain `planned` and blocked in normal generation. Local verification requires `--development-allow-planned`; this does not grant support status. On cache miss, generation fetches the pinned private Git commit through configured Git Credential Manager, then invokes Forma's existing exporter and installer. SHA-256 detects bundle changes but is not a signed publisher attestation. Interrupted fetch/export can leave partial cache directories; generator does not delete or overwrite ambiguous cache data. Second-account ACL denial and lifecycle-script isolation remain release gates.

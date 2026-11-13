@@ -13,6 +13,7 @@ import { bindOwnedStageProjectIdentity, createOwnedStage, cleanupOwnedStage, cle
 import { resolveNpmTool, supportsNpm } from './toolchain.js'
 import { assertGenerationAllowed } from './native-supervisor.js'
 import { resolveSelection } from './resolver.js'
+import { installFormaTemplate, type FormaInstallEvidence } from './forma.js'
 import type { DoctorReport, JobEventV1, JobStatus, ProjectSelectionV1, RecipeManifestV1, ResolvedSelection, StageId, ValidationOutcome } from './types.js'
 
 export interface GenerateOptions {
@@ -45,7 +46,8 @@ const fixedStageOwners: Partial<Record<StageId, string>> = {
   finalizing: 'core',
 }
 
-function stageOwner(stage: StageId, frontendId: string): string {
+function stageOwner(stage: StageId, frontendId: string, isForma = false): string {
+  if (stage === 'scaffolding' && isForma) return 'template.forma'
   return fixedStageOwners[stage] ?? frontendId
 }
 
@@ -274,7 +276,8 @@ function checkOutcome(id: string, result: ProcessResult): ValidationOutcome {
 }
 
 function emitValidation(emit: ReturnType<typeof createEventEmitter>, outcome: ValidationOutcome, frontendId: string): void {
-  emit({ type: 'validation', stageId: 'validating', stageOwner: frontendId, stageStatus: outcome.status === 'pass' ? 'passed' : 'failed', message: `${outcome.id}: ${outcome.message}`, ...(outcome.status === 'fail' ? { code: 'GEN_VALIDATE_FAILED' } : {}) })
+  const stageStatus = outcome.status === 'pass' ? 'passed' : outcome.status === 'skipped' ? 'skipped' : 'failed'
+  emit({ type: 'validation', stageId: 'validating', stageOwner: frontendId, stageStatus, message: `${outcome.id}: ${outcome.message}`, ...(outcome.status === 'fail' ? { code: 'GEN_VALIDATE_FAILED' } : {}) })
 }
 
 async function freePort(): Promise<number> {
@@ -294,15 +297,15 @@ async function servedPageSmoke(
   projectPath: string,
   stage: OwnedStage,
   dirs: { home: string; temp: string },
-  recipeId: 'FE-01' | 'FE-02',
+  frontendId: 'frontend.react-vite' | 'frontend.nextjs-app',
   signal: AbortSignal | undefined,
   log: JobLog,
 ): Promise<ValidationOutcome> {
   const port = await freePort()
-  const cliPath = recipeId === 'FE-01'
+  const cliPath = frontendId === 'frontend.react-vite'
     ? win32.join(projectPath, 'node_modules', 'vite', 'bin', 'vite.js')
     : win32.join(projectPath, 'node_modules', 'next', 'dist', 'bin', 'next')
-  const args = recipeId === 'FE-01'
+  const args = frontendId === 'frontend.react-vite'
     ? ['preview', '--host', '127.0.0.1', '--port', String(port), '--strictPort']
     : ['start', '--hostname', '127.0.0.1', '--port', String(port)]
   const running = await startNodeProcess({
@@ -377,8 +380,11 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
   let currentStage: StageId = 'preflight'
   const validations: ValidationOutcome[] = []
   const resolved = resolveSelection(selection)
-  const stageStart = (id: StageId): void => { currentStage = id; emit({ type: 'stage-started', stageId: id, stageOwner: stageOwner(id, resolved.recipe.frontend), stageStatus: 'running', message: `${id} started.` }) }
-  const stageFinish = (id: StageId, status: 'passed' | 'failed' | 'skipped', message = `${id} completed.`): void => { emit({ type: 'stage-finished', stageId: id, stageOwner: stageOwner(id, resolved.recipe.frontend), stageStatus: status, message }) }
+  const isForma = Boolean(selection.template)
+  const eventOwner = (id: StageId): string => stageOwner(id, resolved.recipe.frontend, isForma)
+  const stageStart = (id: StageId): void => { currentStage = id; emit({ type: 'stage-started', stageId: id, stageOwner: eventOwner(id), stageStatus: 'running', message: `${id} started.` }) }
+  const stageFinish = (id: StageId, status: 'passed' | 'failed' | 'skipped', message = `${id} completed.`): void => { emit({ type: 'stage-finished', stageId: id, stageOwner: eventOwner(id), stageStatus: status, message }) }
+  let formaEvidence: FormaInstallEvidence | undefined
 
   emit({ type: 'job-started', stageOwner: 'core', status: 'running', message: `Generation job ${jobId} started.` })
   emit({ type: 'warning', stageOwner: 'core', code: 'GEN_LIFECYCLE_SCRIPTS', message: 'npm install can execute third-party lifecycle scripts; execution is not sandboxed.' })
@@ -406,18 +412,23 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
 
     stageStart('scaffolding')
     throwIfCancelled(options.signal, currentStage)
-    await executeScaffold(stage, resolved, npmTool.cliPath, dirs, log, options.signal)
+    if (selection.template) {
+      formaEvidence = await installFormaTemplate(stage, selection.template, resolved.recipe.frontend, selection.project.name, dirs, log, options.signal)
+    } else {
+      await executeScaffold(stage, resolved, npmTool.cliPath, dirs, log, options.signal)
+    }
     const projectPath = stage.childPath
     await bindOwnedStageProjectIdentity(stage, selection.project.name)
     await verifyOwnedStageProjectIdentity(stage, selection.project.name)
     const identityOutcome: ValidationOutcome = { id: 'scaffold-identity', status: 'pass', message: 'Generated package identity matches the requested name.' }
     validations.push(identityOutcome)
-    emit({ type: 'validation', stageId: 'scaffolding', stageOwner: resolved.recipe.frontend, stageStatus: 'passed', message: identityOutcome.message })
+    emit({ type: 'validation', stageId: 'scaffolding', stageOwner: eventOwner('scaffolding'), stageStatus: 'passed', message: identityOutcome.message })
     stageFinish('scaffolding', 'passed')
 
     stageStart('configuring')
     throwIfCancelled(options.signal, currentStage)
-    const generatedFiles = await writeProjectDocs(stage, resolved, process.version.replace(/^v/, ''), npmTool)
+    const generatedFiles = await writeProjectDocs(stage, resolved, process.version.replace(/^v/, ''), npmTool, formaEvidence)
+    if (formaEvidence) generatedFiles.push('FORMA-INSTALL.md', 'INSTALL.md', 'forma.install.json', 'forma-install-report.json')
     stageFinish('configuring', 'passed')
 
     stageStart('installing')
@@ -438,7 +449,14 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
 
     stageStart('validating')
     throwIfCancelled(options.signal, currentStage)
-    const checks: { id: string; path: string; args: string[] }[] = resolved.recipe.id === 'FE-01'
+    const checks: { id: string; path: string; args: string[] }[] = selection.template
+      ? [
+        { id: 'typecheck', path: win32.join(projectPath, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['--noEmit'] },
+        ...(resolved.recipe.frontend === 'frontend.react-vite'
+          ? [{ id: 'build', path: win32.join(projectPath, 'node_modules', 'vite', 'bin', 'vite.js'), args: ['build'] }]
+          : [{ id: 'build', path: win32.join(projectPath, 'node_modules', 'next', 'dist', 'bin', 'next'), args: ['build'] }]),
+      ]
+      : resolved.recipe.frontend === 'frontend.react-vite'
       ? [
         { id: 'lint', path: win32.join(projectPath, 'node_modules', 'eslint', 'bin', 'eslint.js'), args: ['.'] },
         { id: 'typecheck', path: win32.join(projectPath, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['-b'] },
@@ -456,13 +474,19 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       emitValidation(emit, outcome, resolved.recipe.frontend)
       if (result.exitCode !== 0) throw mappedProcessError('validating', result)
     }
+    if (selection.template) {
+      const lint: ValidationOutcome = { id: 'lint', status: 'skipped', message: 'The pinned Forma installer does not define a lint script or install a lint tool.' }
+      validations.push(lint)
+      emitValidation(emit, lint, resolved.recipe.frontend)
+    }
     throwIfCancelled(options.signal, currentStage)
-    const smoke = await servedPageSmoke(projectPath, stage, dirs, resolved.recipe.id, options.signal, log)
+    const smoke = await servedPageSmoke(projectPath, stage, dirs, resolved.recipe.frontend, options.signal, log)
     validations.push(smoke)
     emitValidation(emit, smoke, resolved.recipe.frontend)
-    const allPassed = validations.every((item) => item.status === 'pass')
+    const allPassed = validations.every((item) => item.status === 'pass'
+      || (selection.template !== undefined && item.id === 'lint' && item.status === 'skipped'))
     if (!allPassed) throw userError('GEN_VALIDATE_FAILED', 'validating', 'One or more required checks did not pass.', 'Review the local redacted job log and retry.')
-    await writeProjectManifest(stage, resolved, process.version.replace(/^v/, ''), npmTool, validations, generatedFiles)
+    await writeProjectManifest(stage, resolved, process.version.replace(/^v/, ''), npmTool, validations, generatedFiles, formaEvidence)
     stageFinish('validating', 'passed')
 
     stageStart('finalizing')
@@ -496,7 +520,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       targetModified: committed || finalizeUnconfirmed,
     }, { cause: original })
     stageFinish(currentStage, detail.code === 'GEN_CANCELLED' ? 'skipped' : 'failed', detail.message)
-    emit({ type: detail.code === 'GEN_CANCELLED' ? 'warning' : 'error', stageId: currentStage, stageOwner: stageOwner(currentStage, resolved.recipe.frontend), code: detail.code, message: detail.message })
+    emit({ type: detail.code === 'GEN_CANCELLED' ? 'warning' : 'error', stageId: currentStage, stageOwner: eventOwner(currentStage), code: detail.code, message: detail.message })
     if (stage && !committed && preserveStage) {
       emit({ type: 'warning', stageId: 'staging', stageOwner: 'core', code: 'GEN_STAGING_LEFTOVER', message: finalizeUnconfirmed
         ? 'Owned staging was retained because native finalization outcome could not be confirmed.'

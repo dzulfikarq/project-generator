@@ -61,10 +61,11 @@ export function parseSelection(value: unknown): ProjectSelectionV1 {
   const styling = optionalObject(root.styling, 'styling', ['adapterId', 'uiLibraryId'], ['adapterId'])
   if (styling) noUnknownStrings(styling, 'styling', ['adapterId'], ['uiLibraryId'])
 
-  const template = optionalObject(root.template, 'template', ['adapterId', 'templateId', 'commitSha'], ['adapterId', 'templateId', 'commitSha'])
+  const template = optionalObject(root.template, 'template', ['adapterId', 'templateId', 'commitSha', 'variantId'], ['adapterId', 'templateId', 'commitSha'])
   if (template) {
-    noUnknownStrings(template, 'template', ['adapterId', 'templateId', 'commitSha'])
+    noUnknownStrings(template, 'template', ['adapterId', 'templateId', 'commitSha'], ['variantId'])
     if (template.adapterId !== 'template.forma') throw configError('template.adapterId must be "template.forma".')
+    if (!/^[a-f0-9]{40}$/i.test(template.commitSha as string)) throw configError('template.commitSha must be a full 40-character commit SHA.')
   }
 
   if (!['minimal', 'standard', 'full'].includes(root.documentation as string)) throw configError('documentation must be minimal, standard, or full.')
@@ -102,6 +103,7 @@ export function parseSelection(value: unknown): ProjectSelectionV1 {
       adapterId: 'template.forma',
       templateId: template.templateId as string,
       commitSha: template.commitSha as string,
+      ...(template.variantId === undefined ? {} : { variantId: template.variantId as string }),
     } }),
     documentation: root.documentation as DocumentationMode,
     git: { initialize, initialCommit },

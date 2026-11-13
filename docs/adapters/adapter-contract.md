@@ -37,7 +37,7 @@ V1 does not execute unreviewed third-party adapters. New adapters are repository
 
 ## 3. Proposed TypeScript-facing contract (illustrative; not identical to Phase 01 code)
 
-Phase 01 implements selection and runtime types in `packages/core/src/types.ts`, strict parsing in `packages/core/src/schema.ts`, and recipe metadata in `packages/core/src/catalog.ts`. These types intentionally cover only FE-01/FE-02; the interfaces below remain the target contract for future adapters and components.
+Phase 01 implements standalone FE-01/FE-02 selection; Phase 02 adds planned Forma FM-01/FM-02 selection and integration in the same files. Broader interfaces below remain a target contract for future adapters and components. No integration is release-approved.
 
 ```ts
 type SupportState =
@@ -164,7 +164,7 @@ Order of operations (all read-only through the review stage):
 3. Resolve selected adapters and exact version ranges.
 4. Check OS/runtime requirements, manager compatibility and recipe availability.
 5. Check framework/styling/UI combinations, separate backend and data mapper/DB pairing.
-6. Check Forma template compatibility, signed/pinned source identity and available auth/cache.
+6. Check Forma template compatibility, pinned source identity and available auth/cache. The current integration pins a full Git commit and verifies SHA-256, but does not verify a publisher signature.
 7. Compute dependency DAG, file ownership rules, expected lockfiles and validations.
 8. Emit a stable sanitized plan and explicit side-effect list.
 9. If unsupported, return typed explanation and alternatives; do not auto-change selection.
@@ -228,16 +228,16 @@ Security requirements:
 
 **Not part of this contract:** creating/updating template definitions or hosting the registry. These belong to Forma.
 
-Proposed integration:
+Current local-development integration:
 
-1. Authenticated metadata fetch from private GitHub or local verified cache.
-2. Resolve exact `templateId`, version, full commit SHA, target adapter, dependency manifests and installer version.
-3. Check supported target and package manager; validate manifest schema and SHA-256 artifacts.
-4. Install only through the existing vetted Forma installer, not arbitrary copy of React source into another framework.
-5. Run final build, typecheck, browser smoke where relevant and document evidence.
-6. Record template and source provenance without credentials; avoid automatic template updates post-generation.
+1. Catalog metadata is a reviewed source snapshot; on generation cache miss, fetch only the allowlisted private Git repository at a full immutable commit through configured Git Credential Manager.
+2. Resolve exact `templateId`, version, commit, content hash, target adapter and npm manager before any fetch.
+3. Export with Forma's existing exporter; key cache by commit/template/version/content SHA-256. Invoke Forma's existing installer, which validates the bundle manifest and paths.
+4. Install only through the existing Forma installer, not arbitrary copying of React source into another framework.
+5. Run npm install, template typecheck/build and HTTP smoke; run browser smoke separately for local evidence. Lint is skipped when Forma provides no lint tool.
+6. Record template/source provenance without credentials or private repository URLs in Project Generator's generated user docs and `.project-generator/manifest.json`. No automatic template updates post-generation.
 
-A Forma template being `tested` in the Forma project does **not** mean its Project Generator end-to-end integration is tested; both sides need evidence.
+A Forma template being `tested` in Forma does **not** by itself mean its Project Generator integration is supported. Local evidence is recorded at [`phase-02-forma-local-integration.md`](../qa/evidence/phase-02-forma-local-integration.md); recipes remain `planned`. SHA-256 detects payload changes but is not a signed publisher attestation. Interrupted fetch/export can leave partial cache directories; ambiguous data is not removed automatically. Lifecycle scripts remain unsandboxed, second-account ACL denial is untested, and process-crash recovery does not claim power-loss durability.
 
 ## 10. Structured event contract
 

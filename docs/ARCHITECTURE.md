@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Version | V1 design draft 0.2 |
-| Date | 2026-11-11 |
+| Date | 2026-11-13 |
 | Status | **Design draft; Phase 01 CLI implemented; architecture/release review pending** |
 | Product baseline | [PRD](PRD.md) |
 | Interface contract | [Adapter Contract](adapters/adapter-contract.md) |
@@ -51,7 +51,7 @@ Desktop UI will be introduced in a later phase. Phase 1 ships **Engine + CLI + b
 
 ### Phase 01 implementation snapshot
 
-Current repository implements two npm workspaces: `packages/core` owns schema/resolution, plans, doctor, generation jobs, process execution, staging and project docs; `packages/cli` owns command parsing and JSON/JSONL output. A Rust Windows helper now owns workload Job Objects and native staging create/cleanup/finalize; ordinary Node staging writes remain path-based. The helper is built locally but not installer-packaged. No Tauri UI, backend/database adapters, or Forma integration exists. FE-01/FE-02 remain `planned`; normal generation blocks them. `--development-allow-planned` is an evidence-gathering switch, not a support-status override.
+Current repository implements two npm workspaces: `packages/core` owns schema/resolution, plans, doctor, generation jobs, process execution, staging and project docs; `packages/cli` owns command parsing and JSON/JSONL output. Core includes a pinned Forma catalog, Git Credential Manager-backed private source fetch, SHA-256 bundle validation/cache, and calls Forma's existing exporter and installer. Forma remains a separate, unmodified repository. A Rust Windows helper owns workload Job Objects and native staging create/cleanup/finalize; ordinary Node staging writes remain path-based. The helper is built locally but not installer-packaged. No Tauri UI or backend/database adapters exist. FE-01/FE-02 and FM-01/FM-02 remain `planned`; normal generation blocks them. `--development-allow-planned` is an evidence-gathering switch, not a support-status override. See [Phase 02 local evidence](qa/evidence/phase-02-forma-local-integration.md).
 
 ## 3. Proposed repository boundaries
 
@@ -209,7 +209,7 @@ Use one stable manifest per adapter + one reviewed recipe manifest per releaseab
 4. Validate npm default (Node ecosystem); Go Modules / Composer / uv remain independent.
 5. Validate styling and component choices; Bootstrap is web-only, Expo/Flutter use native styling.
 6. Validate DB/ORM/driver combinations and service provisioning mode.
-7. If Forma selected, validate manifest, target renderer/adapter, package manager and pinned SHA.
+7. If Forma selected, resolve only a pinned catalog template and tested framework mapping; fetch/cache only during explicit generation; invoke the existing exporter/installer and verify its SHA-256 manifest. Hashes do not establish publisher identity.
 8. Resolve to a named recipe with a QA-backed support state; do not automatically swap technologies.
 9. Return a plan or actionable blocked reason.
 
@@ -224,7 +224,7 @@ Use one stable manifest per adapter + one reviewed recipe manifest per releaseab
 | Engine launch | Local `node <built-cli>` | Bundled Node runtime/sidecar **or** detected system Node after Windows PoC |
 | UI ⇄ engine | CLI JSON/JSONL events | Validated Tauri command API / scoped sidecar bridge |
 | Persistence | Project artifacts, local redacted job reports | JSON settings/history first; SQLite only if justified |
-| Credentials | None needed in FE-01/FE-02 | Windows secure credential store for optional Forma auth |
+| Credentials | None needed in standalone FE-01/FE-02 | Configured Git Credential Manager for local Forma fetch; no app-managed token or credential-store implementation |
 
 **OPEN-001 remains unresolved:** do not claim the distributed desktop app can run on a PC without Node until packaging PoC passes on a clean Windows machine. Tauri plugin-shell limits command and argument scopes; keep the ultimate OS process privileges narrowly scoped (see https://v2.tauri.app/reference/javascript/shell/). Any custom native bridge must have equivalent validation.
 
@@ -257,7 +257,7 @@ Never return a generic success if stage validation is not run. A successful buil
 
 Threats: malicious project name/path; compromised manifest/registry; argument injection; dependency lifecycle scripts; symlink/junction swaps; secrets in diagnostics; TOCTOU target race; unauthorized Docker/GitHub actions. Mitigation: schema and length limits, path canonicalization and reparse-point checks, exact allowlisted processes, pinned hashes, scoped credentials, no arbitrary executable plugins, generate in owned workspace, deterministic cleanup policy, no hidden network/elevated operations. These controls require Windows evidence; design text alone is not a verified mitigation.
 
-Forma private access is optional P1 and cannot be implemented until access contract and safe credential path are agreed. Never require Forma to generate an ordinary React or Next starter.
+Forma private access is implemented for local CLI development through Git Credential Manager, with a pinned source and content-addressed package cache. It remains a proposal pending independent security review; partial cache directories are preserved, not automatically deleted. Never require Forma to generate an ordinary React or Next starter. No publisher signature or same-account lifecycle isolation is claimed.
 
 ## 11. Quality and performance instrumentation
 

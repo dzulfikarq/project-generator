@@ -1,6 +1,6 @@
 # Roadmap — Project Generator Desktop V1
 
-Status: **Phase 01 bounded local-development acceptance recorded; no recipe release-approved. Forma integration is next.** Date: 2026-11-13.
+Status: **Phase 01 bounded acceptance and Phase 02 local Forma integration/evidence present; no recipe release-approved.** Date: 2026-11-13.
 
 ## Phase 0 — Specification and governance
 
@@ -16,15 +16,15 @@ Architecture specification: [`ARCHITECTURE.md`](ARCHITECTURE.md). UX specificati
 - Local Windows E2E evidence exists for FE-01 and FE-02, using the explicit development-only planned-recipe override; see [QA evidence](qa/acceptance-matrix.md).
 - **Phase gate remains open:** broader security acceptance, independent review, and recipe promotion have not occurred. Both recipes stay `planned` and blocked in normal generation.
 
-## Phase 2 — Forma integration (local development)
+## Phase 2 — Forma integration (local development; implementation present)
 
 - Integrate private `dzulfikarq/design-templates` catalog through its existing portable exporter and installer; do not duplicate either implementation or modify Forma.
 - Fetch with authenticated Git access, pin full immutable commit SHA, verify exported SHA-256 manifest, and cache by source commit/template/version/integrity. Never persist credentials in config, cache metadata, logs, or generated projects.
 - Add opt-in template selection to config, resolver, plan, and CLI. Initially allow only Forma entries marked `tested` for the selected React + Vite or Next.js adapter; reject every incompatible pair before writes or network access.
 - Run Forma installation inside Project Generator's owned staging transaction; preserve cancellation, journal recovery, no-overwrite, and existing non-Forma generation. npm remains generated-project default; disclose and require explicit `generate` consent for lifecycle scripts.
-- Validate Staywise first, then other already-tested compatible catalog entries, with Windows E2E, npm install, lint/typecheck/build, and browser smoke as each template supports. Use the development-only planned-recipe override; keep FE-01/FE-02 `planned` and do not promote recipes.
+- Local Windows E2E covers Staywise and Modern Admin on both frameworks, Focus Planner on React + Vite, plus standalone FE-01 regression. npm install, typecheck/build, HTTP smoke, and supported browser smokes passed; lint is unavailable in Forma installs. Use the development-only planned-recipe override; keep FE-01/FE-02/FM-01/FM-02 `planned` and do not promote recipes. See [Phase 02 evidence](qa/evidence/phase-02-forma-local-integration.md).
 - Process-crash recovery is the accepted local-development model; power-loss durability is not claimed. Second-account ACL denial remains a public-release gate.
-- Output: evidence-backed local Forma integrations for FE-01/FE-02 only; no desktop UI, framework expansion, or public-release approval.
+- Output: evidence-backed local FM-01/FM-02 integrations using the FE-01/FE-02 framework adapters; no desktop UI, framework expansion, or public-release approval.
 
 ## Phase 3 — Web/frontend breadth and styling
 

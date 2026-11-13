@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Version | V1 UX draft 0.2 |
-| Date | 2026-11-11 |
+| Date | 2026-11-13 |
 | Status | **Proposed; no implemented UI, no tested flows** |
 | Target | Windows 11 desktop, keyboard/mouse first, Windows scaling aware |
 | References | [`docs/PRD.md`](docs/PRD.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/qa/acceptance-matrix.md`](docs/qa/acceptance-matrix.md) |
@@ -47,7 +47,7 @@ Application
     └── Privacy & Logs
 ```
 
-The initial CLI phase does **not** implement these UI routes; this specification is for the later Tauri desktop phase. Desktop V1 route availability is determined by features actually implemented and tested. Hide—not create an inert page for—P1 functionality not yet built.
+The CLI has a config-driven Forma integration, but does **not** implement these UI routes; this specification is for the later Tauri desktop phase. Desktop V1 route availability is determined by features actually implemented and tested. Hide—not create an inert page for—P1 functionality not yet built.
 
 ## 3. Layout and visual foundation
 
@@ -85,7 +85,7 @@ Generation running → Cancel → explicit confirmation explaining owned tempora
 
 ### FLOW-005 — Optional Forma template (P1)
 
-Choose supported React/Next recipe → Templates → authenticated catalog (no private URLs/tokens in UI/logs) → template detail/version/theme → Review with Forma install step and network access → Generate with vetted installer → validation. Unsupported renderer, missing auth or checksum failure is blocked, not worked around by copying source arbitrarily.
+Future desktop flow: choose compatible React/Next recipe → authenticated catalog (no private URLs/tokens in UI/logs) → template/version/theme → Review with Forma install/network steps → Generate with existing exporter/installer → validation. Current CLI accepts a pinned `config.template`, fetches through configured Git Credential Manager only during explicit generation, and blocks unverified combinations. No token-entry or template-gallery UI exists.
 
 ## 5. Screen specifications
 
