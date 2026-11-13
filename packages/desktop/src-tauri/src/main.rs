@@ -1021,6 +1021,10 @@ fn send_event(channel: &Channel<DesktopEventV1>, invocation_id: &str, event: Job
         .is_ok()
 }
 
+fn cancellation_terminal_is_confirmed(status: Option<&str>, exit_code: Option<i32>) -> bool {
+    status == Some("cancelled") && exit_code == Some(5)
+}
+
 fn synthetic_event(
     job_id: &str,
     sequence: u64,
@@ -1171,7 +1175,16 @@ async fn pump_generation(
     drop(stdin.take());
     let status = timeout(Duration::from_secs(15), child.wait()).await;
     let process_succeeded = matches!(&status, Ok(Ok(exit)) if exit.success());
-    if terminal && process_succeeded && !protocol_failed {
+    let cancellation_succeeded = cancellation_terminal_is_confirmed(
+        terminal_event
+            .as_ref()
+            .and_then(|event| event.status.as_deref()),
+        match &status {
+            Ok(Ok(exit)) => exit.code(),
+            _ => None,
+        },
+    );
+    if terminal && (process_succeeded || cancellation_succeeded) && !protocol_failed {
         if let Some(event) = terminal_event {
             let _ = send_event(&channel, &invocation_id, event);
         }
@@ -1374,6 +1387,20 @@ mod tests {
             )
             .is_ok()
         );
+    }
+
+    #[test]
+    fn cli_cancel_terminal_requires_expected_cancel_exit_code() {
+        assert!(cancellation_terminal_is_confirmed(
+            Some("cancelled"),
+            Some(5)
+        ));
+        assert!(!cancellation_terminal_is_confirmed(
+            Some("cancelled"),
+            Some(4)
+        ));
+        assert!(!cancellation_terminal_is_confirmed(Some("failed"), Some(5)));
+        assert!(!cancellation_terminal_is_confirmed(Some("cancelled"), None));
     }
 
     #[test]

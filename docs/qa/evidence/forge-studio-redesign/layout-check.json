@@ -1,0 +1,185 @@
+{
+  "viewport": "1500x820 CSS px",
+  "nativeWindowsDpi": "100% / DPR 1",
+  "contentMarginsAligned": true,
+  "margins": [
+    {
+      "page": "Overview",
+      "contentLeft": 275,
+      "contentRight": 1447,
+      "gutterLeft": 34,
+      "gutterRight": 34,
+      "containerWidth": 1240
+    },
+    {
+      "page": "Create project",
+      "contentLeft": 275,
+      "contentRight": 1447,
+      "gutterLeft": 34,
+      "gutterRight": 34,
+      "containerWidth": 1240
+    },
+    {
+      "page": "Framework catalog",
+      "contentLeft": 275,
+      "contentRight": 1447,
+      "gutterLeft": 34,
+      "gutterRight": 34,
+      "containerWidth": 1240
+    },
+    {
+      "page": "Forma templates",
+      "contentLeft": 275,
+      "contentRight": 1447,
+      "gutterLeft": 34,
+      "gutterRight": 34,
+      "containerWidth": 1240
+    },
+    {
+      "page": "Recent projects",
+      "contentLeft": 275,
+      "contentRight": 1447,
+      "gutterLeft": 34,
+      "gutterRight": 34,
+      "containerWidth": 1240
+    },
+    {
+      "page": "Environment Doctor",
+      "contentLeft": 275,
+      "contentRight": 1447,
+      "gutterLeft": 34,
+      "gutterRight": 34,
+      "containerWidth": 1240
+    },
+    {
+      "page": "Settings",
+      "contentLeft": 275,
+      "contentRight": 1447,
+      "gutterLeft": 34,
+      "gutterRight": 34,
+      "containerWidth": 1240
+    }
+  ],
+  "emulatedDeviceScaleFactors": [
+    {
+      "devicePixelRatio": 1,
+      "innerWidth": 1500,
+      "innerHeight": 820,
+      "documentWidth": 1485,
+      "bodyWidth": 1485,
+      "titleWidth": 610,
+      "titleScroll": 610,
+      "leadScroll": 600,
+      "leadClient": 600,
+      "navScroll": 207,
+      "navClient": 207
+    },
+    {
+      "devicePixelRatio": 1.25,
+      "innerWidth": 1500,
+      "innerHeight": 820,
+      "documentWidth": 1485,
+      "bodyWidth": 1485,
+      "titleWidth": 610,
+      "titleScroll": 610,
+      "leadScroll": 600,
+      "leadClient": 600,
+      "navScroll": 207,
+      "navClient": 207
+    },
+    {
+      "devicePixelRatio": 1.5,
+      "innerWidth": 1500,
+      "innerHeight": 820,
+      "documentWidth": 1485,
+      "bodyWidth": 1485,
+      "titleWidth": 610,
+      "titleScroll": 610,
+      "leadScroll": 600,
+      "leadClient": 600,
+      "navScroll": 207,
+      "navClient": 207
+    }
+  ],
+  "narrowViewport": "760x640 CSS px",
+  "narrowMarginsAligned": true,
+  "narrowPages": [
+    {
+      "page": "Overview",
+      "innerWidth": 760,
+      "innerHeight": 640,
+      "documentWidth": 745,
+      "bodyWidth": 745,
+      "pageWidth": 677,
+      "pageScrollWidth": 677,
+      "contentLeft": 82,
+      "devicePixelRatio": 1
+    },
+    {
+      "page": "Create project",
+      "innerWidth": 760,
+      "innerHeight": 640,
+      "documentWidth": 745,
+      "bodyWidth": 745,
+      "pageWidth": 677,
+      "pageScrollWidth": 677,
+      "contentLeft": 82,
+      "devicePixelRatio": 1
+    },
+    {
+      "page": "Framework catalog",
+      "innerWidth": 760,
+      "innerHeight": 640,
+      "documentWidth": 745,
+      "bodyWidth": 745,
+      "pageWidth": 677,
+      "pageScrollWidth": 677,
+      "contentLeft": 82,
+      "devicePixelRatio": 1
+    },
+    {
+      "page": "Forma templates",
+      "innerWidth": 760,
+      "innerHeight": 640,
+      "documentWidth": 745,
+      "bodyWidth": 745,
+      "pageWidth": 677,
+      "pageScrollWidth": 677,
+      "contentLeft": 82,
+      "devicePixelRatio": 1
+    },
+    {
+      "page": "Recent projects",
+      "innerWidth": 760,
+      "innerHeight": 640,
+      "documentWidth": 745,
+      "bodyWidth": 745,
+      "pageWidth": 677,
+      "pageScrollWidth": 677,
+      "contentLeft": 82,
+      "devicePixelRatio": 1
+    },
+    {
+      "page": "Environment Doctor",
+      "innerWidth": 760,
+      "innerHeight": 640,
+      "documentWidth": 745,
+      "bodyWidth": 745,
+      "pageWidth": 677,
+      "pageScrollWidth": 677,
+      "contentLeft": 82,
+      "devicePixelRatio": 1
+    },
+    {
+      "page": "Settings",
+      "innerWidth": 760,
+      "innerHeight": 640,
+      "documentWidth": 745,
+      "bodyWidth": 745,
+      "pageWidth": 677,
+      "pageScrollWidth": 677,
+      "contentLeft": 82,
+      "devicePixelRatio": 1
+    }
+  ]
+}

@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Channel, invoke } from '@tauri-apps/api/core'
 import {
   canStartGeneration,
   documentationFiles,
   emptyPreferences,
+  filterFormaTemplates,
   findFrameworkRecipe,
   findRecipe,
   formaMetadataCompatible,
@@ -17,7 +18,7 @@ import {
   type Theme,
 } from './model.js'
 
-type Page = 'home' | 'create' | 'templates' | 'projects' | 'settings' | 'generation' | 'result'
+type Page = 'home' | 'create' | 'frameworks' | 'templates' | 'projects' | 'environment' | 'settings' | 'generation' | 'result'
 type WizardStep = 'details' | 'stack' | 'design' | 'docs' | 'review'
 type RecipeId = 'FE-01' | 'FE-02'
 type Documentation = 'minimal' | 'standard' | 'full'
@@ -74,6 +75,47 @@ const WIZARD_STEPS: { id: WizardStep; label: string; hint: string }[] = [
   { id: 'docs', label: 'Documentation', hint: 'Generated file set' },
   { id: 'review', label: 'Review and create', hint: 'Plan, checks, consent' },
 ]
+
+const PAGE_LABELS: Record<Page, string> = {
+  home: 'Overview',
+  create: 'Create project',
+  frameworks: 'Framework catalog',
+  templates: 'Forma gallery',
+  projects: 'Recent projects',
+  environment: 'Environment Doctor',
+  settings: 'Settings',
+  generation: 'Generation progress',
+  result: 'Project result',
+}
+
+function ForgeIcon({ className = '' }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+    <path d="M24 3.5 26.7 11l7.8 2.8-7.8 2.8L24 24l-2.7-7.4-7.8-2.8 7.8-2.8L24 3.5Z" fill="currentColor" />
+    <path d="M12 22h25l6 6H30l-4.5 5H35l4 9H9l4-9h9.5L18 28H5l7-6Z" fill="currentColor" />
+  </svg>
+}
+
+type SidebarIconName = 'home' | 'create' | 'catalog' | 'templates' | 'projects' | 'doctor' | 'settings'
+
+const SIDEBAR_GROUPS: { id: string; label: string; items: [Page, SidebarIconName, string][] }[] = [
+  { id: 'workspace', label: 'WORKSPACE', items: [['home', 'home', 'Overview'], ['projects', 'projects', 'Recent projects']] },
+  { id: 'create', label: 'CREATE', items: [['create', 'create', 'Create project']] },
+  { id: 'catalog', label: 'CATALOG', items: [['frameworks', 'catalog', 'Framework catalog'], ['templates', 'templates', 'Forma templates']] },
+  { id: 'tools', label: 'TOOLS', items: [['environment', 'doctor', 'Environment Doctor']] },
+  { id: 'preferences', label: 'PREFERENCES', items: [['settings', 'settings', 'Settings']] },
+]
+
+function SidebarIcon({ name }: { name: SidebarIconName }) {
+  return <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    {name === 'home' && <><path d="m3.5 10 8.5-7 8.5 7" /><path d="M5.5 9.5v11h13v-11M9.5 20.5v-6h5v6" /></>}
+    {name === 'create' && <path d="M12 5v14M5 12h14" />}
+    {name === 'catalog' && <path d="m8 7-5 5 5 5M16 7l5 5-5 5" />}
+    {name === 'templates' && <><rect x="4" y="4" width="6.5" height="6.5" rx="1" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1" /><rect x="4" y="13.5" width="6.5" height="6.5" rx="1" /><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1" /></>}
+    {name === 'projects' && <><circle cx="12" cy="12" r="8.5" /><path d="M12 7v5l3.5 2" /></>}
+    {name === 'doctor' && <path d="M3 12h4l3-7 4 14 3-7h4" />}
+    {name === 'settings' && <><path d="m9.9 3 .6 2.2 1.5.9 2.3-.6 1.9 3.3-1.7 1.7v1.8l1.7 1.7-1.9 3.3-2.3-.6-1.5.9L9.9 20H6.1l-.6-2.2-1.5-.9-2.3.6-1.9-3.3 1.7-1.7v-1.8L-.2 9l1.9-3.3 2.3.6 1.5-.9L6.1 3z" transform="translate(2 0.5)" /><circle cx="12" cy="12" r="3" /> </>}
+  </svg>
+}
 
 function errorDetail(error: unknown): DesktopError {
   if (typeof error === 'object' && error !== null) return error as DesktopError
@@ -139,6 +181,10 @@ function App() {
   const [storageWarning, setStorageWarning] = useState(false)
   const [settingsSaved, setSettingsSaved] = useState(false)
   const [confirmClearHistory, setConfirmClearHistory] = useState(false)
+  const [templateSearch, setTemplateSearch] = useState('')
+  const [templateCategory, setTemplateCategory] = useState('all')
+  const [templateFramework, setTemplateFramework] = useState('all')
+  const [runtimeBusy, setRuntimeBusy] = useState(false)
   const invocationRef = useRef<string | null>(null)
   const terminalEventRef = useRef<JobEvent | null>(null)
   const activeProjectRef = useRef<{ name: string; path: string; recipeId: string } | null>(null)
@@ -150,11 +196,15 @@ function App() {
   const stylingAdapters = catalog?.adapters.filter((adapter) => adapter.kind === 'styling') ?? []
   const backendAdapters = catalog?.adapters.filter((adapter) => adapter.kind === 'backend') ?? []
   const databaseAdapters = catalog?.adapters.filter((adapter) => adapter.kind === 'database') ?? []
+  const formaTemplates = catalog?.forma.templates ?? []
+  const templateCategories = [...new Set(formaTemplates.map((template) => template.category))].sort()
+  const filteredTemplates = filterFormaTemplates(formaTemplates, templateSearch, templateCategory, templateFramework)
   const selectedFrontend = frontendAdapters.find((adapter) => adapter.id === frontendId)
   const activeTemplate = catalog?.forma.templates.find((template) => template.id === templateId)
   const selectedVariant = activeTemplate?.variants.find((variant) => variant.id === templateVariantId)
   const nameError = validateProjectName(projectName)
   const parentError = validateParentDirectory(parentDirectory)
+  const parentFieldError = parentDirectory ? parentError : null
   const settingsDirectoryError = directorySetting ? validateParentDirectory(directorySetting) : null
   const templateError = activeTemplate && catalog && !formaMetadataCompatible(activeTemplate, frontendId, catalog)
     ? 'This Forma metadata entry does not declare compatibility with the selected framework.'
@@ -242,6 +292,15 @@ function App() {
     invalidateReview()
   }
 
+  function startWizardForFramework(frontend: string) {
+    const targetRecipe = catalog?.recipes.find((item) => item.frontend === frontend && (item.id === 'FE-01' || item.id === 'FE-02'))
+    if (!targetRecipe) return
+    startWizard()
+    setFrontendId(frontend)
+    setStylingId(targetRecipe.styling ?? '')
+    setManagerId(targetRecipe.manager)
+  }
+
   function navigate(next: Page) {
     if (busy || invocationId) return
     setCommandError(null)
@@ -293,6 +352,18 @@ function App() {
       setCommandError(errorDetail(cause))
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function refreshRuntime() {
+    setRuntimeBusy(true)
+    setCommandError(null)
+    try {
+      setRuntime(await invoke<Runtime>('get_runtime_status'))
+    } catch (cause) {
+      setCommandError(errorDetail(cause))
+    } finally {
+      setRuntimeBusy(false)
     }
   }
 
@@ -418,39 +489,39 @@ function App() {
 
   return <div className="app-frame">
     <aside className="sidebar">
-      <button className="brand" disabled={busy || Boolean(invocationId)} onClick={() => navigate('home')} aria-label="Project Generator home">
-        <span className="brand-mark">PG</span>
-        <span><strong>Project Generator</strong><small>LOCAL DESKTOP</small></span>
+      <button className="brand" disabled={busy || Boolean(invocationId)} onClick={() => navigate('home')} aria-label="FormaForge home">
+        <span className="brand-mark"><ForgeIcon /></span>
+        <span><strong>FormaForge</strong><small>PROJECT GENERATOR</small></span>
       </button>
       <nav className="primary-nav" aria-label="Main navigation">
-        {([
-          ['home', '⌂', 'Overview'], ['create', '+', 'Create project'], ['templates', '◈', 'Forma gallery'], ['projects', '▤', 'Recent projects'], ['settings', '⚙', 'Settings'],
-        ] as [Page, string, string][]).map(([target, icon, label]) => <button
-          key={target}
-          className={page === target ? 'nav-item active' : 'nav-item'}
-          aria-current={page === target ? 'page' : undefined}
-          disabled={(!catalog && target !== 'settings') || busy || Boolean(invocationId)}
-          onClick={() => target === 'create' ? startWizard() : navigate(target)}
-        ><span className="nav-icon" aria-hidden="true">{icon}</span>{label}</button>)}
+        {SIDEBAR_GROUPS.map(({ id, label, items }) => <div className={`nav-group nav-group-${id}`} role="group" aria-label={label} key={id}>
+          <span className="nav-group-label" aria-hidden="true">{label}</span>
+          <div className="nav-group-items">{items.map(([target, icon, itemLabel]) => <button
+            key={target}
+            className={page === target ? 'nav-item active' : 'nav-item'}
+            aria-label={itemLabel}
+            aria-current={page === target ? 'page' : undefined}
+            disabled={(!catalog && target !== 'settings') || busy || Boolean(invocationId)}
+            onClick={() => target === 'create' ? startWizard() : navigate(target)}
+          ><span className="nav-icon"><SidebarIcon name={icon} /></span>{itemLabel}</button>)}</div>
+        </div>)}
       </nav>
       <div className="sidebar-bottom">
-        <div className="engine-mini">
+        <p className="sidebar-section-label">RUNTIME STATUS</p>
+        <div className="engine-mini" role="status" aria-label="Application engine status">
           <span className={runtime?.available ? 'engine-indicator online' : 'engine-indicator'} />
           <span><strong>{runtime?.available ? 'Engine ready' : 'Checking engine'}</strong><small>{runtime?.mode === 'bundled' ? 'Bundled runtime' : 'System runtime'}</small></span>
         </div>
-        <p>Internal development build<br />No release approval</p>
+        <div className="sidebar-meta"><span className="sidebar-build-badge">LOCAL DEVELOPMENT</span><p>No release approval</p></div>
       </div>
     </aside>
 
     <main className="main-area">
       <header className="page-topbar">
-        <div className="breadcrumbs"><span>Project Generator</span><span aria-hidden="true">/</span><strong>{page === 'create' ? 'New project' : page === 'home' ? 'Overview' : page === 'templates' ? 'Forma gallery' : page === 'projects' ? 'Recent projects' : page === 'settings' ? 'Settings' : page === 'generation' ? 'Generating' : 'Project result'}</strong></div>
-        <div className="topbar-right"><StatusPill tone="warn">LOCAL ONLY · NOT RELEASE APPROVED</StatusPill><span className="avatar" aria-label="Local user">L</span></div>
+        <div className="breadcrumbs"><span>FormaForge</span><span aria-hidden="true">/</span><strong>{PAGE_LABELS[page]}</strong></div>
+        <div className="topbar-right"><span className="internal-badge"><span aria-hidden="true">⚒</span> Local development · internal use</span></div>
       </header>
 
-      {runtime?.internalDevelopmentMode && <div className="internal-banner" role="status">
-        <strong>Internal debug build.</strong> Planned-recipe override is evidence-only. It does not promote FE/FM recipes or authorize release.
-      </div>}
       {commandError && <ErrorNotice error={commandError} onDismiss={() => setCommandError(null)} />}
       {storageWarning && <div className="notice notice-warn" role="status"><span>Local settings could not be saved. Check app storage permissions.</span><button className="icon-button" aria-label="Dismiss storage warning" onClick={() => setStorageWarning(false)}>×</button></div>}
 
@@ -458,14 +529,16 @@ function App() {
 
       {page === 'home' && <section className="page-content" aria-labelledby="home-title">
         <div className="hero-row">
-          <div><p className="eyebrow">YOUR LOCAL PROJECT WORKSPACE</p><h1 id="home-title">Start something new.</h1><p className="lead">Choose a catalog-backed frontend, review every step, then create a new project in a folder you control.</p></div>
-          <button className="button primary-button hero-action" disabled={!catalog} onClick={() => startWizard()}><span aria-hidden="true">＋</span> Create project</button>
+          <div className="hero-copy"><p className="eyebrow">YOUR LOCAL DEVELOPER WORKSPACE</p><h1 id="home-title">Build your next project with FormaForge.</h1><p className="lead">A focused project generator to scaffold, configure, and launch new projects with a stack you control.</p>
+            <div className="hero-actions"><button className="button primary-button" disabled={!catalog} onClick={() => startWizard()}><span aria-hidden="true">＋</span> Create project <span aria-hidden="true">→</span></button><button className="button secondary-button" disabled={!catalog} onClick={() => navigate('templates')}><span aria-hidden="true">▦</span> Browse templates</button></div>
+          </div>
+          <div className="hero-forge" aria-hidden="true"><span className="hero-forge-disc" /><span className="hero-forge-mark"><ForgeIcon /></span></div>
         </div>
 
         <div className="overview-grid">
           <article className="overview-card engine-card">
             <div className="card-icon purple-icon" aria-hidden="true">⌘</div>
-            <div><p className="eyebrow">APPLICATION ENGINE</p><h2>{runtime?.available ? 'Ready to plan' : 'Runtime needs attention'}</h2><p>{runtime?.message ?? 'Checking the selected Node.js runtime…'}</p>{runtime?.version && <span className="subtle-tag">Node {runtime.version}</span>}</div>
+            <div><p className="eyebrow">APPLICATION ENGINE</p><h2>{runtime?.available ? 'Ready to plan' : 'Runtime needs attention'}</h2><p>{runtime?.message ?? 'Checking the selected Node.js runtime…'}</p>{runtime?.version && <span className="subtle-tag">Node.js {runtime.version}</span>}</div>
           </article>
           <article className="overview-card">
             <div className="card-icon green-icon" aria-hidden="true">✓</div>
@@ -487,7 +560,7 @@ function App() {
         </section>
 
         <section className="promo-card">
-          <div className="promo-mark" aria-hidden="true">F</div><div><p className="eyebrow">OPTIONAL STARTING POINT</p><h2>Explore Forma templates</h2><p>Browse pinned metadata and declared framework compatibility. Forma compatibility does not mean Project Generator support.</p></div><button className="button secondary-button" onClick={() => navigate('templates')}>Browse gallery <span aria-hidden="true">→</span></button>
+          <div className="promo-mark"><ForgeIcon /></div><div><p className="eyebrow">OPTIONAL STARTING POINT</p><h2>Explore Forma templates</h2><p>Browse pinned metadata and declared framework compatibility. Forma compatibility does not mean FormaForge support.</p></div><button className="button secondary-button" disabled={!catalog} onClick={() => navigate('templates')}>Browse gallery <span aria-hidden="true">→</span></button>
         </section>
 
         <section className="recovery-strip"><div><strong>Need to inspect an interrupted run?</strong><p>Read-only recovery inspection does not apply changes.</p></div><button className="button quiet-button" disabled={busy} onClick={() => void inspectRecovery()}>Inspect recovery</button></section>
@@ -495,24 +568,22 @@ function App() {
       </section>}
 
       {page === 'create' && <section className="page-content wizard-page" aria-labelledby="wizard-title">
-        <div className="wizard-heading"><div><p className="eyebrow">NEW PROJECT · STEP {currentStepIndex + 1} OF {WIZARD_STEPS.length}</p><h1 id="wizard-title">Build your project setup</h1><p className="lead">Choose only from adapters and combinations present in the packaged catalog.</p></div><button className="button quiet-button" disabled={busy} onClick={() => navigate('home')}>Save for later</button></div>
+        <div className="wizard-heading"><div><p className="eyebrow">NEW PROJECT · STEP {currentStepIndex + 1} OF {WIZARD_STEPS.length}</p><h1 id="wizard-title">Create project</h1><p className="lead">Configure a new project. Review all actions before anything runs.</p></div><button className="button quiet-button" disabled={busy} onClick={() => navigate('home')}>Cancel</button></div>
         <div className="wizard-layout">
           <nav className="step-nav" aria-label="Project setup steps">
             {WIZARD_STEPS.map((item, index) => <button key={item.id} className={`step-nav-item ${step === item.id ? 'selected' : ''} ${index < currentStepIndex ? 'visited' : ''}`} disabled={busy || index > currentStepIndex} onClick={() => setStep(item.id)} aria-current={step === item.id ? 'step' : undefined}>
               <span className="step-number">{index < currentStepIndex ? '✓' : index + 1}</span><span><strong>{item.label}</strong><small>{item.hint}</small></span>
             </button>)}
-            <div className="step-nav-note"><strong>New folders only</strong><p>Planning and navigation do not write to your destination.</p></div>
           </nav>
           <div className="wizard-main">
             {step === 'details' && <section className="wizard-card" aria-labelledby="details-title">
               <div className="section-title-row"><div><p className="eyebrow">01 · PROJECT</p><h2 id="details-title">Where should we create it?</h2></div><StatusPill>Required</StatusPill></div>
               <p className="section-intro">We create one new folder inside your destination. Existing projects are never modified.</p>
-              <label className="field-label" htmlFor="project-name">Project folder name</label>
-              <input id="project-name" className="text-input" disabled={busy} value={projectName} maxLength={100} autoComplete="off" aria-invalid={Boolean(nameError)} aria-describedby={nameError ? 'project-name-error' : 'project-name-help'} onChange={(event) => { setProjectName(event.target.value); invalidateReview() }} />
-              {nameError ? <p id="project-name-error" className="field-error">{nameError}</p> : <p id="project-name-help" className="field-help">Lowercase npm-safe name. Avoid spaces; use hyphens.</p>}
-              <label className="field-label" htmlFor="project-parent">Parent folder</label>
-              <input id="project-parent" className="text-input mono-input" disabled={busy} value={parentDirectory} maxLength={220} placeholder="C:\Users\you\Projects" autoComplete="off" aria-invalid={Boolean(parentError)} aria-describedby={parentError ? 'project-parent-error' : 'project-parent-help'} onChange={(event) => { setParentDirectory(event.target.value); invalidateReview() }} />
-              {parentError ? <p id="project-parent-error" className="field-error">{parentError}</p> : <p id="project-parent-help" className="field-help">Choose an existing local Windows folder. Network and device paths are blocked.</p>}
+              <div className="field-grid">
+                <div className="field"><label className="field-label" htmlFor="project-name">Project name</label><input id="project-name" className="text-input" disabled={busy} value={projectName} maxLength={100} autoComplete="off" aria-invalid={Boolean(nameError)} aria-describedby={nameError ? 'project-name-error' : 'project-name-help'} onChange={(event) => { setProjectName(event.target.value); invalidateReview() }} />{nameError ? <p id="project-name-error" className="field-error">{nameError}</p> : <p id="project-name-help" className="field-help">Lowercase name, suitable for npm.</p>}</div>
+                <div className="field"><label className="field-label" htmlFor="project-parent">Parent folder</label><input id="project-parent" className="text-input mono-input" disabled={busy} value={parentDirectory} maxLength={220} placeholder="C:\Users\you\Projects" autoComplete="off" aria-invalid={Boolean(parentFieldError)} aria-describedby={parentFieldError ? 'project-parent-error' : 'project-parent-help'} onChange={(event) => { setParentDirectory(event.target.value); invalidateReview() }} />{parentFieldError ? <p id="project-parent-error" className="field-error">{parentFieldError}</p> : <p id="project-parent-help" className="field-help">Existing local Windows folder. Network paths are blocked.</p>}</div>
+              </div>
+              <div className="step-safety-note"><strong>New folders only</strong><span>Planning does not write to your destination. Existing projects are never changed.</span></div>
               <div className="path-preview"><span className="preview-icon" aria-hidden="true">↳</span><div><small>NEW PROJECT LOCATION</small><code>{parentDirectory ? pathPreview(parentDirectory, projectName || 'project-name') : 'Choose a parent folder to preview destination'}</code></div></div>
               <div className="wizard-actions"><span /> <button className="button primary-button" disabled={Boolean(nameError || parentError || busy)} onClick={() => setStep('stack')}>Choose framework <span aria-hidden="true">→</span></button></div>
             </section>}
@@ -647,26 +718,43 @@ function App() {
         </div>
       </section>}
 
-      {page === 'templates' && <section className="page-content" aria-labelledby="templates-title">
-        <div className="page-heading"><div><p className="eyebrow">PINNED FORMA METADATA</p><h1 id="templates-title">Forma gallery</h1><p className="lead">Browse templates from the packaged catalog. No private source is fetched until an explicitly consented generation starts.</p></div></div>
-        <div className="gallery-note"><strong>Compatibility is not support.</strong> Framework compatibility below comes from Forma's pinned metadata. Every Project Generator recipe remains planned; gallery browsing makes no network requests.</div>
-        <div className="template-grid">{catalog?.forma.templates.map((template) => {
-          const defaultVariant = template.variants.find((variant) => variant.default) ?? template.variants[0]
-          const compatNames = template.testedFrameworks.map((id) => frontendAdapters.find((adapter) => adapter.id === id)?.displayName ?? displayName(id))
-          return <article className="template-card" key={template.id}>
-            <div className="template-art" aria-label="Metadata illustration; no live template preview" style={{ '--template-accent': defaultVariant && /^\d{1,3} \d{1,3}% \d{1,3}%$/.test(defaultVariant.accent) ? `hsl(${defaultVariant.accent})` : 'var(--accent)' } as CSSProperties}>
-              <div className="art-window"><span /><span /><span /><div className="art-sidebar" /><div className="art-line line-one" /><div className="art-line line-two" /><div className="art-chart" /></div>
-              <span className="art-category">NO LIVE PREVIEW</span>
-            </div>
-            <div className="template-card-body"><div className="template-title"><div><h2>{template.name}</h2><span className="template-version">v{template.version} · {template.license}</span></div><StatusPill tone="warn">PLANNED</StatusPill></div>
-              <p>{template.description}</p><div className="template-tags">{template.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
-              <div className="template-meta"><small>Category · {template.category.replaceAll('-', ' ')}</small><small>FORMA metadata compatibility</small><strong>{compatNames.join(' · ') || 'No declared framework'}</strong><small>SHA-256 · {template.contentHash.slice(0, 16)}…</small></div>
-              <div className="variant-swatches" aria-label="Color variants">{template.variants.map((variant) => <span key={variant.id} title={variant.name} className="variant-swatch" style={{ background: /^\d{1,3} \d{1,3}% \d{1,3}%$/.test(variant.accent) ? `hsl(${variant.accent})` : 'var(--accent)' }} />)}<small>{template.variants.map((variant) => variant.name).join(' · ')}</small></div>
-              <button className="button secondary-button template-cta" disabled={!catalog} onClick={() => startWizard(template.id)}>Use this template <span aria-hidden="true">→</span></button>
-            </div>
+      {page === 'frameworks' && <section className="page-content" aria-labelledby="frameworks-title">
+        <div className="page-heading"><div><p className="eyebrow">PACKAGED CATALOG</p><h1 id="frameworks-title">Framework catalog</h1><p className="lead">Browse framework metadata and recipe status. Catalog presence does not enable normal generation.</p></div></div>
+        <div className="framework-catalog-grid">{frontendAdapters.map((adapter) => {
+          const adapterRecipe = catalog?.recipes.find((item) => item.frontend === adapter.id && (item.id === 'FE-01' || item.id === 'FE-02'))
+          return <article className="framework-card" key={adapter.id}>
+            <div className="framework-card-heading"><span className="framework-monogram">{adapter.displayName.startsWith('Next') ? 'N' : adapter.displayName.slice(0, 1)}</span><StatusPill tone="warn">{adapterRecipe?.status ?? adapter.supportState}</StatusPill></div>
+            <h2>{adapter.displayName}</h2><p>{adapterRecipe ? `${adapterRecipe.id} · ${adapterRecipe.manager} · ${adapterRecipe.scaffold.packageName}@${adapterRecipe.scaffold.version}` : 'No executable Project Generator recipe is packaged for this framework.'}</p>
+            <button className="button secondary-button" disabled={!adapterRecipe || busy} onClick={() => startWizardForFramework(adapter.id)}>{adapterRecipe ? 'Configure project' : 'Unavailable'}</button>
           </article>
         })}</div>
-        {catalog && <p className="catalog-pin">Catalog commit <code>{catalog.forma.commitSha}</code> · Metadata only; no live preview is packaged.</p>}
+        <p className="catalog-pin">FE-01 and FE-02 remain planned. Normal generation remains blocked pending independent acceptance.</p>
+      </section>}
+
+      {page === 'templates' && <section className="page-content" aria-labelledby="templates-title">
+        <div className="page-heading"><div><p className="eyebrow">PINNED FORMA METADATA</p><h1 id="templates-title">Forma templates</h1><p className="lead">Search the packaged catalog. Browsing stays local; source fetch happens only after an explicitly consented generation starts.</p></div></div>
+        <div className="gallery-note"><strong>Metadata, not support.</strong> Compatibility comes from Forma's pinned catalog snapshot. FE/FM recipes remain planned; browsing makes no network requests.</div>
+        <div className="template-toolbar">
+          <label className="gallery-search"><span aria-hidden="true">⌕</span><span className="sr-only">Search Forma templates</span><input type="search" value={templateSearch} placeholder="Search templates or tags" onChange={(event) => setTemplateSearch(event.target.value)} /></label>
+          <label className="gallery-filter"><span className="sr-only">Filter by category</span><select className="select-input" value={templateCategory} onChange={(event) => setTemplateCategory(event.target.value)}><option value="all">All categories</option>{templateCategories.map((category) => <option key={category} value={category}>{category.replaceAll('-', ' ')}</option>)}</select></label>
+          <label className="gallery-filter"><span className="sr-only">Filter by framework</span><select className="select-input" value={templateFramework} onChange={(event) => setTemplateFramework(event.target.value)}><option value="all">All frameworks</option>{[...new Set(formaTemplates.flatMap((template) => template.testedFrameworks))].map((framework) => <option key={framework} value={framework}>{frontendAdapters.find((adapter) => adapter.id === framework)?.displayName ?? displayName(framework)}</option>)}</select></label>
+          <span className="gallery-count" aria-live="polite">{filteredTemplates.length} of {formaTemplates.length} templates</span>
+        </div>
+        {filteredTemplates.length > 0 ? <div className="template-grid">{filteredTemplates.map((template) => {
+          const defaultVariant = template.variants.find((variant) => variant.default) ?? template.variants[0]
+          const compatNames = template.testedFrameworks.map((id) => frontendAdapters.find((adapter) => adapter.id === id)?.displayName ?? displayName(id))
+          const hasSelectableRecipe = template.testedFrameworks.some((framework) => catalog?.recipes.some((item) => item.frontend === framework && (item.id === 'FE-01' || item.id === 'FE-02')))
+          const swatchColor = defaultVariant && /^\d{1,3} \d{1,3}% \d{1,3}%$/.test(defaultVariant.accent) ? `hsl(${defaultVariant.accent})` : 'var(--accent)'
+          return <article className="template-card" key={template.id}>
+            <div className="template-meta-preview"><span className="template-preview-swatch" style={{ background: swatchColor }} /><span className="template-preview-copy"><strong>{template.category.replaceAll('-', ' ')}</strong><small>Catalog metadata · preview asset not packaged</small></span><StatusPill tone="warn">Planned</StatusPill></div>
+            <div className="template-card-body"><div className="template-title"><div><h2>{template.name}</h2><span className="template-version">v{template.version} · {template.license}</span></div></div>
+              <p>{template.description}</p><div className="template-tags">{template.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
+              <div className="template-meta"><small>Framework compatibility</small><strong>{compatNames.join(' · ') || 'No declared framework'}</strong><small>Color variants · {template.variants.map((variant) => variant.name).join(' · ') || 'Not declared'}</small></div>
+              <button className="button primary-button template-cta" disabled={!hasSelectableRecipe || busy} title={!hasSelectableRecipe ? 'No selectable Project Generator recipe matches this template.' : undefined} onClick={() => startWizard(template.id)}>{hasSelectableRecipe ? 'Use template' : 'Unavailable'} <span aria-hidden="true">→</span></button>
+            </div>
+          </article>
+        })}</div> : <div className="empty-state gallery-empty"><div className="empty-illustration" aria-hidden="true">⌕</div><h2>No matching templates</h2><p>Try another name, category, or framework filter.</p><button className="button secondary-button" onClick={() => { setTemplateSearch(''); setTemplateCategory('all'); setTemplateFramework('all') }}>Clear filters</button></div>}
+        {catalog && <p className="catalog-pin">Catalog commit <code>{catalog.forma.commitSha}</code> · Metadata only; no live preview assets are packaged.</p>}
       </section>}
 
       {page === 'projects' && <section className="page-content" aria-labelledby="projects-title">
@@ -674,9 +762,17 @@ function App() {
         {preferences.projects.length === 0 ? <div className="empty-state large-empty"><div className="empty-illustration" aria-hidden="true"><span>▤</span></div><h2>No generated projects yet</h2><p>Once generation completes, project name, location, recipe, and result status are stored locally.</p><button className="button primary-button" disabled={!catalog} onClick={() => startWizard()}>Create project</button></div> : <ProjectList projects={preferences.projects} vscodeAvailable={vscodeAvailable} onOpen={openProject} />}
       </section>}
 
+      {page === 'environment' && <section className="page-content environment-page" aria-labelledby="environment-title">
+        <div className="page-heading"><div><p className="eyebrow">LOCAL TOOLCHAIN</p><h1 id="environment-title">Environment Doctor</h1><p className="lead">Check the app runtime here. Node, npm, and destination checks need a selected project and run during review.</p></div><button className="button secondary-button" disabled={runtimeBusy} onClick={() => void refreshRuntime()}>{runtimeBusy ? 'Checking…' : 'Refresh runtime'}</button></div>
+        <section className="environment-card"><div className="environment-card-icon" aria-hidden="true">⌘</div><div className="environment-card-main"><div className="environment-title-row"><div><p className="eyebrow">APPLICATION ENGINE</p><h2>{runtime?.available ? 'Ready to plan' : runtime ? 'Needs attention' : 'Checking runtime'}</h2></div><StatusPill tone={runtime?.available ? 'good' : runtime ? 'bad' : 'neutral'}>{runtime?.available ? 'Available' : runtime ? 'Unavailable' : 'Checking'}</StatusPill></div><p>{runtime?.message ?? 'Reading the configured runtime status…'}</p><dl className="environment-facts"><div><dt>Runtime mode</dt><dd>{runtime?.mode === 'bundled' ? 'Bundled Node.js' : 'System Node.js'}</dd></div><div><dt>Node.js</dt><dd>{runtime?.version ?? 'Not detected'}</dd></div><div><dt>Visual Studio Code</dt><dd>{vscodeAvailable ? 'Detected' : 'Not detected'}</dd></div></dl></div></section>
+        <section className="doctor-next-card"><div><h2>Project-specific checks</h2><p>Choose framework, package manager, and destination to run the native Doctor. It checks Node/npm prerequisites and target-folder safety without installing anything.</p></div><button className="button primary-button" disabled={!catalog} onClick={() => startWizard()}>Choose a project <span aria-hidden="true">→</span></button></section>
+        <section className="recovery-strip"><div><strong>Interrupted generation?</strong><p>Inspect recovery journal read-only. No recovery action is applied.</p></div><button className="button secondary-button" disabled={busy} onClick={() => void inspectRecovery()}>Inspect recovery</button></section>
+        {recovery !== null && <RecoveryDetails value={recovery} />}
+      </section>}
+
       {page === 'settings' && <section className="page-content settings-page" aria-labelledby="settings-title">
         <div className="page-heading"><div><p className="eyebrow">LOCAL PREFERENCES</p><h1 id="settings-title">Settings</h1><p className="lead">Basic app preferences. No credentials, generation logs, or folder index are stored.</p></div></div>
-        <section className="settings-card"><div className="settings-card-heading"><div><h2>Appearance</h2><p>Choose how Project Generator looks on this device.</p></div></div>
+        <section className="settings-card"><div className="settings-card-heading"><div><h2>Appearance</h2><p>Choose how FormaForge looks on this device.</p></div></div>
           <div className="theme-options" role="radiogroup" aria-label="Color theme">{(['system', 'light', 'dark'] as Theme[]).map((theme) => <button type="button" role="radio" aria-checked={preferences.theme === theme} className={`theme-option ${preferences.theme === theme ? 'selected' : ''}`} key={theme} onClick={() => chooseTheme(theme)}><span className={`theme-preview ${theme}`} aria-hidden="true"><i /><i /><i /></span><strong>{theme.charAt(0).toUpperCase() + theme.slice(1)}</strong>{preferences.theme === theme && <span className="theme-check" aria-hidden="true">✓</span>}</button>)}</div>
         </section>
         <section className="settings-card"><div className="settings-card-heading"><div><h2>Default project location</h2><p>Used to prefill the destination in the create wizard. Must be an existing local folder.</p></div></div>
@@ -692,7 +788,7 @@ function App() {
       </section>}
 
       {page === 'generation' && <section className="page-content generation-page" aria-labelledby="generation-title">
-        <div className="generation-heading"><div className="generation-spinner"><span className="spinner" /></div><p className="eyebrow">GENERATION IN PROGRESS</p><h1 id="generation-title">Creating {currentProject?.name ?? 'your project'}</h1><p className="lead">Keep this window open. Progress comes from the CLI event stream; process output and logs are not shown.</p></div>
+        <div className="generation-heading"><div className="generation-spinner"><span className="spinner" /></div><div className="generation-copy"><p className="eyebrow">GENERATION IN PROGRESS</p><h1 id="generation-title">Creating {currentProject?.name ?? 'your project'}</h1><p className="lead">Keep this window open. Progress comes from the CLI event stream; process output and logs are not shown.</p></div></div>
         <div className="generation-target"><span className="target-icon" aria-hidden="true">↳</span><div><small>DESTINATION</small><code>{currentProject?.path}</code></div><StatusPill tone="warn">{cancelRequested ? 'Stopping' : invocationId ? 'Running' : 'Starting'}</StatusPill></div>
         <section className="activity-card" aria-labelledby="activity-title"><div className="section-title-row"><div><p className="eyebrow">LIVE JSONL EVENTS</p><h2 id="activity-title">Activity</h2></div><span className="event-count">{events.length} events</span></div>
           {events.length === 0 ? <div className="activity-empty" role="status"><span className="spinner" /> Waiting for CLI progress…</div> : <ol className="activity-list" aria-live="polite" aria-relevant="additions">{events.map((event) => <li className={`activity-event ${event.type === 'error' ? 'event-error' : ''}`} key={`${event.jobId}-${event.sequence}`}><span className="event-marker" aria-hidden="true">{event.type === 'job-finished' ? '✓' : event.type === 'error' ? '!' : '·'}</span><div><div className="event-heading"><strong>{formatStatus(event.stageId ?? event.type)}</strong>{event.percent !== undefined && <span>{event.percent}%</span>}</div><p>{event.message}</p>{event.code && <code>{event.code}</code>}</div></li>)}</ol>}
@@ -713,7 +809,7 @@ function App() {
         {recovery !== null && <RecoveryDetails value={recovery} />}
       </section>}
 
-      <footer className="app-footer"><span>Project Generator · Phase 03 local UI MVP</span><span>FE-01 / FE-02 / FM-01 / FM-02 remain planned · no sandbox or release claim</span></footer>
+      <footer className="app-footer"><span>FormaForge · Project Generator</span><span>Local development · FE-01 / FE-02 / FM-01 / FM-02 remain planned · no release approval</span></footer>
     </main>
   </div>
 }

@@ -1,0 +1,16 @@
+{
+  "theme": "system",
+  "preferences": "{\"schemaVersion\":1,\"settings\":{\"theme\":\"system\",\"defaultParentDirectory\":\"\"},\"projects\":[]}",
+  "font": "\"Geist Variable\", \"Segoe UI Variable\", \"Segoe UI\", system-ui, sans-serif",
+  "mono": "\"Geist Mono Variable\", \"Cascadia Code\", Consolas, monospace",
+  "fontLoaded": true,
+  "monoLoaded": true,
+  "width": {
+    "inner": 1500,
+    "scroll": 1485
+  },
+  "height": {
+    "inner": 820,
+    "scroll": 1161
+  }
+}

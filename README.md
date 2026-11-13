@@ -1,4 +1,4 @@
-# Project Generator Desktop
+# FormaForge — Project Generator Desktop
 
 | Field | Value |
 |---|---|
@@ -10,7 +10,7 @@
 | Documentation inspiration | EvoPilot (PRD ↔ design ↔ decision register ↔ QA evidence) |
 | Scope | CLI kernel, internal Tauri desktop UI/runtime PoC, planned React + Vite / Next.js recipes, optional Forma templates |
 
-Planning documents remain source for requirements and boundaries. Code and observed test evidence define implemented behavior. Phase 03 now includes dashboard, catalog-driven wizard, Forma metadata gallery, review/doctor, consent-gated job UI, results, local metadata history/settings, and fixed native open actions; detailed desktop acceptance remains partial. FE-01/FE-02 and separate Forma combinations FM-01/FM-02 have local Windows generation evidence, but remain `planned` pending independent acceptance and review. Desktop install/update/uninstall and both runtime package modes have same-host Windows 11 PoC evidence; no clean-machine proof or release approval exists.
+Planning documents remain source for requirements and boundaries. Code and observed test evidence define implemented behavior. Phase 03 includes the FormaForge Forge Studio dashboard, catalog-driven wizard, metadata-only Forma gallery, review/Doctor, consent-gated job UI, results, local metadata history/settings, and fixed native open actions. The redesign has native Windows UI and cancellation evidence; full desktop acceptance remains partial. FE-01/FE-02 and separate Forma combinations FM-01/FM-02 remain `planned` pending independent recipe acceptance and review. Desktop install/update/uninstall and both runtime package modes have same-host Windows 11 PoC evidence; no clean-machine proof or release approval exists. See [Forge Studio verification](docs/qa/evidence/forge-studio-redesign.md).
 
 ## Vision
 

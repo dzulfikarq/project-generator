@@ -106,6 +106,21 @@ export function formaMetadataCompatible(template: Template, frontendId: string, 
     && catalog.adapters.some((adapter) => adapter.id === 'template.forma' && adapter.compatibleWith.includes(frontendId))
 }
 
+export function filterFormaTemplates(templates: readonly Template[], query: string, category: string, frontendId: string): Template[] {
+  const search = query.trim().toLowerCase()
+  return templates.filter((template) => (category === 'all' || template.category === category)
+    && (frontendId === 'all' || template.testedFrameworks.includes(frontendId))
+    && (!search || [
+      template.name,
+      template.description,
+      template.category,
+      template.version,
+      template.license,
+      ...template.tags,
+      ...template.testedFrameworks,
+    ].join(' ').toLowerCase().includes(search)))
+}
+
 export function documentationFiles(mode: 'minimal' | 'standard' | 'full'): string[] {
   const files = ['README.md', 'docs/SETUP.md']
   if (mode === 'minimal') return files

@@ -6,6 +6,7 @@ import {
   documentationFiles,
   findFrameworkRecipe,
   findRecipe,
+  filterFormaTemplates,
   formaMetadataCompatible,
   loadPreferences,
   savePreferences,
@@ -48,6 +49,27 @@ test('Forma compatibility exposes catalog metadata only', () => {
   const template = { testedFrameworks: ['react'] } as Catalog['forma']['templates'][number]
   assert.equal(formaMetadataCompatible(template, 'react', catalog), true)
   assert.equal(formaMetadataCompatible(template, 'next', catalog), false)
+})
+
+test('Forma gallery search and filters use pinned catalog metadata', () => {
+  const templates: Catalog['forma']['templates'] = [
+    {
+      id: 'focus-planner', name: 'Focus Planner', description: 'A calm daily planning board', version: '0.1.0',
+      contentHash: 'a'.repeat(64), category: 'productivity', tags: ['focus', 'planner'], license: 'MIT',
+      variants: [], testedFrameworks: ['frontend.react-vite'], commitSha: 'a'.repeat(40),
+    },
+    {
+      id: 'modern-admin', name: 'Modern Admin', description: 'An operations dashboard', version: '1.0.0',
+      contentHash: 'b'.repeat(64), category: 'admin-cms', tags: ['dashboard', 'analytics'], license: 'MIT',
+      variants: [], testedFrameworks: ['frontend.react-vite', 'frontend.nextjs-app'], commitSha: 'a'.repeat(40),
+    },
+  ]
+
+  assert.deepEqual(filterFormaTemplates(templates, '  FOCUS ', 'all', 'all').map(({ id }) => id), ['focus-planner'])
+  assert.deepEqual(filterFormaTemplates(templates, '', 'admin-cms', 'all').map(({ id }) => id), ['modern-admin'])
+  assert.deepEqual(filterFormaTemplates(templates, '', 'all', 'frontend.nextjs-app').map(({ id }) => id), ['modern-admin'])
+  assert.deepEqual(filterFormaTemplates(templates, 'react-vite', 'productivity', 'all').map(({ id }) => id), ['focus-planner'])
+  assert.deepEqual(filterFormaTemplates(templates, 'missing', 'all', 'all'), [])
 })
 
 test('documentation preview matches each supported output mode', () => {

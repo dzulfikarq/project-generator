@@ -10,7 +10,7 @@
 
 ## 1. Design intent
 
-**A professional developer tool, not a large form.** Developers should confidently choose a stack, see compatibility before running, understand what the generator will do, and get a reproducible project or a clear failure. Visual style: quiet neutral surfaces, compact but readable controls, clear primary action, optional purple identity accent, consistent light/dark system themes. Prioritize workflow transparency, not ornamental effects.
+**A professional developer tool, not a large form.** Developers should confidently choose a stack, see compatibility before running, understand what the generator will do, and get a reproducible project or a clear failure. Forge Studio uses charcoal `#2B2D31`, off-white `#F7F5EF`, yellow `#FFC93C`, and silver `#D9DADC` through semantic CSS tokens; Geist Sans for UI and Geist Mono for technical text; system/light/dark themes. Prioritize workflow transparency, not ornamental effects.
 
 ### UX principles
 
@@ -51,12 +51,12 @@ Phase 03 implements dashboard, catalog-driven project wizard, pinned Forma metad
 
 ## 3. Layout and visual foundation
 
-- Sidebar: 216–240 logical px; collapsible in narrower windows. Brand/identity top, navigation below, settings and runtime diagnostics at bottom.
+- Sidebar: 216–240 logical px; brand at top; navigation grouped into Workspace, Create, Catalog, Tools, and Preferences; runtime status and internal-use notice at bottom. Collapse to icon rail below 900px and horizontal navigation below 470px.
 - Content: max width around 1080–1160 logical px, responsive to screen; wizard body around 720–860 px with optional preview panel on sufficiently wide windows.
 - Top bar: page name, system health, light/dark toggle, optionally current project context.
 - Window: adaptive down to a tested minimum; no horizontal overflow at 125%, 150% and 200% Windows display scaling. Verify, do not assume.
-- Typography: Plus Jakarta Sans for UI if appropriate licensed/bundled; monospace for commands/logs; sizes designed for accessibility, with body around 14–15px and visible 16px+ section hierarchy. Do not rely on a tiny 10px technical UI.
-- Surface hierarchy: main background, panel, border, subtle selection, single primary action. Accent can use dark purple, but warning/success/error cannot depend on color alone.
+- Typography: locally bundled Geist Sans for UI and Geist Mono for commands/logs/paths; centralized sizes, line heights, and weights; body 14px and secondary text at least 12px. Do not rely on a tiny technical UI.
+- Surface hierarchy: charcoal/off-white/silver surfaces, yellow accent, semantic status colors, visible selection and focus; warning/success/error cannot depend on color alone. Centralize colors in semantic tokens.
 - Spacing: 4/8/12/16/24px grid; forms and cards share radius/height standards; clear screen titles and concise help text.
 - Components: buttons, select/combobox, searchable technology cards, radios, checkboxes, input path picker, code/log panel, toast, confirm dialog, stepper, status chips, skeleton, empty states.
 - Theme: light/dark/system preference. Honor reduced-motion system setting, and do not animate long operations merely to fill time.
