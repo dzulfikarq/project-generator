@@ -2,15 +2,15 @@
 
 | Field | Value |
 |---|---|
-| Status | **Phase 01 CLI + Phase 02 Forma + Phase 02.6 internal desktop/runtime PoC present** — FE-01/FE-02/FM-01/FM-02 remain planned; no release approved |
+| Status | **Phase 01 CLI + Phase 02 Forma + Phase 02.6 packaging PoC + Phase 03 internal UI MVP implementation present** — UI acceptance partial; FE-01/FE-02/FM-01/FM-02 remain planned; no release approved |
 | Version | 0.1.0 |
 | Date | 2026-11-13 |
 | Product | Universal Project Generator Desktop |
 | Target OS | Windows 11 first |
 | Documentation inspiration | EvoPilot (PRD ↔ design ↔ decision register ↔ QA evidence) |
-| Scope | CLI kernel, internal Tauri desktop/runtime packaging PoC, planned React + Vite / Next.js recipes, optional Forma templates |
+| Scope | CLI kernel, internal Tauri desktop UI/runtime PoC, planned React + Vite / Next.js recipes, optional Forma templates |
 
-Planning documents remain source for requirements and boundaries. Code and observed test evidence define implemented behavior. FE-01/FE-02 and separate Forma combinations FM-01/FM-02 have local Windows generation evidence, but remain `planned` pending independent acceptance and review. Desktop install/update/uninstall and both runtime package modes have same-host Windows 11 PoC evidence; no clean-machine proof or release approval exists.
+Planning documents remain source for requirements and boundaries. Code and observed test evidence define implemented behavior. Phase 03 now includes dashboard, catalog-driven wizard, Forma metadata gallery, review/doctor, consent-gated job UI, results, local metadata history/settings, and fixed native open actions; detailed desktop acceptance remains partial. FE-01/FE-02 and separate Forma combinations FM-01/FM-02 have local Windows generation evidence, but remain `planned` pending independent acceptance and review. Desktop install/update/uninstall and both runtime package modes have same-host Windows 11 PoC evidence; no clean-machine proof or release approval exists.
 
 ## Vision
 
@@ -53,7 +53,7 @@ Run the CLI from source with `node packages/cli/dist/src/index.js`. Example conf
 ## Product and repo boundaries
 
 - `dzulfikarq/design-templates`: Forma — template registry, dependency manifests, validated installer, templates/themes.
-- This repository — core CLI, technology adapters, compatibility resolver, project documentation generator, and a minimal internal desktop/runtime PoC.
+- This repository — core CLI, technology adapters, compatibility resolver, project documentation generator, and an internal Tauri desktop UI/runtime MVP.
 - EvoPilot repository is used **only as documentation process inspiration**; there is no runtime dependency.
 
 ## Default decisions
@@ -92,9 +92,9 @@ project-generator inspect --output <folder> --json
 
 `npm run build` builds the Rust Windows supervisor and copies local sidecar into ignored `packages/core/native/`; no binary is committed. Phase 02.6 internal installers stage that sidecar with the CLI, but are not release artifacts. Windows Job Objects manage owned process lifetime, not filesystem/network isolation. `generate` is explicit execution consent. Planned recipes are blocked by default; `--development-allow-planned` is development-only and does not change recipe status. npm installs can execute dependency lifecycle scripts and are not sandboxed. No automatic Git, Docker, remote push, or hidden installs. See [Phase 01 evidence](docs/qa/acceptance-matrix.md).
 
-## Phase 02.6 internal desktop/runtime PoC
+## Internal desktop UI and runtime PoC (Phases 02.6–03)
 
-The minimal React/Vite + Tauri 2 shell exposes fixed Rust commands and versioned JSONL job events; no generic command API exists. Build either Node strategy on Windows with NSIS 3.13 available through `PG_NSIS_DIR`:
+The React/Vite + Tauri 2 app exposes a dashboard, multi-step project wizard, catalog-backed framework/style/manager choices, Forma metadata gallery, read-only plan/doctor review, explicit lifecycle consent, JSONL job progress/cancel/results, and local metadata history/settings. Native folder and VS Code actions are fixed typed commands; no generic command API exists. Run `npm run desktop:dev` for a local system-runtime debug build. The UI does not add adapters or promote recipes. Build either Node installer strategy on Windows with NSIS 3.13 available through `PG_NSIS_DIR`:
 
 ```powershell
 $env:PG_NSIS_DIR = 'C:\path\to\portable\nsis-3.13'
@@ -102,7 +102,7 @@ node scripts/desktop.mjs build system 0.1.0
 node scripts/desktop.mjs build bundled 0.1.1
 ```
 
-System mode packages CLI/core/supervisor but expects Node.js and npm on `PATH`. Bundled mode packages Node.js and its matching npm. Internal debug builds alone expose planned-recipe override; release-profile installers keep planned recipes disabled. Lifecycle-script consent is unchecked by default; npm scripts run unsandboxed. Runtime comparison and same-host install/update/uninstall evidence: [Phase 02.6 report](docs/qa/evidence/phase-02.6-desktop-runtime-packaging.md). Artifacts are local/ignored; Windows 11 clean-machine proof and release approval remain blocked.
+System mode packages CLI/core/supervisor but expects Node.js and npm on `PATH`. Bundled mode packages Node.js and its matching npm. Internal debug builds alone expose planned-recipe override; release-profile installers keep planned recipes disabled. Lifecycle-script consent is unchecked by default; npm scripts run unsandboxed. Runtime comparison and same-host install/update/uninstall evidence: [Phase 02.6 report](docs/qa/evidence/phase-02.6-desktop-runtime-packaging.md). Phase 03 verification status: [acceptance matrix](docs/qa/acceptance-matrix.md) and [UI evidence](docs/qa/evidence/phase-03-desktop-ui-mvp.md). Artifacts are local/ignored; Windows 11 clean-machine proof and release approval remain blocked.
 
 ## Optional Forma templates (CLI only)
 

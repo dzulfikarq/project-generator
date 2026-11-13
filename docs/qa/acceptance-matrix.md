@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **PARTIAL** — Phase 01 local evidence exists; full acceptance/release review remains incomplete |
+| Status | **PARTIAL** — Phase 01 local evidence and Phase 03 UI implementation checks exist; full acceptance/release review remains incomplete |
 | Date | 2026-11-13 |
 | Target | Windows 11 first; record actual host and use clean target dirs for each run |
 | Rule | No PASS claims without executable evidence |
@@ -31,21 +31,21 @@ Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PAS
 | GEN-018 | NFR-001 | Paths with spaces/Unicode, drive letters, long path/junction handling | PARTIAL — path tests and FE E2E paths with spaces/`雪` passed; finalize/junction anomaly remains unexplained despite added identity-bound fail-closed checks |
 | GEN-019 | NFR-011 | Tampered template/manifest rejected before installation | NOT RUN |
 | GEN-020 | NFR-012 | Local redacted logs and user-controlled retention, telemetry off by default | NOT RUN |
-| UX-001 | PRD-001–006 | Wizard keyboard navigable; disabled options explain why | NOT RUN |
-| UX-002 | PRD-007–008 | Doctor and plan distinguish missing required vs optional tools | NOT RUN |
-| UX-003 | PRD-011 | Live job updates, indeterminate progress, cancel and retry errors visible | NOT RUN |
-| UX-004 | PRD-015 | Completion screen opens valid folder/editor and shows truthful commands | NOT RUN |
-| UX-005 | NFR-007 | Focus visible, meaningful labels, reduced motion, accessible status announcements | NOT RUN |
-| UX-006 | PRD-002, NFR-001 | Path picker previews valid Windows destination, explains reserved/occupied path errors | NOT RUN |
-| UX-007 | PRD-004, PRD-006 | Changing framework invalidates incompatible styling/template selection without silent substitution | NOT RUN |
-| UX-008 | PRD-014 | Docs modes preview actual file inventory, no fictional history or approvals | NOT RUN |
-| UX-009 | PRD-008, PRD-019 | Review reveals sanitized commands, writes, network/install hooks, blocks unsupported or stale plan | NOT RUN |
-| UX-010 | PRD-011, NFR-009 | Cancel transitions through stopping/cleanup before Cancelled result; cleanup failure actionable | NOT RUN |
-| UX-011 | PRD-013, NFR-010 | Result distinguishes Ready vs generated-but-unverified vs failed/cancelled | NOT RUN |
-| UX-012 | PRD-015, PRD-023 | Open folder/editor is explicit, unavailable target shown as missing, no hidden project execution | NOT RUN |
+| UX-001 | PRD-001–006 | Wizard keyboard navigable; disabled options explain why | PARTIAL — browser mock checked field validation and disabled catalog/compatibility choices; keyboard traversal and full project-type flow not tested |
+| UX-002 | PRD-007–008 | Doctor and plan distinguish missing required vs optional tools | PARTIAL — actual Tauri catalog/runtime/plan/doctor smoke passed on this host; missing-tool and optional-tool cases not exercised |
+| UX-003 | PRD-011 | Live job updates, indeterminate progress, cancel and retry errors visible | PARTIAL — browser-mock events, cancellation and failure states passed; no native generation job executed |
+| UX-004 | PRD-015 | Completion screen opens valid folder/editor and shows truthful commands | PARTIAL — mocked result UI reviewed; actual Explorer/VS Code actions and generated-project command reporting not tested |
+| UX-005 | NFR-007 | Focus visible, meaningful labels, reduced motion, accessible status announcements | PARTIAL — browser smoke checked accessible names/labels, reduced motion, focus styling, and 760px overflow; keyboard, screen reader, contrast, scaling, and live-region audit not run |
+| UX-006 | PRD-002, NFR-001 | Path picker previews valid Windows destination, explains reserved/occupied path errors | PARTIAL — input/path preview, reserved-name and traversal validation tested; no native picker, occupied-target UI run, or scaling test |
+| UX-007 | PRD-004, PRD-006 | Changing framework invalidates incompatible styling/template selection without silent substitution | PARTIAL — catalog exact-match unit test and mocked Next/Tailwind compatibility states passed; framework-switch invalidation not fully exercised |
+| UX-008 | PRD-014 | Docs modes preview actual file inventory, no fictional history or approvals | PARTIAL — all three browser previews checked against desktop model; generated docs not run from desktop UI |
+| UX-009 | PRD-008, PRD-019 | Review reveals sanitized commands, writes, network/install hooks, blocks unsupported or stale plan | PARTIAL — actual native read-only plan/doctor and mocked consent gate reviewed; no stale-plan race or generation execution tested |
+| UX-010 | PRD-011, NFR-009 | Cancel transitions through stopping/cleanup before Cancelled result; cleanup failure actionable | PARTIAL — mocked UI cancellation transitions through stopping/result; native process cancellation and cleanup failure not run |
+| UX-011 | PRD-013, NFR-010 | Result distinguishes Ready vs generated-but-unverified vs failed/cancelled | PARTIAL — mocked cancelled/failed states and event rendering checked; no native result or generated output observed |
+| UX-012 | PRD-015, PRD-023 | Open folder/editor is explicit, unavailable target shown as missing, no hidden project execution | PARTIAL — fixed commands and local metadata model tested; actual open actions/history for a generated project not run |
 | PKG-001 | OPEN-001, PRD-009, NFR-005 | Build and inspect system-Node and bundled-Node installers; verify packaged CLI/resources and runtime separation | PARTIAL — both x64 NSIS modes built; bundled CLI catalog/doctor passed with system Node removed from PATH; clean-machine proof unavailable |
 | PKG-002 | PRD R5, NFR-002 | Per-user install, launch, update runtime/version, uninstall, and preserve separate user project | PASS — same-host Windows 11 system 0.1.0 → bundled 0.1.1; app launched; uninstall removed app/registry entry; external sentinel remained unchanged |
-| PKG-003 | PRD-011, NFR-009, DEC-013 | Desktop cancellation sends only versioned cancel intent and terminal status follows process exit | PARTIAL — CLI cancel parser and Rust event/auth tests pass; full UI-driven cancellation not run |
+| PKG-003 | PRD-011, NFR-009, DEC-013 | Desktop cancellation sends only versioned cancel intent and terminal status follows process exit | PARTIAL — CLI cancel parser and Rust event/auth tests pass; browser-mock UI cancellation passed; native UI-driven cancellation not run |
 | PKG-004 | NFR-010, OPEN-001 | Install and launch on clean Windows 11 x64 machine without preinstalled developer tools | BLOCKED — no clean Windows 11 environment available |
 | MOB-001 | PRD-027 | Expo scaffold/Android device workflow on Windows; iOS native limitation clear | FUTURE |
 | MOB-002 | PRD-027 | Flutter SDK, pub, Android build and emulator preflight | FUTURE |
@@ -109,6 +109,15 @@ Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PAS
 - Per-user install → visible launch → bundled-version update → visible launch → uninstall all exited `0`; uninstaller removed install directory and HKCU uninstall entry. Separate test project sentinel remained unchanged.
 - `npm test`: core 38 passed, 1 expected elevated-only skip; CLI 8 passed. `npm run typecheck`, `npm run lint`, `cargo test --locked` (5 Rust tests), `cargo clippy --locked -- -D warnings`, `cargo fmt --check`, both runtime installer builds, and production-only npm audit passed.
 - Not run: clean-machine install; Windows 11 machines without Node/WebView2 prerequisites; UI-driven generation/cancellation; full accessibility/scaling review; independent security review; recipe acceptance. Both Node strategies remain PoC options; public release remains NO-GO.
+
+## Phase 03 desktop UI MVP implementation checks
+
+- Host: Windows 11 Pro `10.0.26300`; Node.js `22.22.1`; npm `10.9.4`; Rust `1.99.1`; Edge `157.0.4341.46`. Debug Tauri app used system runtime.
+- Native, read-only Tauri WebView smoke: actual `get_catalog`, `get_runtime_status`, `resolve_plan`, and `run_environment_doctor` commands passed. Catalog returned FE-01/FE-02 as `planned` and three Forma metadata entries. Doctor reported Node/npm/target ready. Lifecycle consent was unchecked and Generate remained disabled. Unique smoke destination remained absent before/after. No generation, network fetch, folder-open, or editor-open command ran.
+- Browser mock smoke: 10 assertions passed for dashboard/gallery, invalid-name gate, framework/style compatibility, full-doc inventory, consent and planned-recipe gates, mocked cancel/failure, abandoned wizard, local theme/path persistence, labels/reduced motion, and 760px overflow. Catalog came from the built CLI; plan/doctor/job responses were mocked. This is UI behavior evidence, not native generation evidence.
+- Screenshots: [`phase-03-desktop-ui/`](evidence/phase-03-desktop-ui/) contains six browser-mock screens and actual Tauri dashboard/read-only review captures. The dark screenshot was recaptured after the background-color fix.
+- Native open actions, UI-driven CLI generation/cancellation/failure, FE-01/FE-02 or Forma generation, full keyboard/screen-reader/contrast checks, 125–200% scaling, clean-machine install, independent security review, and release review remain NOT RUN/BLOCKED. Lifecycle scripts remain unsandboxed; all recipes remain planned.
+- Final checks: `npm test` exit 0 (core 38 passed / 1 expected skip; CLI 8; desktop 8), `npm run typecheck`, `npm run lint`, desktop build, `cargo test --locked` (7), `cargo clippy --locked -- -D warnings`, and `cargo fmt --check` all passed. These checks do not promote recipes or approve release. Detailed evidence: [Phase 03 report](evidence/phase-03-desktop-ui-mvp.md).
 
 ## Evidence protocol
 

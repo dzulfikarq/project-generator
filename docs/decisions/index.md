@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Date | 2026-11-13 |
-| State | Phase 01 CLI, Phase 02 local Forma integration, bounded DEC-017 recovery, and Phase 02.6 internal desktop/runtime PoC present; formal release review not complete |
+| State | Phase 01 CLI, Phase 02 local Forma integration, bounded DEC-017 recovery, Phase 02.6 runtime PoC, and Phase 03 internal UI MVP present; formal release review not complete |
 | Governance | See [`governance.md`](governance.md) |
 
 This project adopts EvoPilot's **decision accountability** pattern but uses standard English spelling (`decision`, `decisions`). A user-selected direction can be recorded as **Accepted Discovery** without implying implementation completion, test passage or formal release approval.
@@ -30,6 +30,7 @@ This project adopts EvoPilot's **decision accountability** pattern but uses stan
 | DEC-017 | Windows staging crash recovery | Accepted — bounded implementation | [DEC-017](DEC-017-windows-staging-crash-recovery.md), [Phase 01.10 evidence](../qa/evidence/phase-01.10-windows-recovery-implementation.md) | Review residual ACL boundary; keep lifecycle isolation, power-loss durability, anomaly diagnosis and recipe/release approval open |
 | DEC-018 | Forma local CLI integration | Proposed; local implementation exists | [DEC-018](DEC-018-forma-local-integration.md), [Phase 02 evidence](../qa/evidence/phase-02-forma-local-integration.md) | Independently review credentials/cache/cancellation; no FM promotion or release approval |
 | DEC-019 | Phase 02.6 desktop runtime/package comparison | Proposed; PoC evidence only | [DEC-019](DEC-019-phase2.6-desktop-runtime-packaging.md), [Phase 02.6 evidence](../qa/evidence/phase-02.6-desktop-runtime-packaging.md) | Choose runtime strategy only after clean-machine and independent security review |
+| DEC-020 | Phase 03 desktop UI MVP scope | Proposed; implementation present | [DEC-020](DEC-020-phase3-desktop-ui-mvp.md), [Phase 03 evidence](../qa/evidence/phase-03-desktop-ui-mvp.md) | Review partial UI evidence; no recipe promotion or release approval |
 
 ## Open items
 

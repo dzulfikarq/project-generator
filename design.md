@@ -4,7 +4,7 @@
 |---|---|
 | Version | V1 UX draft 0.2 |
 | Date | 2026-11-13 |
-| Status | **UX proposal; minimal Phase 02.6 internal PoC UI implemented; full flows and accessibility remain unverified** |
+| Status | **UX proposal; Phase 03 internal UI MVP implemented; accessibility, scaling, and native generation acceptance remain partial** |
 | Target | Windows 11 desktop, keyboard/mouse first, Windows scaling aware |
 | References | [`docs/PRD.md`](docs/PRD.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/qa/acceptance-matrix.md`](docs/qa/acceptance-matrix.md) |
 
@@ -47,7 +47,7 @@ Application
     └── Privacy & Logs
 ```
 
-The Phase 02.6 Tauri PoC implements one compact screen for catalog, plan, doctor, lifecycle consent, generation progress/cancellation, and recovery inspection. It has no full wizard, path picker, history, settings, project-open actions, or complete result flow. Desktop route availability is determined by features actually implemented and tested. Hide—not create an inert page for—P1 functionality not yet built.
+Phase 03 implements dashboard, catalog-driven project wizard, pinned Forma metadata gallery, read-only plan/doctor review, lifecycle consent, JSONL generation/cancellation/result surfaces, local generated-project metadata, theme/default-location settings, and fixed Folder/VS Code native actions. Destination is entered as a local path; no native folder picker or live Forma preview is packaged. Backend/database adapters remain absent, and FE/FM recipes remain planned. Browser/UI and native acceptance evidence is tracked separately; implementation presence alone is not a PASS.
 
 ## 3. Layout and visual foundation
 

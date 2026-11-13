@@ -4,7 +4,7 @@
 |---|---|
 | Version | V1 design draft 0.2 |
 | Date | 2026-11-13 |
-| Status | **Design draft; Phase 01 CLI and Phase 02.6 internal desktop/runtime PoC implemented; architecture/release review pending** |
+| Status | **Design draft; Phase 01 CLI, Phase 02.6 runtime PoC, and Phase 03 internal UI MVP implemented; architecture/release review pending** |
 | Product baseline | [PRD](PRD.md) |
 | Interface contract | [Adapter Contract](adapters/adapter-contract.md) |
 | Compatibility source | [Compatibility Matrix](adapters/compatibility-matrix.md) |
@@ -47,11 +47,11 @@ flowchart TD
     Job --> Output[New project folder]
 ```
 
-Phase 1 ships **Engine + CLI + built-in recipes** independently and remains testable without Tauri. Phase 02.6 adds a minimal internal shell; implementation must never turn the UI into an unstructured shell-command frontend.
+Phase 1 ships **Engine + CLI + built-in recipes** independently and remains testable without Tauri. Phases 02.6–03 add an internal Tauri client; implementation must never turn the UI into an unstructured shell-command frontend.
 
 ### Phase 01 implementation snapshot
 
-Current repository implements three npm workspaces: `packages/core` owns schema/resolution, plans, doctor, generation jobs, process execution, staging and project docs; `packages/cli` owns command parsing and JSON/JSONL output; `packages/desktop` owns the React/Vite UI and Tauri shell. The Tauri host exposes fixed typed commands, writes bounded temporary JSON config, launches only the packaged CLI under a build-selected Node runtime, validates versioned JSONL events, and forwards restricted cancellation. The Windows helper and packaged CLI/core are staged as resources. System-Node and bundled-Node NSIS installers were built; same-host Windows 11 per-user install/update/uninstall and launch checks passed. Clean-machine proof remains unavailable. Forma remains separate and unmodified. FE-01/FE-02/FM-01/FM-02 remain `planned`; release-profile generation blocks them. Debug-only planned override is evidence gathering, not support status. See [Phase 02 evidence](qa/evidence/phase-02-forma-local-integration.md) and [Phase 02.6 evidence](qa/evidence/phase-02.6-desktop-runtime-packaging.md).
+Current repository implements three npm workspaces: `packages/core` owns schema/resolution, plans, doctor, generation jobs, process execution, staging and project docs; `packages/cli` owns command parsing and JSON/JSONL output; `packages/desktop` owns the React/Vite UI and Tauri shell. The UI provides dashboard, catalog-driven wizard, Forma metadata gallery, read-only review, lifecycle consent, progress/results, local metadata history/settings, and fixed native open actions. The Tauri host writes bounded temporary JSON config, launches only the packaged CLI under a build-selected Node runtime, validates versioned JSONL events, and forwards restricted cancellation. Native read-only catalog/runtime/plan/doctor smoke passed; browser-mock generation/cancel/failure flows are UI evidence only. System-Node and bundled-Node NSIS installers were built; same-host Windows 11 per-user install/update/uninstall and launch checks passed. Clean-machine proof remains unavailable. Forma remains separate and unmodified. FE-01/FE-02/FM-01/FM-02 remain `planned`; release-profile generation blocks them. Debug-only planned override is evidence gathering, not support status. See [Phase 02 evidence](qa/evidence/phase-02-forma-local-integration.md), [Phase 02.6 evidence](qa/evidence/phase-02.6-desktop-runtime-packaging.md), and [Phase 03 evidence](qa/evidence/phase-03-desktop-ui-mvp.md).
 
 ## 3. Proposed repository boundaries
 
@@ -84,7 +84,7 @@ project-generator/
 └── design.md
 ```
 
-This remains the **proposed future directory shape**. Current root npm workspaces are `packages/core`, `packages/cli`, and `packages/desktop`; config, catalog, adapters, and docs generation live within `core`. The root internal and generated-project package manager is npm. Do not infer that proposed packages or desktop components beyond the Phase 02.6 subset exist.
+This remains the **proposed future directory shape**. Current root npm workspaces are `packages/core`, `packages/cli`, and `packages/desktop`; config, catalog, adapters, and docs generation live within `core`. The root internal and generated-project package manager is npm. Do not infer that proposed packages or desktop capabilities beyond the implemented Phase 03 UI scope exist.
 
 ### Package responsibilities
 
@@ -126,7 +126,7 @@ project-generator generate --config <path> --jsonl [--development-allow-planned]
 project-generator inspect --output <path> --json
 ```
 
-The desktop additionally invokes `generate --desktop-control` and may append `--development-allow-planned` only in debug builds. Its fixed Tauri commands are `get_catalog`, `get_runtime_status`, `resolve_plan`, `run_environment_doctor`, `inspect_recovery`, `start_generation`, and `cancel_generation`; no generic command or shell API exists.
+The desktop additionally invokes `generate --desktop-control` and may append `--development-allow-planned` only in debug builds. Its fixed Tauri commands include `get_catalog`, `get_runtime_status`, `get_vscode_status`, `resolve_plan`, `run_environment_doctor`, `inspect_recovery`, `start_generation`, `cancel_generation`, `open_project_folder`, and `open_project_in_vscode`; no generic command or shell API exists.
 
 - `catalog`: built-in metadata only, no network.
 - `plan`: schema validate, resolve recipe, render immutable plan and expected output; **no filesystem modification and no external execution**, with optional strictly read-only local config file read.
@@ -232,11 +232,11 @@ Same-host Windows 11 evidence: system installer 0.1.1 = 2,258,037 bytes; bundled
 
 **OPEN-001 remains unresolved:** packaging implementations exist, but no clean Windows 11 machine was available. System mode requires Node/npm on PATH; bundled mode adds 24,001,176 bytes (about 22.89 MiB) for this PoC and still needs clean-machine, update, provenance, cancellation and independent review. No final runtime strategy is approved. Tauri does not expose plugin-shell; custom Rust bridge invokes a fixed CLI entry with fixed argument shapes and must retain equivalent least-privilege validation.
 
-## 8. Phase 02.6 Tauri desktop subset
+## 8. Phases 02.6–03 Tauri desktop subset
 
-The implemented desktop sends typed intents (`get_catalog`, `get_runtime_status`, `resolve_plan`, `run_environment_doctor`, `inspect_recovery`, `start_generation`, `cancel_generation`). Host methods bound and deserialize input; the CLI repeats canonical schema/path validation. UI-side validation is user experience, not a security boundary. Version-1 JSONL events require monotonic sequence, matching job ID, known event type and bounded line size. Cancellation accepts only `{schemaVersion:1,kind:"cancel"}` on child stdin. UI displays lifecycle-script disclosure and unchecked affirmative consent; Job Object supervises process lifetime but does not sandbox npm code. Window-close cancellation UX and complete result/retry surfaces remain unverified; no background-job claim is made. No arbitrary filesystem/dialog/shell/URL permissions are enabled.
+The implemented desktop sends typed intents for catalog/runtime, plan/doctor, recovery, generation/cancellation, and fixed Folder/VS Code opening. Host methods bound and deserialize input; the CLI repeats canonical schema/path validation. UI-side validation is user experience, not a security boundary. Version-1 JSONL events require monotonic sequence, matching job ID, known event type and bounded line size. Cancellation accepts only `{schemaVersion:1,kind:"cancel"}` on child stdin. UI displays lifecycle-script disclosure and unchecked affirmative consent; Job Object supervises process lifetime but does not sandbox npm code. Native plan/doctor were smoke-tested without generation; browser-mock cancellation/failure do not verify native job execution. Window-close policy, native open actions, full keyboard/screen-reader/scaling review, and clean-machine behavior remain unverified. No arbitrary filesystem/dialog/shell/URL permissions are enabled.
 
-Proposed persistent settings (later): default parent path, preferred theme, preferred npm manager, last selected docs mode, recent recipe IDs. Project history is metadata only; no project source indexing. Telemetry disabled by default.
+Local webview storage now holds theme, default parent path, and bounded generated-project metadata only. It excludes project contents, logs, and credentials. No project source indexing or telemetry exists.
 
 ## 9. Error taxonomy and recovery
 

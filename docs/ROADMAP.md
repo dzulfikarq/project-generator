@@ -1,6 +1,6 @@
 # Roadmap — Project Generator Desktop V1
 
-Status: **Phase 01 bounded acceptance and Phase 02 local Forma integration/evidence present; no recipe release-approved.** Date: 2026-11-13.
+Status: **Phase 01 bounded acceptance, Phase 02 local Forma integration/evidence, and Phase 03 internal UI implementation present; UI acceptance partial, no recipe release-approved.** Date: 2026-11-13.
 
 ## Phase 0 — Specification and governance
 
@@ -30,8 +30,8 @@ Architecture specification: [`ARCHITECTURE.md`](ARCHITECTURE.md). UX specificati
 
 - Build dashboard, catalog-driven multi-step wizard, Forma metadata gallery, read-only plan/doctor review, consent-gated generation, event/result surface, local recent-project metadata, and basic appearance/destination settings.
 - Show only adapters actually present in the runtime catalog as real choices. Backend, database, unverified package managers, and future frameworks remain visibly unavailable; do not add adapters or promote FE/FM recipes.
-- Validate UI state, forms, compatibility, consent, accessibility semantics, CLI-backed plan/doctor/generation, cancellation, and failure/recovery behavior. Preserve no-overwrite and journal recovery boundaries.
-- Output: internal UI MVP evidence only; clean-machine and public-release gates remain open.
+- Validate UI state, forms, compatibility, consent, accessibility semantics, CLI-backed plan/doctor/generation, cancellation, and failure/recovery behavior. Preserve no-overwrite and journal recovery boundaries. Track unrun native generation and accessibility gates explicitly.
+- Output: internal UI MVP implementation; phase gate remains open until independent evidence and review. Clean-machine and public-release gates remain open.
 
 ## Phase 4 — Web/frontend breadth and styling
 

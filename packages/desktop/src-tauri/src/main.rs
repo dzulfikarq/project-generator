@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+#[cfg(windows)]
+use std::process::Command as NativeCommand;
 use std::{
     env,
     fs::{self, OpenOptions},
@@ -76,6 +78,7 @@ struct DesktopSelectionV1 {
     project_name: String,
     parent_directory: String,
     recipe_id: DesktopRecipeId,
+    documentation: DesktopDocumentationV1,
     template_id: Option<String>,
     template_variant_id: Option<String>,
 }
@@ -86,6 +89,24 @@ enum DesktopRecipeId {
     Fe01,
     #[serde(rename = "FE-02")]
     Fe02,
+}
+
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum DesktopDocumentationV1 {
+    Minimal,
+    Standard,
+    Full,
+}
+
+impl DesktopDocumentationV1 {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Minimal => "minimal",
+            Self::Standard => "standard",
+            Self::Full => "full",
+        }
+    }
 }
 
 impl DesktopSelectionV1 {
@@ -102,10 +123,12 @@ impl DesktopSelectionV1 {
                 "type": "frontend"
             },
             "frontend": { "adapterId": frontend, "language": "ts", "manager": "npm" },
-            "styling": { "adapterId": styling },
-            "documentation": "minimal",
+            "documentation": self.documentation.as_str(),
             "git": { "initialize": false, "initialCommit": false }
         });
+        if self.template_id.is_none() {
+            selection["styling"] = json!({ "adapterId": styling });
+        }
         if let Some(template_id) = self.template_id.as_ref() {
             let mut template = json!({
                 "adapterId": "template.forma",
@@ -326,6 +349,20 @@ fn cli_entry(app: &AppHandle) -> CommandResult<PathBuf> {
     Ok(path)
 }
 
+fn node_compatible_path(path: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let value = path.to_string_lossy();
+        if let Some(unc) = value.strip_prefix(r"\\?\UNC\") {
+            return PathBuf::from(format!(r"\\{unc}"));
+        }
+        if let Some(local) = value.strip_prefix(r"\\?\") {
+            return PathBuf::from(local);
+        }
+    }
+    path
+}
+
 async fn create_config(
     app: &AppHandle,
     selection: &DesktopSelectionV1,
@@ -448,9 +485,9 @@ async fn run_cli_json(
     action: CliAction,
     config: Option<&Path>,
 ) -> CommandResult<Value> {
-    let node = engine_path(app)?;
-    let entry = cli_entry(app)?;
-    let root = resource_root(app)?;
+    let node = node_compatible_path(engine_path(app)?);
+    let entry = node_compatible_path(cli_entry(app)?);
+    let root = node_compatible_path(resource_root(app)?);
     let mut command = Command::new(node);
     command
         .arg(entry)
@@ -714,6 +751,142 @@ async fn inspect_recovery(app: AppHandle) -> CommandResult<Value> {
     run_cli_json(&app, CliAction::RecoveryInspect, None).await
 }
 
+fn validated_project_directory(path: &str) -> CommandResult<PathBuf> {
+    if path.trim().is_empty() || path.len() > 4096 {
+        return Err(error(
+            "DESKTOP_PROJECT_PATH_INVALID",
+            "Project folder path is empty or too long.",
+            "Choose a generated project from recent projects and retry.",
+        ));
+    }
+    let path = Path::new(path);
+    if !path.is_absolute() {
+        return Err(error(
+            "DESKTOP_PROJECT_PATH_INVALID",
+            "Project folder path must be absolute.",
+            "Choose a generated project from recent projects and retry.",
+        ));
+    }
+    let canonical = fs::canonicalize(path).map_err(|_| {
+        error(
+            "DESKTOP_PROJECT_NOT_FOUND",
+            "Generated project folder no longer exists or cannot be accessed.",
+            "Check the folder location before opening it.",
+        )
+    })?;
+    if !canonical.is_dir() {
+        return Err(error(
+            "DESKTOP_PROJECT_NOT_FOUND",
+            "Generated project path is not a folder.",
+            "Check the folder location before opening it.",
+        ));
+    }
+    Ok(canonical)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn open_project_folder(path: String) -> CommandResult<()> {
+    let path = validated_project_directory(&path)?;
+    #[cfg(windows)]
+    {
+        let windows = env::var_os("SystemRoot")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+        NativeCommand::new(windows.join("explorer.exe"))
+            .arg(path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map(|_| ())
+            .map_err(|_| {
+                error(
+                    "DESKTOP_FOLDER_OPEN_FAILED",
+                    "Windows Explorer could not open the project folder.",
+                    "Open the folder from File Explorer and check Windows permissions.",
+                )
+            })
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        Err(error(
+            "DESKTOP_ACTION_UNAVAILABLE",
+            "Opening project folders is only available in this Windows-first build.",
+            "Open the generated folder with your operating system's file manager.",
+        ))
+    }
+}
+
+#[cfg(windows)]
+fn vscode_executable() -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(local_app_data) = env::var_os("LOCALAPPDATA") {
+        candidates.push(PathBuf::from(local_app_data).join("Programs/Microsoft VS Code/Code.exe"));
+    }
+    if let Some(program_files) = env::var_os("ProgramFiles") {
+        candidates.push(PathBuf::from(program_files).join("Microsoft VS Code/Code.exe"));
+    }
+    if let Some(program_files_x86) = env::var_os("ProgramFiles(x86)") {
+        candidates.push(PathBuf::from(program_files_x86).join("Microsoft VS Code/Code.exe"));
+    }
+    if let Some(path) = env::var_os("PATH") {
+        candidates.extend(env::split_paths(&path).map(|entry| entry.join("Code.exe")));
+    }
+    candidates.into_iter().find(|candidate| candidate.is_file())
+}
+
+#[tauri::command]
+fn get_vscode_status() -> bool {
+    #[cfg(windows)]
+    {
+        vscode_executable().is_some()
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn open_project_in_vscode(path: String) -> CommandResult<()> {
+    let project = validated_project_directory(&path)?;
+    #[cfg(windows)]
+    {
+        let code = vscode_executable().ok_or_else(|| {
+            error(
+                "DESKTOP_VSCODE_UNAVAILABLE",
+                "Visual Studio Code was not found.",
+                "Install VS Code or add Code.exe to PATH, then retry.",
+            )
+        })?;
+        NativeCommand::new(code)
+            .arg("--new-window")
+            .arg(project)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map(|_| ())
+            .map_err(|_| {
+                error(
+                    "DESKTOP_VSCODE_OPEN_FAILED",
+                    "Visual Studio Code could not open the project folder.",
+                    "Open the folder from VS Code and check Windows permissions.",
+                )
+            })
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = project;
+        Err(error(
+            "DESKTOP_ACTION_UNAVAILABLE",
+            "Opening projects in VS Code is only available in this Windows-first build.",
+            "Open the generated folder with your installed editor.",
+        ))
+    }
+}
+
 #[tauri::command(rename_all = "camelCase")]
 async fn start_generation(
     app: AppHandle,
@@ -724,6 +897,7 @@ async fn start_generation(
     on_event: Channel<DesktopEventV1>,
 ) -> CommandResult<String> {
     authorize_generation(lifecycle_consent, allow_planned, INTERNAL_DEVELOPMENT_MODE)?;
+    selection.validate()?;
     if selection.template_id.is_some() {
         let git = find_git().ok_or_else(|| {
             error(
@@ -776,9 +950,9 @@ async fn start_generation(
             ));
         }
 
-        let node = engine_path(&app)?;
-        let entry = cli_entry(&app)?;
-        let root = resource_root(&app)?;
+        let node = node_compatible_path(engine_path(&app)?);
+        let entry = node_compatible_path(cli_entry(&app)?);
+        let root = node_compatible_path(resource_root(&app)?);
         let mut command = Command::new(node);
         command
             .arg(entry)
@@ -1096,6 +1270,7 @@ mod tests {
             project_name: "demo".into(),
             parent_directory: "C:\\Projects".into(),
             recipe_id: DesktopRecipeId::Fe01,
+            documentation: DesktopDocumentationV1::Minimal,
             template_id: Some("focus-planner".into()),
             template_variant_id: Some("coral".into()),
         };
@@ -1106,12 +1281,38 @@ mod tests {
             "5cf3c4e5b7b0bc454a653f58d12237c56f2548e2"
         );
         assert_eq!(config["template"]["templateId"], "focus-planner");
+        assert_eq!(config["documentation"], "minimal");
+        assert!(config.get("styling").is_none());
         assert!(config.get("command").is_none());
+
+        let standalone = DesktopSelectionV1 {
+            project_name: "demo".into(),
+            parent_directory: "C:\\Projects".into(),
+            recipe_id: DesktopRecipeId::Fe01,
+            documentation: DesktopDocumentationV1::Standard,
+            template_id: None,
+            template_variant_id: None,
+        }
+        .to_core_json("");
+        assert_eq!(standalone["styling"]["adapterId"], "styling.css");
     }
 
     #[test]
     fn runtime_mode_is_fixed_to_supported_build_variant() {
         assert!(matches!(RUNTIME_MODE, "system" | "bundled"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn node_cli_paths_drop_windows_verbatim_prefix() {
+        assert_eq!(
+            node_compatible_path(PathBuf::from(r"\\?\E:\Projects\pg-runtime")),
+            PathBuf::from(r"E:\Projects\pg-runtime")
+        );
+        assert_eq!(
+            node_compatible_path(PathBuf::from(r"\\?\UNC\server\share\pg-runtime")),
+            PathBuf::from(r"\\server\share\pg-runtime")
+        );
     }
 
     #[test]
@@ -1120,6 +1321,7 @@ mod tests {
             project_name: "demo".into(),
             parent_directory: "C:\\Projects".into(),
             recipe_id: DesktopRecipeId::Fe01,
+            documentation: DesktopDocumentationV1::Full,
             template_id: None,
             template_variant_id: Some("coral".into()),
         };
@@ -1130,6 +1332,22 @@ mod tests {
         selection.template_variant_id = None;
         selection.project_name = "x".repeat(4097);
         assert_eq!(selection.validate().unwrap_err().code, "GEN_CONFIG_INVALID");
+    }
+
+    #[test]
+    fn opening_project_requires_existing_absolute_directory() {
+        let path = std::env::temp_dir().join(format!("pg-desktop-open-{}", Uuid::new_v4()));
+        fs::create_dir(&path).unwrap();
+        let result = validated_project_directory(&path.to_string_lossy())
+            .ok()
+            .expect("generated temp directory should validate");
+        assert!(result.is_dir());
+        let invalid = validated_project_directory("relative-project");
+        assert_eq!(
+            invalid.err().map(|detail| detail.code),
+            Some("DESKTOP_PROJECT_PATH_INVALID".to_owned())
+        );
+        fs::remove_dir(path).unwrap();
     }
 
     #[test]
@@ -1183,7 +1401,10 @@ fn main() {
             run_environment_doctor,
             inspect_recovery,
             start_generation,
-            cancel_generation
+            cancel_generation,
+            open_project_folder,
+            open_project_in_vscode,
+            get_vscode_status
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Project Generator desktop PoC");

@@ -33,4 +33,6 @@ Persist only settings and generated-project metadata (name, path, recipe, status
 
 The UI is a local-development MVP, not release approval. Clean-machine runtime proof, independent security review, UI-driven generation/cancellation, full accessibility/scaling, and recipe acceptance remain separate evidence gates. Job Objects supervise process lifetime; they do not sandbox lifecycle scripts.
 
-Pending implementation evidence and independent review.
+## Implementation evidence
+
+The requested local UI MVP is implemented within Option A. Current scope and verification limits are recorded in [Phase 03 evidence](../qa/evidence/phase-03-desktop-ui-mvp.md). Native read-only catalog/runtime/plan/doctor smoke passed; UI cancellation and failure transitions were exercised only with a mocked Tauri bridge. No generator job ran. This record remains **Proposed** pending product/security review; implementation and local checks do not authorize recipe promotion or public release.
