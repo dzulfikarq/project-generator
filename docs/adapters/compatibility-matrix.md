@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Version | Draft 0.1 — 2026-11-13 |
-| Status | **FE-01–FE-05/FM-01/FM-02 local implementations and E2E evidence exist; no recipe promoted or release-approved** |
+| Status | **FE-03–FE-05 fresh CLI and native desktop acceptance evidence complete; FE-01–FE-05/FM-01/FM-02 remain PLAN; no recipe promoted or release-approved** |
 | Main platform | Windows 11 |
 | Source of truth | This matrix + machine-readable adapter manifests + QA results |
 
-> **DO NOT equate framework popularity, upstream Forma checks, or one local run with Project Generator readiness.** FE-01–FE-05 and FM-01/FM-02 have local implementation/evidence only, not independent acceptance or release approval; every recipe remains unavailable in normal generation.
+> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-05 and FM-01/FM-02 have local implementation/evidence only, not independent acceptance or release approval; every recipe remains unavailable in normal generation.
 
 ## 1. Status and test gates
 
@@ -110,7 +110,7 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 
 ## 7. Cross-stack recipe registry (unit of release)
 
-**Every row below remains `PLAN`.** FE-01–FE-05 and FM-01/FM-02 have implementations and local Windows E2E evidence; other rows remain targets only. No recipe can be selected for normal generation until its acceptance evidence is reviewed and status is explicitly promoted.
+**Every row below remains `PLAN`.** FE-01–FE-05 and FM-01/FM-02 have implementations and local Windows CLI/native-desktop E2E evidence; other rows remain targets only. No recipe can be selected for normal generation until independent acceptance evidence is reviewed and status is explicitly promoted.
 
 | Recipe ID | Type | Frontend | Backend | DB / data access | Styling | Manager(s) | Launch target |
 |---|---|---|---|---|---|---|---|
@@ -138,7 +138,7 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 
 FE-01 evidence: [Windows React + Vite run](../qa/evidence/FE-01/2026-11-11-cli-e2e.md). FE-02 evidence: [Windows Next.js run](../qa/evidence/FE-02/2026-11-11-cli-e2e.md). Both were invoked with `--development-allow-planned`; remain `PLAN` pending the full independent acceptance/review gates.
 
-Phase 04A exact pins and local Windows evidence: [FE-03–FE-05 report](../qa/evidence/phase-04a-vue-bootstrap-expansion.md). Vue uses official `create-vue@3.24.0` with its npm integrity; Bootstrap CSS uses `bootstrap@5.3.9` with its npm integrity. All three recipes remain `PLAN`; no Forma/Vue compatibility is asserted.
+Phase 04A pins and implementation evidence: [FE-03–FE-05 report](../qa/evidence/phase-04a-vue-bootstrap-expansion.md). Fresh CLI/native desktop acceptance and negative Vue/Forma plan evidence: [acceptance report](../qa/evidence/phase-04a-native-desktop-acceptance.md). Vue uses official `create-vue@3.24.0`; Bootstrap CSS uses `bootstrap@5.3.9`. All three recipes remain `PLAN`; no Forma/Vue compatibility is asserted.
 
 **Important:** the fullstack recipe must produce a real, reachable example API endpoint and frontend call when that is part of its advertised output. Generating two unrelated folder trees is insufficient.
 
@@ -151,6 +151,8 @@ Phase 04A exact pins and local Windows evidence: [FE-03–FE-05 report](../qa/ev
 | Focus Planner 0.1.0 | React + Vite; Next.js untested | **PLAN** — React + Vite generation, npm install, typecheck, build, HTTP and browser smokes passed | React + Vite only |
 | Any other Forma template | Require manifest and independent evidence | Not in pinned Project Generator catalog | Do not offer |
 | Forma React on Vue/Angular/Expo | No native adapter, wrong component contract | **BLK** | Do not offer |
+
+Phase 04A native UI disabled the React/Next Forma template cards when Vue was selected. CLI plans for Vue with React-only `modern-admin` and `staywise-host-dashboard` returned `GEN_INCOMPATIBLE` without creating a target; see [native acceptance evidence](../qa/evidence/phase-04a-native-desktop-acceptance.md).
 
 The catalog is pinned to `5cf3c4e5b7b0bc454a653f58d12237c56f2548e2`. On an explicit generation with cache miss: configured Git Credential Manager fetches only that commit; existing Forma exporter creates a portable bundle; Project Generator checks catalog metadata/content hash; existing installer validates and installs into owned staging. Cache key includes source commit, template ID/version, and package content hash. Credentials are not accepted in config or copied by Project Generator into its own docs/manifest/logs. SHA-256 is integrity checking, not publisher signature. Interrupted fetch/export can leave partial cache directories; no automatic cache deletion or overwrite is attempted. See [Phase 02 evidence](../qa/evidence/phase-02-forma-local-integration.md).
 

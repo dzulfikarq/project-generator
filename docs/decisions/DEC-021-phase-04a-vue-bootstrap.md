@@ -5,7 +5,7 @@
 | Status | **Accepted Discovery; implementation and local evidence present; recipe approval pending** |
 | Date | 2026-11-13 |
 | Scope | FE-03 Vue/Vite/CSS, FE-04 React/Vite/Bootstrap 5 CSS, FE-05 Vue/Vite/Bootstrap 5 CSS |
-| Evidence | [Phase 04A local Windows evidence](../qa/evidence/phase-04a-vue-bootstrap-expansion.md) |
+| Evidence | [Phase 04A implementation evidence](../qa/evidence/phase-04a-vue-bootstrap-expansion.md); [native desktop acceptance](../qa/evidence/phase-04a-native-desktop-acceptance.md) |
 
 ## Decision
 
@@ -18,4 +18,4 @@
 
 ## Follow-up
 
-Independent acceptance/review remains required before any recipe promotion. Phase 04B recommendation: close this review gate and harden per-recipe evidence before adding another framework or component system.
+Independent acceptance/review remains required before any recipe promotion. Phase 04A local CLI/native desktop scope completed on one non-elevated Windows host; no source defect was found. Phase 04B disposition: **GO for independent review and evidence hardening only; NO-GO for another framework/component system or recipe promotion until that review gate closes.**
