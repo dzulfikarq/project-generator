@@ -8,7 +8,9 @@ import { spawnSync } from 'node:child_process'
 const mode = process.argv[2]
 if (mode !== 'system' && mode !== 'bundled') throw new Error('Pass runtime mode: system or bundled.')
 
-const resourceRoot = resolve(import.meta.dirname, '..', 'packages', 'desktop', 'src-tauri', 'resources', 'pg-runtime')
+const resourceRoot = process.argv[3]
+  ? resolve(process.argv[3])
+  : resolve(import.meta.dirname, '..', 'packages', 'desktop', 'src-tauri', 'resources', 'pg-runtime')
 const runtime = mode === 'bundled' ? join(resourceRoot, 'runtime', 'node.exe') : process.execPath
 const cli = join(resourceRoot, 'cli', 'dist', 'src', 'index.js')
 const core = join(resourceRoot, 'cli', 'node_modules', '@project-generator', 'core', 'dist', 'src', 'index.js')
@@ -67,6 +69,24 @@ try {
     configPaths.push(configPath)
   }
 
+  const catalogResult = invoke(['catalog', '--json'])
+  assert.equal(catalogResult.status, 0, catalogResult.stderr)
+  const catalog = JSON.parse(catalogResult.stdout)
+  assert.equal(catalog.ok, true)
+  assert.deepEqual(catalog.data.recipes.map(({ id, status }) => [id, status]), configs.filter(([id]) => id.startsWith('FE-')).map(([id]) => [id, 'planned']))
+  assert.deepEqual(catalog.data.forma.integrations.map(({ recipeId, status }) => [recipeId, status]), [['FM-01', 'planned'], ['FM-02', 'planned']])
+
+  const planResult = invoke(['plan', '--config', configPaths[0], '--json'])
+  assert.equal(planResult.status, 0, planResult.stdout)
+  const plan = JSON.parse(planResult.stdout).data
+  assert.equal(plan.recipeId, 'FE-01')
+  assert.equal(plan.recipeStatus, 'planned')
+  assert.equal(plan.executionAvailable, false)
+
+  const doctorResult = invoke(['doctor', '--config', configPaths[0], '--json'])
+  assert.equal(doctorResult.status, 0, doctorResult.stdout)
+  assert.equal(JSON.parse(doctorResult.stdout).data.ready, true)
+
   const help = invoke(['--help'])
   assert.equal(help.status, 0, help.stderr)
   assert.equal(help.stdout.includes('--development-allow-planned'), false, 'release help must not advertise internal override')
@@ -104,7 +124,7 @@ try {
   assert.equal(directResult.error?.code, 'GEN_RECIPE_UNTESTED')
 
   assert.deepEqual((await readdir(root)).sort(), configPaths.map((path) => path.split(/[\\/]/).at(-1)).sort())
-  console.log(`Packaged ${mode} CLI policy smoke passed: release override rejected; FE-01–FE-05 and FM-01/FM-02 blocked before staging.`)
+  console.log(`Packaged ${mode} CLI policy smoke passed: catalog/plan/doctor read-only; release override rejected; FE-01–FE-05 and FM-01/FM-02 blocked before staging.`)
 } finally {
   await rm(root, { recursive: true, force: true })
 }
