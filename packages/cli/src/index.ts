@@ -2,7 +2,7 @@
 import { lstat, readFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { resolve, win32 } from 'node:path'
-import { applyRecovery, catalog, createPlan, generateProject, GeneratorError, inspectRecovery, parseSelectionJson, runDoctor } from '@project-generator/core'
+import { ALLOW_PLANNED_RECIPE_GENERATION, applyRecovery, catalog, createPlan, generateProject, GeneratorError, inspectRecovery, parseSelectionJson, runDoctor } from '@project-generator/core'
 import { listenForDesktopCancel } from './desktop-control.js'
 
 const usage = `Project Generator CLI 0.1.0
@@ -11,7 +11,7 @@ Usage:
   project-generator catalog --json
   project-generator plan --config <file> --json
   project-generator doctor --config <file> [--json]
-  project-generator generate --config <file> --jsonl [--development-allow-planned] [--desktop-control]
+  project-generator generate --config <file> --jsonl${ALLOW_PLANNED_RECIPE_GENERATION ? ' [--development-allow-planned]' : ''} [--desktop-control]
   project-generator inspect --output <folder> [--json]
   project-generator recovery inspect [--job-id <id>] [--json]
   project-generator recovery apply --job-id <id> --action <cleanup|finalize> --confirm-job <id> [--json]
@@ -173,9 +173,14 @@ async function main(args: string[]): Promise<number> {
       return report.ready ? 0 : 3
     }
     if (command === 'generate') {
-      validateFlags(flags, ['--config'], ['--jsonl', '--development-allow-planned', '--desktop-control'])
+      if (flags.includes('--development-allow-planned') && !ALLOW_PLANNED_RECIPE_GENERATION) {
+        throw new GeneratorError({ code: 'GEN_RECIPE_UNTESTED', stage: 'preflight', message: 'This release CLI does not permit the development-only planned-recipe override.', nextAction: 'Use a tested recipe; internal development builds are required for planned-recipe evidence runs.', targetModified: false })
+      }
+      const switches = ['--jsonl', '--desktop-control']
+      if (ALLOW_PLANNED_RECIPE_GENERATION) switches.push('--development-allow-planned')
+      validateFlags(flags, ['--config'], switches)
       const configPath = option(flags, '--config')
-      const allowPlanned = flags.includes('--development-allow-planned')
+      const allowPlanned = ALLOW_PLANNED_RECIPE_GENERATION && flags.includes('--development-allow-planned')
       if (!configPath || !flags.includes('--jsonl')) throw new GeneratorError({ code: 'GEN_CLI_USAGE', stage: 'cli', message: 'generate requires --config <file> and --jsonl.', nextAction: 'Run project-generator generate --config <file> --jsonl.', targetModified: false })
       let selection
       try {

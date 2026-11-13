@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import { randomBytes, randomUUID } from 'node:crypto'
-import { access, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, resolve, win32 } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
-import test from 'node:test'
+import test, { type TestContext } from 'node:test'
+import { ALLOW_PLANNED_RECIPE_GENERATION } from '@project-generator/core'
 
 const cli = resolve(dirname(fileURLToPath(import.meta.url)), '../src/index.js')
 
@@ -144,6 +145,61 @@ test('CLI plans the three Phase 04A stacks read-only and preserves planned statu
       if (styling === 'styling.bootstrap') assert.ok(plan.expectedWrites.includes('src/project-generator-bootstrap.css'))
       await assert.rejects(access(resolve(parent, targetName)))
     }
+  } finally {
+    await rm(parent, { recursive: true, force: true })
+  }
+})
+
+test('internal CLI planned override reaches preflight while default generation stays blocked', { skip: !ALLOW_PLANNED_RECIPE_GENERATION }, async (t: TestContext) => {
+  if (process.platform !== 'win32') {
+    t.skip('planned generation requires the Windows supervisor')
+    return
+  }
+  const supervisor = resolve(dirname(fileURLToPath(import.meta.url)), '../../../core/native/pg-windows-supervisor.exe')
+  const elevation = spawnSync(supervisor, ['--check-elevation'], { encoding: 'utf8', windowsHide: true })
+  assert.equal(elevation.status, 0)
+  if ((JSON.parse(elevation.stdout) as { elevated: boolean }).elevated) {
+    t.skip('internal generation policy check requires a non-elevated caller')
+    return
+  }
+
+  const parent = await mkdtemp(resolve(tmpdir(), 'pg-internal-policy-'))
+  const occupiedTarget = resolve(parent, 'occupied-project')
+  const sentinel = resolve(occupiedTarget, 'keep.txt')
+  const overrideConfig = resolve(parent, 'override.json')
+  const blockedConfig = resolve(parent, 'blocked.json')
+  const config = (name: string) => ({
+    schemaVersion: 1,
+    project: { name, parentDirectory: parent, type: 'frontend' },
+    frontend: { adapterId: 'frontend.react-vite', language: 'ts', manager: 'npm' },
+    styling: { adapterId: 'styling.css' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  })
+  const codes = (stdout: string): string[] => stdout.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line) as { code?: string }).map((event) => event.code ?? '')
+  const cleanupLog = async (stderr: string): Promise<void> => {
+    const log = stderr.match(/^Redacted job log: (.+)$/m)?.[1]
+    if (log) await rm(dirname(log.trim()), { recursive: true, force: true })
+  }
+
+  try {
+    await mkdir(occupiedTarget)
+    await writeFile(sentinel, 'preserve')
+    await writeFile(overrideConfig, JSON.stringify(config('occupied-project')))
+    await writeFile(blockedConfig, JSON.stringify(config('blocked-project')))
+
+    const allowed = spawnSync(process.execPath, [cli, 'generate', '--config', overrideConfig, '--jsonl', '--development-allow-planned'], { encoding: 'utf8', windowsHide: true })
+    assert.equal(allowed.status, 6, allowed.stderr)
+    assert.ok(codes(allowed.stdout).includes('GEN_PATH_EXISTS'), allowed.stdout)
+    await cleanupLog(allowed.stderr)
+
+    const blocked = spawnSync(process.execPath, [cli, 'generate', '--config', blockedConfig, '--jsonl'], { encoding: 'utf8', windowsHide: true })
+    assert.equal(blocked.status, 3, blocked.stderr)
+    assert.ok(codes(blocked.stdout).includes('GEN_RECIPE_UNTESTED'), blocked.stdout)
+    await cleanupLog(blocked.stderr)
+
+    assert.equal(await readFile(sentinel, 'utf8'), 'preserve')
+    assert.deepEqual((await readdir(parent)).sort(), ['blocked.json', 'occupied-project', 'override.json'])
   } finally {
     await rm(parent, { recursive: true, force: true })
   }

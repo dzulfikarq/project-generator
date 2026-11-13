@@ -5,7 +5,7 @@
 | Status | **Accepted Discovery; implementation and local evidence present; recipe approval pending** |
 | Date | 2026-11-13 |
 | Scope | FE-03 Vue/Vite/CSS, FE-04 React/Vite/Bootstrap 5 CSS, FE-05 Vue/Vite/Bootstrap 5 CSS |
-| Evidence | [Phase 04A implementation evidence](../qa/evidence/phase-04a-vue-bootstrap-expansion.md); [native desktop acceptance](../qa/evidence/phase-04a-native-desktop-acceptance.md) |
+| Evidence | [Phase 04A implementation evidence](../qa/evidence/phase-04a-vue-bootstrap-expansion.md); [native desktop acceptance](../qa/evidence/phase-04a-native-desktop-acceptance.md); [packaged CLI security gate](../qa/evidence/phase-04a-packaged-cli-security-gate.md) |
 
 ## Decision
 
@@ -18,4 +18,4 @@
 
 ## Follow-up
 
-Independent acceptance/review remains required before any recipe promotion. Phase 04A local CLI/native desktop scope completed on one non-elevated Windows host; no source defect was found. Phase 04B disposition: **GO for independent review and evidence hardening only; NO-GO for another framework/component system or recipe promotion until that review gate closes.**
+The packaged CLI planned-recipe bypass was identified and remediated with release-profile core enforcement, CLI rejection, and release packaging checks; independent artifact review remains pending. Independent recipe acceptance remains required before promotion. Phase 04B disposition remains **GO for independent review and evidence hardening only; NO-GO for another framework/component system or recipe promotion until review gates close.**

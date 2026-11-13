@@ -111,7 +111,7 @@ function tauriCli() {
 }
 
 if (action === 'dev') {
-  runNpm(['run', 'build'], { cwd: root })
+  runNpm(['run', 'build:development'], { cwd: root })
   prepareResources()
   const child = spawn(process.execPath, [tauriCli(), 'dev'], {
     cwd: desktop,
@@ -124,6 +124,7 @@ if (action === 'dev') {
 } else {
   runNpm(['run', 'build'], { cwd: root })
   prepareResources()
+  run(process.execPath, [join(root, 'scripts', 'packaged-cli-policy-smoke.mjs'), mode])
   stagePortableNsis()
   const args = [tauriCli(), 'build', '--bundles', 'nsis']
   let overlay

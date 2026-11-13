@@ -90,7 +90,7 @@ project-generator generate --config <file> --jsonl
 project-generator inspect --output <folder> --json
 ```
 
-`npm run build` builds the Rust Windows supervisor and copies local sidecar into ignored `packages/core/native/`; no binary is committed. Phase 02.6 internal installers stage that sidecar with the CLI, but are not release artifacts. Windows Job Objects manage owned process lifetime, not filesystem/network isolation. `generate` is explicit execution consent. Planned recipes are blocked by default; `--development-allow-planned` is development-only and does not change recipe status. npm installs can execute dependency lifecycle scripts and are not sandboxed. No automatic Git, Docker, remote push, or hidden installs. See [Phase 01 evidence](docs/qa/acceptance-matrix.md).
+`npm run build` builds the Rust Windows supervisor and a release-profile CLI/core by default; no binary is committed. `npm run build:development` explicitly builds an internal CLI/core that permits `--development-allow-planned` for evidence gathering. The capability is compiled into the core artifact, not enabled by runtime environment or CLI flags. Desktop debug builds use the development profile; packaged release builds use release profile and smoke-test the staged CLI. Planned recipes remain blocked by default and never change support status. Windows Job Objects manage owned process lifetime, not filesystem/network isolation. `generate` is explicit execution consent. npm installs can execute dependency lifecycle scripts and are not sandboxed. No automatic Git, Docker, remote push, or hidden installs. See [Phase 01 evidence](docs/qa/acceptance-matrix.md).
 
 ## Internal desktop UI and runtime PoC (Phases 02.6–03)
 

@@ -5,6 +5,7 @@ import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, win32 } from 'node:path'
 import { GeneratorError, asGeneratorError } from './errors.js'
+import { ALLOW_PLANNED_RECIPE_GENERATION } from './build-policy.js'
 import { runDoctor } from './doctor.js'
 import { createPlan } from './plan.js'
 import { writeProjectDocs, writeProjectManifest } from './project-docs.js'
@@ -451,7 +452,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
   try {
     stageStart('preflight')
     throwIfCancelled(options.signal, currentStage)
-    if (resolved.recipe.status !== 'tested' && !(options.allowPlanned && resolved.recipe.status === 'planned')) {
+    if (resolved.recipe.status !== 'tested' && !(ALLOW_PLANNED_RECIPE_GENERATION && options.allowPlanned && resolved.recipe.status === 'planned')) {
       throw userError('GEN_RECIPE_UNTESTED', 'preflight', `${resolved.recipe.id} is planned and disabled for normal generation.`, 'Use a tested recipe; development-only runs do not change recipe status.')
     }
     await assertGenerationAllowed()

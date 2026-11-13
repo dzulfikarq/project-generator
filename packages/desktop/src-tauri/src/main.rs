@@ -1452,6 +1452,15 @@ mod tests {
         assert!(authorize_generation(true, false, false).is_ok());
         assert!(authorize_generation(true, true, true).is_ok());
     }
+
+    #[test]
+    fn compiled_build_profile_controls_planned_recipe_override() {
+        assert_eq!(INTERNAL_DEVELOPMENT_MODE, cfg!(debug_assertions));
+        assert_eq!(
+            authorize_generation(true, true, INTERNAL_DEVELOPMENT_MODE).is_ok(),
+            cfg!(debug_assertions)
+        );
+    }
 }
 
 fn main() {
