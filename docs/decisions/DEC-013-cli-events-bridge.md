@@ -27,11 +27,11 @@ Typed intents, schema validation on the privileged side, no secret-bearing JSON 
 
 ## Proposed direction and rationale
 
-Use B. CLI offers read-only `catalog/plan/doctor` and explicit `generate` with `job-started`, stage progress and terminal event. Later Tauri bridge accepts typed actions only (`resolvePlan`, `startJob`, `cancelJob`, etc.).
+Use B. CLI offers read-only `catalog/plan/doctor` and explicit `generate` with `job-started`, stage progress and terminal event. The Phase 02.6 Tauri bridge accepts fixed typed commands only; it exposes no generic command execution.
 
 ## Verification / evidence
 
-Partial evidence: FE-01/FE-02 generation produced ordered JSONL job/stage/validation events with terminal completion; unit coverage checks monotonic sequence numbers for a blocked generation. See per-recipe reports and [QA matrix](../qa/acceptance-matrix.md). No Tauri consumer, stale-event handling, disconnect/reconnect behavior, or independent schema compatibility test exists yet.
+Partial evidence: Phase 02.6 desktop validates event schema version, sequence, job ID, known event type and line bounds; it holds terminal success until child exit succeeds. Cancellation is limited to version-1 `{schemaVersion:1,kind:"cancel"}` stdin messages. Rust unit checks and CLI cancel parser tests pass; same-host launch/install checks are in the [Phase 02.6 report](../qa/evidence/phase-02.6-desktop-runtime-packaging.md). Full UI-driven cancellation, reconnect behavior, broad cross-version compatibility and independent schema review remain untested.
 
 ## Security and second-order effects
 
@@ -48,3 +48,4 @@ Pending real review.
 ## Revision history
 
 2026-11-11: Initial proposal.
+2026-11-13: Added internal Tauri consumer and protocol test evidence; proposal remains pending review.

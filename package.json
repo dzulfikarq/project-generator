@@ -8,14 +8,18 @@
   },
   "workspaces": [
     "packages/core",
-    "packages/cli"
+    "packages/cli",
+    "packages/desktop"
   ],
   "scripts": {
     "build:supervisor": "node scripts/build-windows-supervisor.mjs",
     "build:supervisor:test": "node scripts/build-windows-supervisor.mjs --debug-only",
     "build": "npm run build:supervisor && npm run build --workspace @project-generator/core && npm run build --workspace @project-generator/cli",
-    "typecheck": "npm run typecheck --workspace @project-generator/core && npm run typecheck --workspace @project-generator/cli",
+    "typecheck": "npm run typecheck --workspace @project-generator/core && npm run typecheck --workspace @project-generator/cli && npm run typecheck --workspace @project-generator/desktop",
     "test": "npm run build && npm run build:supervisor:test && npm run test --workspace @project-generator/core && npm run test --workspace @project-generator/cli",
+    "desktop:dev": "node scripts/desktop.mjs dev system",
+    "desktop:build:system": "node scripts/desktop.mjs build system",
+    "desktop:build:bundled": "node scripts/desktop.mjs build bundled",
     "lint": "eslint packages/*/src/**/*.ts packages/*/test/**/*.ts"
   },
   "devDependencies": {

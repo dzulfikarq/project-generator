@@ -167,7 +167,7 @@ Full mode can initialize decisions such as `DEC-001 stack-selection` with status
 ## 7. Proposed technical approach (pending architecture sign-off)
 
 - Desktop: Tauri 2 + React + TypeScript + Vite.
-- Core engine: TypeScript CLI, invoked through bounded desktop-native bridge or vetted sidecar; packaged runtime/Node prerequisite strategy **not yet finalized**.
+- Core engine: TypeScript CLI, invoked through the Phase 02.6 fixed-command Tauri bridge; system-Node and bundled-Node installers have same-host Windows 11 PoC evidence, but packaged runtime/Node prerequisite strategy **is not finalized** pending clean-machine proof and review.
 - Config validation: strict schema versioning and explicit migrations.
 - Adapters: built-in, reviewed, versioned manifests and implementations; no arbitrary third-party executable plugins in V1.
 - Project jobs: `plan → preflight → stage → scaffold → configure → install → validate → finalize → report`.
@@ -221,7 +221,7 @@ Each recipe requires a specific integration test and may be disabled until that 
 
 ## 11. Open decisions
 
-- OPEN-001: Node CLI runtime: require system Node in V1 or bundle engine as sidecar? Need packaging PoC.
+- OPEN-001: Node CLI runtime: require system Node in V1 or bundle engine as sidecar? Phase 02.6 measured both package modes on one Windows 11 host; clean-machine and independent review still required.
 - OPEN-002: Stable public repo name/branding and licensing.
 - OPEN-003: Public plugin SDK and sandbox, deliberately excluded from V1.
 - OPEN-004: Review Git Credential Manager-based Forma access scope, cache protections, and entitlement policy; CLI does not store or accept credentials.

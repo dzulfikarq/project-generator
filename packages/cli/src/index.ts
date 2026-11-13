@@ -3,6 +3,7 @@ import { lstat, readFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { resolve, win32 } from 'node:path'
 import { applyRecovery, catalog, createPlan, generateProject, GeneratorError, inspectRecovery, parseSelectionJson, runDoctor } from '@project-generator/core'
+import { listenForDesktopCancel } from './desktop-control.js'
 
 const usage = `Project Generator CLI 0.1.0
 
@@ -10,7 +11,7 @@ Usage:
   project-generator catalog --json
   project-generator plan --config <file> --json
   project-generator doctor --config <file> [--json]
-  project-generator generate --config <file> --jsonl [--development-allow-planned]
+  project-generator generate --config <file> --jsonl [--development-allow-planned] [--desktop-control]
   project-generator inspect --output <folder> [--json]
   project-generator recovery inspect [--job-id <id>] [--json]
   project-generator recovery apply --job-id <id> --action <cleanup|finalize> --confirm-job <id> [--json]
@@ -172,7 +173,7 @@ async function main(args: string[]): Promise<number> {
       return report.ready ? 0 : 3
     }
     if (command === 'generate') {
-      validateFlags(flags, ['--config'], ['--jsonl', '--development-allow-planned'])
+      validateFlags(flags, ['--config'], ['--jsonl', '--development-allow-planned', '--desktop-control'])
       const configPath = option(flags, '--config')
       const allowPlanned = flags.includes('--development-allow-planned')
       if (!configPath || !flags.includes('--jsonl')) throw new GeneratorError({ code: 'GEN_CLI_USAGE', stage: 'cli', message: 'generate requires --config <file> and --jsonl.', nextAction: 'Run project-generator generate --config <file> --jsonl.', targetModified: false })
@@ -186,6 +187,7 @@ async function main(args: string[]): Promise<number> {
       }
       const controller = new AbortController()
       const interrupt = (): void => controller.abort()
+      const stopDesktopControl = flags.includes('--desktop-control') ? listenForDesktopCancel(controller) : () => undefined
       process.once('SIGINT', interrupt)
       process.once('SIGTERM', interrupt)
       try {
@@ -197,6 +199,7 @@ async function main(args: string[]): Promise<number> {
         if (result.logFile) process.stderr.write(`Redacted job log: ${result.logFile}\n`)
         return result.exitCode
       } finally {
+        stopDesktopControl()
         process.removeListener('SIGINT', interrupt)
         process.removeListener('SIGTERM', interrupt)
       }

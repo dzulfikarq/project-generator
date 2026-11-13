@@ -151,7 +151,7 @@ The catalog is pinned to `5cf3c4e5b7b0bc454a653f58d12237c56f2548e2`. On an expli
 
 ## 9. Runtime / machine prerequisites
 
-- Windows 11 target, PowerShell and Windows path validation; Phase 01 CLI requires installed system Node.js and npm. OPEN-001 remains open for the future desktop runtime/sidecar packaging PoC.
+- Windows 11 target, PowerShell and Windows path validation; Phase 01 CLI requires installed system Node.js and npm. Phase 02.6 built system-Node and bundled-Node desktop installers on one Windows 11 host; OPEN-001 remains open pending clean-machine proof and runtime decision ([evidence](../qa/evidence/phase-02.6-desktop-runtime-packaging.md)).
 - Node/npm (and optionally Yarn/pnpm/Bun) for JavaScript stacks.
 - Go SDK for Go backend.
 - PHP, Composer and required PHP extensions for Laravel.

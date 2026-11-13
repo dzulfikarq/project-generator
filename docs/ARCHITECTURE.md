@@ -4,7 +4,7 @@
 |---|---|
 | Version | V1 design draft 0.2 |
 | Date | 2026-11-13 |
-| Status | **Design draft; Phase 01 CLI implemented; architecture/release review pending** |
+| Status | **Design draft; Phase 01 CLI and Phase 02.6 internal desktop/runtime PoC implemented; architecture/release review pending** |
 | Product baseline | [PRD](PRD.md) |
 | Interface contract | [Adapter Contract](adapters/adapter-contract.md) |
 | Compatibility source | [Compatibility Matrix](adapters/compatibility-matrix.md) |
@@ -47,11 +47,11 @@ flowchart TD
     Job --> Output[New project folder]
 ```
 
-Desktop UI will be introduced in a later phase. Phase 1 ships **Engine + CLI + built-in recipes** independently and is fully testable without Tauri. Implementation order must never turn the UI into an unstructured shell-command frontend.
+Phase 1 ships **Engine + CLI + built-in recipes** independently and remains testable without Tauri. Phase 02.6 adds a minimal internal shell; implementation must never turn the UI into an unstructured shell-command frontend.
 
 ### Phase 01 implementation snapshot
 
-Current repository implements two npm workspaces: `packages/core` owns schema/resolution, plans, doctor, generation jobs, process execution, staging and project docs; `packages/cli` owns command parsing and JSON/JSONL output. Core includes a pinned Forma catalog, Git Credential Manager-backed private source fetch, SHA-256 bundle validation/cache, and calls Forma's existing exporter and installer. Forma remains a separate, unmodified repository. A Rust Windows helper owns workload Job Objects and native staging create/cleanup/finalize; ordinary Node staging writes remain path-based. The helper is built locally but not installer-packaged. No Tauri UI or backend/database adapters exist. FE-01/FE-02 and FM-01/FM-02 remain `planned`; normal generation blocks them. `--development-allow-planned` is an evidence-gathering switch, not a support-status override. See [Phase 02 local evidence](qa/evidence/phase-02-forma-local-integration.md).
+Current repository implements three npm workspaces: `packages/core` owns schema/resolution, plans, doctor, generation jobs, process execution, staging and project docs; `packages/cli` owns command parsing and JSON/JSONL output; `packages/desktop` owns the React/Vite UI and Tauri shell. The Tauri host exposes fixed typed commands, writes bounded temporary JSON config, launches only the packaged CLI under a build-selected Node runtime, validates versioned JSONL events, and forwards restricted cancellation. The Windows helper and packaged CLI/core are staged as resources. System-Node and bundled-Node NSIS installers were built; same-host Windows 11 per-user install/update/uninstall and launch checks passed. Clean-machine proof remains unavailable. Forma remains separate and unmodified. FE-01/FE-02/FM-01/FM-02 remain `planned`; release-profile generation blocks them. Debug-only planned override is evidence gathering, not support status. See [Phase 02 evidence](qa/evidence/phase-02-forma-local-integration.md) and [Phase 02.6 evidence](qa/evidence/phase-02.6-desktop-runtime-packaging.md).
 
 ## 3. Proposed repository boundaries
 
@@ -84,7 +84,7 @@ project-generator/
 └── design.md
 ```
 
-This is the **proposed future directory shape**. Current implementation is narrower: root npm workspaces contain `packages/core` and `packages/cli`; config, catalog, adapters, and docs generation currently live within `core`. The root internal and generated-project package manager are both npm. Do not infer that proposed packages or desktop components exist.
+This remains the **proposed future directory shape**. Current root npm workspaces are `packages/core`, `packages/cli`, and `packages/desktop`; config, catalog, adapters, and docs generation live within `core`. The root internal and generated-project package manager is npm. Do not infer that proposed packages or desktop components beyond the Phase 02.6 subset exist.
 
 ### Package responsibilities
 
@@ -110,7 +110,7 @@ This is the **proposed future directory shape**. Current implementation is narro
 - `JobReport`: step outcome, validation outcome, cleanup status, target impact and recovery instructions.
 - `ReproducibilityManifest`: recipe ID and version, exact resolved upstream versions/hashes, package managers, actual generated lockfiles, validation statuses, no machine secrets.
 
-The [Adapter Contract](adapters/adapter-contract.md) defines the broader proposed model. Phase 01's canonical types and strict parser live in `packages/core/src/types.ts` and `packages/core/src/schema.ts`; the CLI uses them directly. Desktop-side validation does not yet exist.
+The [Adapter Contract](adapters/adapter-contract.md) defines the broader proposed model. Phase 01's canonical types and strict parser live in `packages/core/src/types.ts` and `packages/core/src/schema.ts`; the CLI uses them directly. The desktop accepts a smaller Rust-deserialized selection enum, bounds user strings, then relies on the CLI's canonical parser/resolver; UI validation is not a trust boundary.
 
 ## 5. Execution protocol
 
@@ -125,6 +125,8 @@ project-generator doctor --config <path> --json
 project-generator generate --config <path> --jsonl [--development-allow-planned]
 project-generator inspect --output <path> --json
 ```
+
+The desktop additionally invokes `generate --desktop-control` and may append `--development-allow-planned` only in debug builds. Its fixed Tauri commands are `get_catalog`, `get_runtime_status`, `resolve_plan`, `run_environment_doctor`, `inspect_recovery`, `start_generation`, and `cancel_generation`; no generic command or shell API exists.
 
 - `catalog`: built-in metadata only, no network.
 - `plan`: schema validate, resolve recipe, render immutable plan and expected output; **no filesystem modification and no external execution**, with optional strictly read-only local config file read.
@@ -215,22 +217,24 @@ Use one stable manifest per adapter + one reviewed recipe manifest per releaseab
 
 `tested` requires per-recipe Windows evidence; status is release data promoted by reviewers/CI, **not set automatically after one run**. The Phase 01 CLI vertical slice implements only `FE-01` and `FE-02`. Both remain `planned` despite successful local Windows generation/build/smoke evidence; normal generation blocks them until independent acceptance and review. Evidence links are in the [compatibility matrix](adapters/compatibility-matrix.md).
 
-## 7. Deployment/runtime choice and open PoC
+## 7. Deployment/runtime PoC and remaining open decision
 
 | Boundary | Phase 1 choice | Desktop release candidate |
 |---|---|---|
 | Engine implementation | TypeScript CLI built for **system Node.js** | Same CLI contract reused |
 | Native shell | Not required | Tauri 2 + Rust |
-| Engine launch | Local `node <built-cli>` | Bundled Node runtime/sidecar **or** detected system Node after Windows PoC |
-| UI ⇄ engine | CLI JSON/JSONL events | Validated Tauri command API / scoped sidecar bridge |
+| Engine launch | Local `node <built-cli>` | Implemented system Node from PATH or bundled Node + matching npm |
+| UI ⇄ engine | CLI JSON/JSONL events | Implemented fixed Tauri commands and versioned channel; cancellation is a versioned stdin message |
 | Persistence | Project artifacts, local redacted job reports | JSON settings/history first; SQLite only if justified |
 | Credentials | None needed in standalone FE-01/FE-02 | Configured Git Credential Manager for local Forma fetch; no app-managed token or credential-store implementation |
 
-**OPEN-001 remains unresolved:** do not claim the distributed desktop app can run on a PC without Node until packaging PoC passes on a clean Windows machine. Tauri plugin-shell limits command and argument scopes; keep the ultimate OS process privileges narrowly scoped (see https://v2.tauri.app/reference/javascript/shell/). Any custom native bridge must have equivalent validation.
+Same-host Windows 11 evidence: system installer 0.1.1 = 2,258,037 bytes; bundled installer 0.1.1 = 26,259,213 bytes (Node 22.22.1 + npm 10.9.4); bundled CLI catalog/doctor also passed with system Node removed from `PATH`. This is a packaging-size/engine smoke, not clean-machine evidence or security review. Full hashes and install/update/uninstall details: [Phase 02.6 evidence](qa/evidence/phase-02.6-desktop-runtime-packaging.md).
 
-## 8. Future Tauri desktop contract
+**OPEN-001 remains unresolved:** packaging implementations exist, but no clean Windows 11 machine was available. System mode requires Node/npm on PATH; bundled mode adds 24,001,176 bytes (about 22.89 MiB) for this PoC and still needs clean-machine, update, provenance, cancellation and independent review. No final runtime strategy is approved. Tauri does not expose plugin-shell; custom Rust bridge invokes a fixed CLI entry with fixed argument shapes and must retain equivalent least-privilege validation.
 
-The desktop layer sends only typed intents (`getCatalog`, `resolvePlan`, `runDoctor`, `startJob`, `cancelJob`, `getJobReport`, `openGeneratedFolder`). Host methods revalidate input; UI-side validation is user experience, not a security boundary. Subscribe to versioned progress events. When the window is closed during a job, the runtime policy must be explicit (prefer graceful cancellation for V1, never hidden background execution). Do not enable arbitrary filesystem/dialog/shell/URL permissions globally.
+## 8. Phase 02.6 Tauri desktop subset
+
+The implemented desktop sends typed intents (`get_catalog`, `get_runtime_status`, `resolve_plan`, `run_environment_doctor`, `inspect_recovery`, `start_generation`, `cancel_generation`). Host methods bound and deserialize input; the CLI repeats canonical schema/path validation. UI-side validation is user experience, not a security boundary. Version-1 JSONL events require monotonic sequence, matching job ID, known event type and bounded line size. Cancellation accepts only `{schemaVersion:1,kind:"cancel"}` on child stdin. UI displays lifecycle-script disclosure and unchecked affirmative consent; Job Object supervises process lifetime but does not sandbox npm code. Window-close cancellation UX and complete result/retry surfaces remain unverified; no background-job claim is made. No arbitrary filesystem/dialog/shell/URL permissions are enabled.
 
 Proposed persistent settings (later): default parent path, preferred theme, preferred npm manager, last selected docs mode, recent recipe IDs. Project history is metadata only; no project source indexing. Telemetry disabled by default.
 
@@ -257,7 +261,7 @@ Never return a generic success if stage validation is not run. A successful buil
 
 Threats: malicious project name/path; compromised manifest/registry; argument injection; dependency lifecycle scripts; symlink/junction swaps; secrets in diagnostics; TOCTOU target race; unauthorized Docker/GitHub actions. Mitigation: schema and length limits, path canonicalization and reparse-point checks, exact allowlisted processes, pinned hashes, scoped credentials, no arbitrary executable plugins, generate in owned workspace, deterministic cleanup policy, no hidden network/elevated operations. These controls require Windows evidence; design text alone is not a verified mitigation.
 
-Forma private access is implemented for local CLI development through Git Credential Manager, with a pinned source and content-addressed package cache. It remains a proposal pending independent security review; partial cache directories are preserved, not automatically deleted. Never require Forma to generate an ordinary React or Next starter. No publisher signature or same-account lifecycle isolation is claimed.
+Forma private access is implemented for local CLI development through Git Credential Manager, with a pinned source and content-addressed package cache. Desktop adds Git/GCM prerequisite probes and reads the Forma SHA from packaged catalog metadata. This remains pending independent security review; partial cache directories are preserved, not automatically deleted. Never require Forma to generate an ordinary React or Next starter. No publisher signature or same-account lifecycle isolation is claimed.
 
 ## 11. Quality and performance instrumentation
 
@@ -274,6 +278,7 @@ Acceptance rules: [QA Matrix](qa/acceptance-matrix.md); release roadmap: [Roadma
 - DEC-003: built-in reviewed adapters rather than untrusted runtime plugins.
 - DEC-006: Tauri 2 UI and TS CLI split.
 - DEC-011 (new proposal): Phase 1 system Node; Windows packaging PoC before desktop release.
+- DEC-019 (proposed): Phase 02.6 runtime/package comparison; no final runtime choice or release approval.
 - DEC-012 (new proposal): owned same-volume staging plus no-replace finalize.
 - DEC-013: CLI JSONL event contract and future typed desktop bridge.
 - DEC-014 (proposed; Phase 01.7 implementation present): Node-invoked allowlisted JS tools supervised by the Rust Windows Job Object helper; approval and runtime review pending.

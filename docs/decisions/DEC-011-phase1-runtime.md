@@ -31,7 +31,7 @@ Use **A for Phase 1 only**. Keep CLI process and event contracts stable so B can
 
 ## Verification / evidence
 
-Partial local evidence: FE-01 and FE-02 were generated on Windows 11 Pro build 26300 with system Node.js 22.22.1 and npm 10.9.4; see [FE-01](../qa/evidence/FE-01/2026-11-11-cli-e2e.md) and [FE-02](../qa/evidence/FE-02/2026-11-11-cli-e2e.md). This is not a clean-machine packaging PoC. Before desktop release, compare Node sidecar vs system Node on clean-machine install, process permissions, child cancellation, package-manager interoperability and updates.
+Partial local evidence: FE-01/FE-02 CLI runs used Node.js 22.22.1 and npm 10.9.4. Phase 02.6 built system and bundled runtime installers on Windows 11 Pro build 26300; bundled CLI catalog/doctor worked with system Node removed from PATH, and same-host per-user install/update/uninstall passed. See [Phase 02.6 evidence](../qa/evidence/phase-02.6-desktop-runtime-packaging.md). This is not clean-machine proof or a final runtime decision. Before desktop release, verify clean-machine install, process permissions, child cancellation, package-manager interoperability and updates.
 
 ## Security and second-order effects
 
@@ -48,3 +48,4 @@ Pending real user/engineering review.
 ## Revision history
 
 2026-11-11: Initial proposal.
+2026-11-13: Added Phase 02.6 same-host packaging/runtime evidence; proposal and OPEN-001 remain unresolved.

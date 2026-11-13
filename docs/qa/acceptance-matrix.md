@@ -43,12 +43,16 @@ Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PAS
 | UX-010 | PRD-011, NFR-009 | Cancel transitions through stopping/cleanup before Cancelled result; cleanup failure actionable | NOT RUN |
 | UX-011 | PRD-013, NFR-010 | Result distinguishes Ready vs generated-but-unverified vs failed/cancelled | NOT RUN |
 | UX-012 | PRD-015, PRD-023 | Open folder/editor is explicit, unavailable target shown as missing, no hidden project execution | NOT RUN |
+| PKG-001 | OPEN-001, PRD-009, NFR-005 | Build and inspect system-Node and bundled-Node installers; verify packaged CLI/resources and runtime separation | PARTIAL — both x64 NSIS modes built; bundled CLI catalog/doctor passed with system Node removed from PATH; clean-machine proof unavailable |
+| PKG-002 | PRD R5, NFR-002 | Per-user install, launch, update runtime/version, uninstall, and preserve separate user project | PASS — same-host Windows 11 system 0.1.0 → bundled 0.1.1; app launched; uninstall removed app/registry entry; external sentinel remained unchanged |
+| PKG-003 | PRD-011, NFR-009, DEC-013 | Desktop cancellation sends only versioned cancel intent and terminal status follows process exit | PARTIAL — CLI cancel parser and Rust event/auth tests pass; full UI-driven cancellation not run |
+| PKG-004 | NFR-010, OPEN-001 | Install and launch on clean Windows 11 x64 machine without preinstalled developer tools | BLOCKED — no clean Windows 11 environment available |
 | MOB-001 | PRD-027 | Expo scaffold/Android device workflow on Windows; iOS native limitation clear | FUTURE |
 | MOB-002 | PRD-027 | Flutter SDK, pub, Android build and emulator preflight | FUTURE |
 
 ## Phase 01 execution snapshot
 
-- Phase 01 host/tool details are in linked Phase 01 evidence. Latest observed Phase 02 host reported Windows 10 Pro, build `26300`, x64; Node.js `22.22.1`; npm `10.9.4` (not evidence for the Windows 11 target).
+- Phase 01 host/tool details are in linked Phase 01 evidence. Phase 02.6 host observed Windows 11 Pro `10.0.26300`, x64; Node.js `22.22.1`; npm `10.9.4`. It is a development host, not a clean-machine result.
 - After Phase 01.5 fixes and Phase 01.6 lifecycle-disclosure regression, `npm test`, `npm run typecheck`, and `npm run lint`: exit `0`. Test suite: 17 core tests and 3 CLI tests passed; zero failed or skipped.
 - Windows unit coverage includes junction rejection, case-insensitive collision, forged-stage ownership rejection, no-replace collision/success, process-tree cancellation, abort during runner path checks, and fail-closed taskkill errors (`packages/core/test/safety.test.ts`, `runner.test.ts`). Schema tests cover traversal, reserved names, long paths, spaces and Unicode (`schema.test.ts`).
 - FE-01 and FE-02 were rerun through the CLI's explicit `--development-allow-planned` flag. Per-run job IDs, scaffold integrity, manifest/lockfile hashes, and limits: [FE-01](evidence/FE-01/2026-11-11-phase-01.6-cli-e2e.md), [FE-02](evidence/FE-02/2026-11-11-phase-01.6-cli-e2e.md). Earlier reports remain available: [FE-01](evidence/FE-01/2026-11-11-cli-e2e.md), [FE-02](evidence/FE-02/2026-11-11-cli-e2e.md).
@@ -96,6 +100,15 @@ Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PAS
 - Five pinned Forma combinations completed local generation, npm install, TypeScript check, production build, HTTP smoke, and the template's separate browser smoke. Standalone FE-01 also passed its existing checks after integration; evidence: [Phase 02 report](evidence/phase-02-forma-local-integration.md).
 - All runs used the development-only planned-recipe override where applicable. FM-01/FM-02 and FE-01/FE-02 remain `planned`; no independent acceptance or release approval.
 - The SHA-256 manifest detected/validated package integrity in these runs; no adversarial cache-corruption test or signed-publisher verification was performed. Interrupted cache directories, lifecycle isolation, second-account ACL denial, and power-loss durability remain unverified/not claimed.
+
+## Phase 02.6 desktop/runtime packaging PoC
+
+- Scope/evidence: [runtime and packaging report](evidence/phase-02.6-desktop-runtime-packaging.md). React/Vite + Tauri 2 fixed-command shell; system and bundled Node installer variants; no recipe promotion or release approval.
+- Same-version 0.1.1 artifact sizes: system Node `2,258,037` bytes; bundled Node + npm `26,259,213` bytes, delta `24,001,176` bytes (`22.89 MiB`). Bundled runtime: Node `22.22.1`, npm `10.9.4`. Artifact SHA-256 values are in the evidence report.
+- NSIS scripts retained `resources/pg-runtime/{cli,runtime,catalog}` paths and packaged the Windows supervisor. Installed system 0.1.0 catalog invocation passed with Node on PATH; bundled 0.1.1 plan/doctor passed with system Node removed from PATH. Bundled doctor reported Node/npm versions and ready target; an existing target was blocked without overwrite.
+- Per-user install → visible launch → bundled-version update → visible launch → uninstall all exited `0`; uninstaller removed install directory and HKCU uninstall entry. Separate test project sentinel remained unchanged.
+- `npm test`: core 38 passed, 1 expected elevated-only skip; CLI 8 passed. `npm run typecheck`, `npm run lint`, `cargo test --locked` (5 Rust tests), `cargo clippy --locked -- -D warnings`, `cargo fmt --check`, both runtime installer builds, and production-only npm audit passed.
+- Not run: clean-machine install; Windows 11 machines without Node/WebView2 prerequisites; UI-driven generation/cancellation; full accessibility/scaling review; independent security review; recipe acceptance. Both Node strategies remain PoC options; public release remains NO-GO.
 
 ## Evidence protocol
 
