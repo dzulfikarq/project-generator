@@ -31,6 +31,7 @@ This project adopts EvoPilot's **decision accountability** pattern but uses stan
 | DEC-018 | Forma local CLI integration | Proposed; local implementation exists | [DEC-018](DEC-018-forma-local-integration.md), [Phase 02 evidence](../qa/evidence/phase-02-forma-local-integration.md) | Independently review credentials/cache/cancellation; no FM promotion or release approval |
 | DEC-019 | Phase 02.6 desktop runtime/package comparison | Proposed; PoC evidence only | [DEC-019](DEC-019-phase2.6-desktop-runtime-packaging.md), [Phase 02.6 evidence](../qa/evidence/phase-02.6-desktop-runtime-packaging.md) | Choose runtime strategy only after clean-machine and independent security review |
 | DEC-020 | Phase 03 desktop UI MVP scope | Proposed; implementation present | [DEC-020](DEC-020-phase3-desktop-ui-mvp.md), [Phase 03 evidence](../qa/evidence/phase-03-desktop-ui-mvp.md) | Review partial UI evidence; no recipe promotion or release approval |
+| DEC-021 | Phase 04A Vue and Bootstrap recipe expansion | Accepted Discovery; implementation/evidence present | [DEC-021](DEC-021-phase-04a-vue-bootstrap.md), [Phase 04A evidence](../qa/evidence/phase-04a-vue-bootstrap-expansion.md) | Keep FE-03–FE-05 planned; independent acceptance and review required; Forma remains React/Next only |
 
 ## Open items
 

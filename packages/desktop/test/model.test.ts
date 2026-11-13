@@ -33,15 +33,23 @@ test('parent path validation rejects relative, traversal, and overlong paths', (
 
 test('recipe selection requires exact framework, styling, and manager catalog match', () => {
   const catalog = {
+    adapters: [{ id: 'template.forma', compatibleWith: ['react', 'next'] }],
     recipes: [
       { id: 'FE-01', frontend: 'react', styling: 'css', manager: 'npm' },
       { id: 'FE-02', frontend: 'next', styling: 'tailwind', manager: 'npm' },
+      { id: 'FE-03', frontend: 'vue', styling: 'css', manager: 'npm' },
+      { id: 'FE-04', frontend: 'react', styling: 'bootstrap', manager: 'npm' },
+      { id: 'FE-05', frontend: 'vue', styling: 'bootstrap', manager: 'npm' },
     ],
   } as Catalog
   assert.equal(findRecipe(catalog, 'react', 'css', 'npm')?.id, 'FE-01')
   assert.equal(findRecipe(catalog, 'react', 'tailwind', 'npm'), undefined)
   assert.equal(findRecipe(catalog, 'react', 'css', 'yarn'), undefined)
   assert.equal(findFrameworkRecipe(catalog, 'react', 'npm')?.id, 'FE-01')
+  assert.equal(findRecipe(catalog, 'react', 'bootstrap', 'npm')?.id, 'FE-04')
+  assert.equal(findRecipe(catalog, 'vue', 'css', 'npm')?.id, 'FE-03')
+  assert.equal(findRecipe(catalog, 'vue', 'bootstrap', 'npm')?.id, 'FE-05')
+  assert.equal(findFrameworkRecipe(catalog, 'vue', 'npm'), undefined)
 })
 
 test('Forma compatibility exposes catalog metadata only', () => {

@@ -1,5 +1,5 @@
 import { inspectTarget } from './paths.js'
-import { resolveNpmTool, supportsNpm, supportsNodeForNext, supportsNodeForVite } from './toolchain.js'
+import { resolveNpmTool, supportsNpm, supportsNodeForNext, supportsNodeForVite, supportsNodeForVue } from './toolchain.js'
 import type { DoctorReport, ProjectSelectionV1, ToolStatus } from './types.js'
 import { resolveSelection } from './resolver.js'
 
@@ -7,7 +7,9 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
   const resolved = resolveSelection(selection)
   const recipe = resolved.recipe
   const nodeVersion = process.version.replace(/^v/, '')
-  const nodeSupported = recipe.id === 'FE-01' ? supportsNodeForVite(nodeVersion) : supportsNodeForNext(nodeVersion)
+  const nodeSupported = recipe.frontend === 'frontend.vue-vite'
+    ? supportsNodeForVue(nodeVersion)
+    : recipe.frontend === 'frontend.nextjs-app' ? supportsNodeForNext(nodeVersion) : supportsNodeForVite(nodeVersion)
   const node: ToolStatus = {
     id: 'node',
     available: nodeSupported,

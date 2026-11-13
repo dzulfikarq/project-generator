@@ -2,15 +2,15 @@
 
 | Field | Value |
 |---|---|
-| Status | **Phase 01 CLI + Phase 02 Forma + Phase 02.6 packaging PoC + Phase 03 internal UI MVP + Phase 03.5 UX polish/native functional evidence present** — full desktop acceptance remains partial; FE-01/FE-02/FM-01/FM-02 remain planned; no release approved |
+| Status | **Phase 01 CLI + Phase 02 Forma + Phase 02.6 packaging PoC + Phase 03 internal UI MVP + Phase 03.5 UX polish + Phase 04A Vue/Bootstrap implementation and local Windows evidence present** — full desktop acceptance remains partial; FE-01–FE-05/FM-01/FM-02 remain planned; no release approved |
 | Version | 0.1.0 |
 | Date | 2026-11-13 |
 | Product | Universal Project Generator Desktop |
 | Target OS | Windows 11 first |
 | Documentation inspiration | EvoPilot (PRD ↔ design ↔ decision register ↔ QA evidence) |
-| Scope | CLI kernel, internal Tauri desktop UI/runtime PoC, planned React + Vite / Next.js recipes, optional Forma templates |
+| Scope | CLI kernel, internal Tauri desktop UI/runtime PoC, planned React/Vite, Next.js, Vue/Vite and Bootstrap CSS recipes, optional React/Next Forma templates |
 
-Planning documents remain source for requirements and boundaries. Code and observed test evidence define implemented behavior. Phase 03 includes the FormaForge Forge Studio dashboard, catalog-driven wizard, metadata-only Forma gallery, review/Doctor, consent-gated job UI, results, local metadata history/settings, and fixed native open actions. Phase 03.5 fixes invalid typography declarations and a clipped dashboard empty-state action; native Windows UI runs completed FE-01/FE-02 generation, collision/error/retry, cancellation, history, and open actions using explicit internal consent. Full desktop acceptance remains partial. FE-01/FE-02 and separate Forma combinations FM-01/FM-02 remain `planned` pending independent recipe acceptance and review. Desktop install/update/uninstall and both runtime package modes have same-host Windows 11 PoC evidence; no clean-machine proof or release approval exists. See [Phase 03.5 desktop acceptance](docs/qa/evidence/phase-03.5-final-desktop-acceptance.md) and [Forge Studio verification](docs/qa/evidence/forge-studio-redesign.md).
+Planning documents remain source for requirements and boundaries. Code and observed test evidence define implemented behavior. Phase 03 includes the FormaForge Forge Studio dashboard, catalog-driven wizard, metadata-only Forma gallery, review/Doctor, consent-gated job UI, results, local metadata history/settings, and fixed native open actions. Phase 03.5 fixes invalid typography declarations and a clipped dashboard empty-state action; native Windows UI runs completed FE-01/FE-02 generation, collision/error/retry, cancellation, history, and open actions using explicit internal consent. Phase 04A adds FE-03 Vue/Vite/CSS, FE-04 React/Vite/Bootstrap CSS, and FE-05 Vue/Vite/Bootstrap CSS through pinned official packages; local CLI generation passed listed checks. Bootstrap JS/Popper and Vue/Forma are excluded. Full desktop acceptance remains partial. FE-01–FE-05 and separate Forma combinations FM-01/FM-02 remain `planned` pending independent recipe acceptance and review. Desktop install/update/uninstall and both runtime package modes have same-host Windows 11 PoC evidence; no clean-machine proof or release approval exists. See [Phase 03.5 desktop acceptance](docs/qa/evidence/phase-03.5-final-desktop-acceptance.md), [Forge Studio verification](docs/qa/evidence/forge-studio-redesign.md), and [Phase 04A evidence](docs/qa/evidence/phase-04a-vue-bootstrap-expansion.md).
 
 ## Vision
 

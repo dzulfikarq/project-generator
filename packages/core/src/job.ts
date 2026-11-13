@@ -237,6 +237,65 @@ async function writeToolPackage(stage: OwnedStage, name: string, version: string
   }])
 }
 
+async function configureRecipeDependencies(stage: OwnedStage, resolved: ResolvedSelection): Promise<string[]> {
+  const pins = resolved.recipe.dependencies ?? []
+  if (pins.length === 0) return []
+  if (resolved.recipe.styling !== 'styling.bootstrap' || pins.some((pin) => pin.packageName !== 'bootstrap')) {
+    throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Recipe dependency pin does not match a reviewed styling adapter.', 'Use an exact catalog recipe and retry.')
+  }
+
+  const projectName = win32.basename(stage.childPath)
+  let packageJson: Record<string, unknown>
+  let html: string
+  try {
+    packageJson = JSON.parse(await readFile(win32.join(stage.childPath, 'package.json'), 'utf8')) as Record<string, unknown>
+    html = await readFile(win32.join(stage.childPath, 'index.html'), 'utf8')
+  } catch {
+    throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Pinned styling integration could not read the scaffold package manifest or HTML entry.', 'Review the local redacted job log and retry with the pinned official scaffold.')
+  }
+  if (packageJson.name !== resolved.selection.project.name
+    || typeof packageJson.dependencies !== 'object' || packageJson.dependencies === null || Array.isArray(packageJson.dependencies)) {
+    throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Pinned styling integration found an unexpected scaffold package manifest.', 'Review the local redacted job log and retry with the pinned official scaffold.')
+  }
+  const dependencies = packageJson.dependencies as Record<string, unknown>
+  for (const pin of pins) {
+    if (dependencies[pin.packageName] !== undefined) {
+      throw userError('GEN_CONFIGURE_FAILED', 'configuring', `Pinned styling dependency ${pin.packageName} already exists in the scaffold.`, 'Review the local redacted job log before retrying.')
+    }
+    dependencies[pin.packageName] = pin.version
+  }
+  const closingHead = /<\/head\s*>/gi
+  if ((html.match(closingHead) ?? []).length !== 1 || html.includes('project-generator-bootstrap.css')) {
+    throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Pinned styling integration found an unexpected HTML entry.', 'Review the local redacted job log and retry with the pinned official scaffold.')
+  }
+  const configuredHtml = html.replace(/<\/head\s*>/i, '  <link rel="stylesheet" href="/src/project-generator-bootstrap.css">\n</head>')
+  await mutateOwnedStage(stage, [], [
+    { path: `${projectName}/package.json`, content: `${JSON.stringify(packageJson, null, 2)}\n`, replace: true },
+    { path: `${projectName}/index.html`, content: configuredHtml, replace: true },
+    { path: `${projectName}/src/project-generator-bootstrap.css`, content: "@import 'bootstrap/dist/css/bootstrap.min.css';\n" },
+    { path: `${projectName}/.npmrc`, content: 'legacy-peer-deps=true\n' },
+  ])
+  return ['src/project-generator-bootstrap.css', '.npmrc']
+}
+
+async function verifyDependencyPins(projectPath: string, pins: NonNullable<RecipeManifestV1['dependencies']>): Promise<void> {
+  if (pins.length === 0) return
+  try {
+    const lock = JSON.parse(await readFile(win32.join(projectPath, 'package-lock.json'), 'utf8')) as {
+      packages?: Record<string, { version?: string; integrity?: string }>
+    }
+    for (const pin of pins) {
+      const installed = lock.packages?.[`node_modules/${pin.packageName}`]
+      if (!installed || installed.version !== pin.version || installed.integrity !== pin.integrity) throw new Error('Pinned dependency lock entry did not match.')
+    }
+    if (pins.some(({ packageName }) => packageName === 'bootstrap') && lock.packages?.['node_modules/@popperjs/core']) {
+      throw new Error('CSS-only Bootstrap install unexpectedly resolved Popper.')
+    }
+  } catch {
+    throw userError('GEN_DEPENDENCY_INTEGRITY', 'installing', 'Pinned styling dependency integrity or Bootstrap CSS-only dependency scope did not match the reviewed catalog.', 'Check npm registry integrity and Bootstrap peer handling, then retry; no target project was committed.')
+  }
+}
+
 function npmRootFromCli(cliPath: string): string {
   return dirname(dirname(cliPath))
 }
@@ -297,15 +356,16 @@ async function servedPageSmoke(
   projectPath: string,
   stage: OwnedStage,
   dirs: { home: string; temp: string },
-  frontendId: 'frontend.react-vite' | 'frontend.nextjs-app',
+  frontendId: 'frontend.react-vite' | 'frontend.nextjs-app' | 'frontend.vue-vite',
   signal: AbortSignal | undefined,
   log: JobLog,
 ): Promise<ValidationOutcome> {
   const port = await freePort()
-  const cliPath = frontendId === 'frontend.react-vite'
+  const vite = frontendId !== 'frontend.nextjs-app'
+  const cliPath = vite
     ? win32.join(projectPath, 'node_modules', 'vite', 'bin', 'vite.js')
     : win32.join(projectPath, 'node_modules', 'next', 'dist', 'bin', 'next')
-  const args = frontendId === 'frontend.react-vite'
+  const args = vite
     ? ['preview', '--host', '127.0.0.1', '--port', String(port), '--strictPort']
     : ['start', '--hostname', '127.0.0.1', '--port', String(port)]
   const running = await startNodeProcess({
@@ -427,23 +487,30 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
 
     stageStart('configuring')
     throwIfCancelled(options.signal, currentStage)
-    const generatedFiles = await writeProjectDocs(stage, resolved, process.version.replace(/^v/, ''), npmTool, formaEvidence)
+    try {
+      await lstat(win32.join(projectPath, '.npmrc'))
+      throw userError('GEN_PATH_UNSAFE', 'configuring', 'Scaffold produced a project .npmrc; refusing to read untrusted registry or credential configuration.', 'Inspect the scaffold output and retry with the pinned official scaffold.')
+    } catch (error) {
+      if (error instanceof GeneratorError) throw error
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+    const generatedFiles = await configureRecipeDependencies(stage, resolved)
+    generatedFiles.push(...await writeProjectDocs(stage, resolved, process.version.replace(/^v/, ''), npmTool, formaEvidence))
     if (formaEvidence) generatedFiles.push('FORMA-INSTALL.md', 'INSTALL.md', 'forma.install.json', 'forma-install-report.json')
     stageFinish('configuring', 'passed')
 
     stageStart('installing')
     throwIfCancelled(options.signal, currentStage)
-    const unexpectedNpmrc = win32.join(projectPath, '.npmrc')
-    try {
-      await lstat(unexpectedNpmrc)
-      throw userError('GEN_PATH_UNSAFE', 'installing', 'Scaffold produced a project .npmrc; refusing to read untrusted registry or credential configuration.', 'Inspect the scaffold output and retry with a reviewed version.')
-    } catch (error) {
-      if (error instanceof GeneratorError) throw error
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-    }
-    const install = await runNpm(['install', '--package-lock=true'], projectPath, stage, npmTool.cliPath, npmRootFromCli(npmTool.cliPath), dirs, log, 'project-dependency-install', options.signal)
+    const npmArgs = ['install', ...(resolved.recipe.styling === 'styling.bootstrap' ? ['--legacy-peer-deps'] : []), '--package-lock=true']
+    const install = await runNpm(npmArgs, projectPath, stage, npmTool.cliPath, npmRootFromCli(npmTool.cliPath), dirs, log, 'project-dependency-install', options.signal)
     validations.push(checkOutcome('dependency-install', install))
     if (install.exitCode !== 0) throw mappedProcessError('installing', install)
+    await verifyDependencyPins(projectPath, resolved.recipe.dependencies ?? [])
+    if (resolved.recipe.dependencies?.length) {
+      const integrity: ValidationOutcome = { id: 'dependency-integrity', status: 'pass', message: 'Pinned styling dependency version and npm integrity match the reviewed catalog.', exitCode: 0 }
+      validations.push(integrity)
+      emitValidation(emit, integrity, resolved.recipe.frontend)
+    }
     emit({ type: 'validation', stageId: 'installing', stageOwner: 'npm', stageStatus: 'passed', message: 'npm dependency install passed; package lifecycle scripts were allowed.' })
     stageFinish('installing', 'passed')
 
@@ -455,6 +522,12 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
         ...(resolved.recipe.frontend === 'frontend.react-vite'
           ? [{ id: 'build', path: win32.join(projectPath, 'node_modules', 'vite', 'bin', 'vite.js'), args: ['build'] }]
           : [{ id: 'build', path: win32.join(projectPath, 'node_modules', 'next', 'dist', 'bin', 'next'), args: ['build'] }]),
+      ]
+      : resolved.recipe.frontend === 'frontend.vue-vite'
+      ? [
+        { id: 'lint', path: win32.join(projectPath, 'node_modules', 'eslint', 'bin', 'eslint.js'), args: ['.'] },
+        { id: 'typecheck', path: win32.join(projectPath, 'node_modules', 'vue-tsc', 'bin', 'vue-tsc.js'), args: ['--build'] },
+        { id: 'build', path: win32.join(projectPath, 'node_modules', 'vite', 'bin', 'vite.js'), args: ['build'] },
       ]
       : resolved.recipe.frontend === 'frontend.react-vite'
       ? [

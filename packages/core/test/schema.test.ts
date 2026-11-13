@@ -5,7 +5,7 @@ import { createPlan } from '../src/plan.js'
 import { resolveSelection } from '../src/resolver.js'
 import { normalizeWindowsParent, resolveOutputPath } from '../src/paths.js'
 import { GeneratorError } from '../src/errors.js'
-import { supportsNodeForNext, supportsNodeForVite, supportsNpm } from '../src/toolchain.js'
+import { supportsNodeForNext, supportsNodeForVite, supportsNodeForVue, supportsNpm } from '../src/toolchain.js'
 import { FORMA_COMMIT_SHA, isFormaCommit } from '../src/forma-catalog.js'
 
 const reactConfig = {
@@ -23,13 +23,36 @@ const nextConfig = {
   styling: { adapterId: 'styling.tailwind' },
 }
 
-test('accepts and resolves FE-01 and FE-02 without filesystem access', () => {
+const vueConfig = {
+  ...reactConfig,
+  frontend: { adapterId: 'frontend.vue-vite', language: 'ts', manager: 'npm' },
+}
+
+const reactBootstrapConfig = {
+  ...reactConfig,
+  styling: { adapterId: 'styling.bootstrap' },
+}
+
+const vueBootstrapConfig = {
+  ...vueConfig,
+  styling: { adapterId: 'styling.bootstrap' },
+}
+
+test('accepts exact FE-01 through FE-05 combinations without filesystem access', () => {
   assert.equal(resolveSelection(parseSelection(reactConfig)).recipe.id, 'FE-01')
   assert.equal(resolveSelection(parseSelection(nextConfig)).recipe.id, 'FE-02')
+  assert.equal(resolveSelection(parseSelection(vueConfig)).recipe.id, 'FE-03')
+  assert.equal(resolveSelection(parseSelection(reactBootstrapConfig)).recipe.id, 'FE-04')
+  assert.equal(resolveSelection(parseSelection(vueBootstrapConfig)).recipe.id, 'FE-05')
   const plan = createPlan(parseSelection(reactConfig))
   assert.equal(plan.recipeStatus, 'planned')
   assert.equal(plan.executionAvailable, false)
   assert.equal(plan.targetPath, 'E:\\Projects\\sample-web')
+  const bootstrapPlan = createPlan(parseSelection(vueBootstrapConfig))
+  assert.ok(bootstrapPlan.expectedWrites.includes('src/project-generator-bootstrap.css'))
+  assert.ok(bootstrapPlan.expectedWrites.includes('.npmrc'))
+  assert.match(bootstrapPlan.steps.find((step) => step.id === 'install')?.readableSummary ?? '', /omit unused Bootstrap Popper/)
+  assert.match(bootstrapPlan.steps.find((step) => step.id === 'configure')?.readableSummary ?? '', /Bootstrap 5/)
 })
 
 test('resolves only pinned Forma template/framework pairs without network access during planning', () => {
@@ -53,6 +76,11 @@ test('resolves only pinned Forma template/framework pairs without network access
     ...nextConfig,
     styling: undefined,
     template: { adapterId: 'template.forma', templateId: 'focus-planner', commitSha: FORMA_COMMIT_SHA },
+  })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  assert.throws(() => resolveSelection(parseSelection({
+    ...vueConfig,
+    styling: undefined,
+    template: { adapterId: 'template.forma', templateId: 'modern-admin', commitSha: FORMA_COMMIT_SHA },
   })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
   assert.throws(() => parseSelection({
     ...reactConfig,
@@ -85,6 +113,9 @@ test('blocks incompatible stacks and contradictory choices with structured error
     frontend: { ...reactConfig.frontend, manager: 'pnpm' },
   })
   assert.throws(() => resolveSelection(unsupportedManager), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  assert.throws(() => resolveSelection(parseSelection({ ...vueConfig, styling: { adapterId: 'styling.tailwind' } })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  assert.throws(() => resolveSelection(parseSelection({ ...nextConfig, styling: { adapterId: 'styling.bootstrap' } })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  assert.throws(() => resolveSelection(parseSelection({ ...reactBootstrapConfig, styling: { adapterId: 'styling.bootstrap', uiLibraryId: 'styling.tailwind' } })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE' && error.message.includes('Bootstrap and Tailwind'))
 })
 
 test('validates Windows path forms, spaces, Unicode, traversal, reserved names, and length', () => {
@@ -117,6 +148,10 @@ test('toolchain version checks follow pinned scaffold engine ranges', () => {
   assert.equal(supportsNodeForVite('21.7.0'), false)
   assert.equal(supportsNodeForVite('22.12.0'), true)
   assert.equal(supportsNodeForNext('20.9.0'), true)
+  assert.equal(supportsNodeForVue('22.17.9'), false)
+  assert.equal(supportsNodeForVue('22.18.0'), true)
+  assert.equal(supportsNodeForVue('24.11.9'), false)
+  assert.equal(supportsNodeForVue('24.12.0'), true)
   assert.equal(supportsNpm('9.9.9'), false)
   assert.equal(supportsNpm('10.0.0'), true)
 })

@@ -30,6 +30,11 @@ export function supportsNodeForNext(version: string): boolean {
   return atLeast(version, [20, 9, 0])
 }
 
+export function supportsNodeForVue(version: string): boolean {
+  const major = versionParts(version)?.[0]
+  return (major === 22 && atLeast(version, [22, 18, 0])) || ((major ?? 0) >= 24 && atLeast(version, [24, 12, 0]))
+}
+
 export function supportsNpm(version: string): boolean {
   return atLeast(version, [10, 0, 0])
 }

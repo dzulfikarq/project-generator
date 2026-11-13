@@ -96,7 +96,9 @@ export function findRecipe(catalog: Catalog | null, frontendId: string, stylingI
 }
 
 export function findFrameworkRecipe(catalog: Catalog | null, frontendId: string, managerId: string): Recipe | undefined {
-  return catalog?.recipes.find((recipe) => (recipe.id === 'FE-01' || recipe.id === 'FE-02')
+  const forma = catalog?.adapters.find((adapter) => adapter.id === 'template.forma')
+  if (!forma?.compatibleWith.includes(frontendId)) return undefined
+  return catalog?.recipes.find((recipe) => recipe.id.startsWith('FE-')
     && recipe.frontend === frontendId && recipe.manager === managerId)
 }
 

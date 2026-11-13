@@ -4,7 +4,7 @@
 |---|---|
 | Version | Draft 0.1, schema proposal 1 |
 | Date | 2026-11-11 |
-| Status | **Broader contract proposed; Phase 01 implements a narrower TypeScript CLI/core subset** |
+| Status | **Broader contract proposed; Phase 01/04A implement a bounded TypeScript CLI/core subset** |
 | Applicable components | Generator Core CLI; bundled platform/framework/styling/database/template adapters |
 
 ## 1. Design principles
@@ -37,7 +37,7 @@ V1 does not execute unreviewed third-party adapters. New adapters are repository
 
 ## 3. Proposed TypeScript-facing contract (illustrative; not identical to Phase 01 code)
 
-Phase 01 implements standalone FE-01/FE-02 selection; Phase 02 adds planned Forma FM-01/FM-02 selection and integration in the same files. Broader interfaces below remain a target contract for future adapters and components. No integration is release-approved.
+Phase 01 implements FE-01/FE-02 selection; Phase 02 adds planned Forma FM-01/FM-02; Phase 04A adds planned FE-03/FE-04/FE-05. Broader interfaces below remain a target contract for future adapters and components. No integration is release-approved.
 
 ```ts
 type SupportState =
@@ -308,7 +308,7 @@ Mandatory for a `TEST` recipe:
 
 See `docs/qa/acceptance-matrix.md` for traceability.
 
-Phase 01 implements this pipeline for FE-01/FE-02. Both still have `planned` status: the development-only CLI override permits local evidence gathering but does not enable normal generation or promote support status. See per-recipe reports linked from the QA matrix.
+The shared pipeline implements FE-01–FE-05. All still have `planned` status: the development-only CLI override permits local evidence gathering but does not enable normal generation or promote support status. See per-recipe reports linked from the QA matrix.
 
 ## 13. Prohibited shortcuts
 

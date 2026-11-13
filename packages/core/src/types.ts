@@ -1,8 +1,8 @@
 export type SupportState = 'cataloged' | 'planned' | 'experimental' | 'tested' | 'blocked' | 'retired'
 export type DocumentationMode = 'minimal' | 'standard' | 'full'
-export type RecipeId = 'FE-01' | 'FE-02' | 'FM-01' | 'FM-02'
-export type StylingId = 'styling.css' | 'styling.tailwind'
-export type FrontendId = 'frontend.react-vite' | 'frontend.nextjs-app'
+export type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FM-01' | 'FM-02'
+export type StylingId = 'styling.css' | 'styling.tailwind' | 'styling.bootstrap'
+export type FrontendId = 'frontend.react-vite' | 'frontend.nextjs-app' | 'frontend.vue-vite'
 
 export interface ProjectSelectionV1 {
   schemaVersion: 1
@@ -46,10 +46,16 @@ export interface AdapterManifestV1 {
 }
 
 export interface ScaffoldPin {
-  packageName: 'create-vite' | 'create-next-app'
+  packageName: 'create-vite' | 'create-next-app' | 'create-vue'
   version: string
   integrity: string
   binPath: string
+}
+
+export interface DependencyPin {
+  packageName: string
+  version: string
+  integrity: string
 }
 
 export interface RecipeManifestV1 {
@@ -63,6 +69,7 @@ export interface RecipeManifestV1 {
   styling?: StylingId
   scaffold: ScaffoldPin
   scaffoldArgs: readonly string[]
+  dependencies?: readonly DependencyPin[]
   checks: readonly string[]
   limitations: readonly string[]
   evidenceIds: readonly string[]

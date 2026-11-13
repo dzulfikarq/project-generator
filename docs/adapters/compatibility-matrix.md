@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Version | Draft 0.1 — 2026-11-13 |
-| Status | **FE-01/FE-02/FM-01/FM-02 local CLI implementations and E2E evidence exist; no recipe promoted or release-approved** |
+| Status | **FE-01–FE-05/FM-01/FM-02 local implementations and E2E evidence exist; no recipe promoted or release-approved** |
 | Main platform | Windows 11 |
 | Source of truth | This matrix + machine-readable adapter manifests + QA results |
 
-> **DO NOT equate framework popularity, upstream Forma checks, or one local run with Project Generator readiness.** Phase 01 standalone FE-01/FE-02 and Phase 02 Forma FM-01/FM-02 have local evidence, not independent acceptance or release approval; every recipe remains unavailable in normal generation.
+> **DO NOT equate framework popularity, upstream Forma checks, or one local run with Project Generator readiness.** FE-01–FE-05 and FM-01/FM-02 have local implementation/evidence only, not independent acceptance or release approval; every recipe remains unavailable in normal generation.
 
 ## 1. Status and test gates
 
@@ -24,9 +24,9 @@ The catalog can mention `PLAN`, but normal generation is enabled only for `TEST`
 
 | ID | Framework | Project target | JS manager default | Native scaffold / baseline | Typical styling | Forma | State |
 |---|---|---|---|---|---|---|---|
-| FW-REACT | React + Vite | V1 | npm | `create-vite` (React/TS) | CSS, Tailwind, Bootstrap, SCSS, CSS Modules | Forma templates below | PLAN |
-| FW-NEXT | Next.js App Router | V1 | npm | `create-next-app` | CSS Modules, Tailwind, Bootstrap, SCSS | Forma templates below | PLAN |
-| FW-VUE | Vue 3 + Vite | V1 | npm | `create-vite` (Vue/TS) | Vue scoped CSS, Tailwind, Bootstrap, SCSS | No | PLAN |
+| FW-REACT | React + Vite | V1 | npm | `create-vite` (React/TS) | Plain CSS, Bootstrap 5 CSS | Forma templates below | PLAN |
+| FW-NEXT | Next.js App Router | V1 | npm | `create-next-app` | Tailwind | Forma templates below | PLAN |
+| FW-VUE | Vue 3 + Vite | V1 | npm | Official `create-vue` (TypeScript; Vite) | Plain CSS, Bootstrap 5 CSS | No | PLAN |
 | FW-NUXT | Nuxt | V1 | npm | `create-nuxt` | CSS, Tailwind, Bootstrap, SCSS | No | PLAN |
 | FW-ANGULAR | Angular | V1 | npm | Angular CLI `ng new` | CSS, SCSS, Tailwind, Bootstrap | No | PLAN |
 | FW-SVELTE | SvelteKit | Later V1 candidate | npm | Svelte CLI | CSS, Tailwind, SCSS | No | CAT |
@@ -93,9 +93,9 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 
 | Framework | Plain CSS / Modules | Tailwind | Bootstrap | SCSS | Component library candidates |
 |---|---|---|---|---|---|
-| React + Vite | PLAN | PLAN | PLAN | PLAN | shadcn/ui (COND), MUI (COND), Ant Design (COND) |
-| Next.js | PLAN | PLAN | PLAN | PLAN | shadcn/ui (COND), MUI (COND) |
-| Vue + Vite | PLAN (scoped) | PLAN | PLAN | PLAN | PrimeVue (COND), Vuetify (COND) |
+| React + Vite | PLAN (FE-01) | BLK | PLAN (FE-04; CSS only) | FUT | shadcn/ui (COND), MUI (COND), Ant Design (COND) |
+| Next.js | BLK | PLAN (FE-02) | BLK | FUT | shadcn/ui (COND), MUI (COND) |
+| Vue + Vite | PLAN (FE-03) | BLK | PLAN (FE-05; CSS only) | FUT | PrimeVue (COND), Vuetify (COND) |
 | Nuxt | PLAN | PLAN | PLAN | PLAN | Nuxt UI (COND), PrimeVue (COND), Vuetify (COND) |
 | Angular | PLAN | PLAN | PLAN | PLAN | Angular Material (COND), PrimeNG (COND) |
 | SvelteKit | FUT | FUT | FUT | FUT | Future only |
@@ -103,21 +103,24 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | Flutter | **BLK** (web CSS) | **BLK** | **BLK** | **BLK** | Material/Cupertino FUT |
 
 - Bootstrap can be a separate styling option. Interactive Bootstrap JS must respect the framework lifecycle; `bootstrap.css` alone does not install behavior.
+- Phase 04A adds only FE-04/FE-05 Bootstrap CSS integration; Bootstrap JavaScript and Popper are excluded. Bootstrap + Tailwind is blocked, not combined or substituted.
 - SCSS is a CSS preprocessor, not a replacement for a component library. Combo choices must be intentionally tested.
 - Recommended default = framework-native CSS or verified Tailwind recipe, not a blanket styling default for all languages.
 - `Forma` is separate from generic component libraries: template renderer requires a matching framework adapter, component schema and dependency manifest.
 
 ## 7. Cross-stack recipe registry (unit of release)
 
-**Every row below remains `PLAN`.** FE-01/FE-02 and FM-01/FM-02 have implementations and local Windows E2E evidence; other rows remain targets only. No recipe can be selected for normal generation until its acceptance evidence is reviewed and status is explicitly promoted.
+**Every row below remains `PLAN`.** FE-01–FE-05 and FM-01/FM-02 have implementations and local Windows E2E evidence; other rows remain targets only. No recipe can be selected for normal generation until its acceptance evidence is reviewed and status is explicitly promoted.
 
 | Recipe ID | Type | Frontend | Backend | DB / data access | Styling | Manager(s) | Launch target |
 |---|---|---|---|---|---|---|---|
 | FE-01 | Frontend | React Vite | None | None | CSS | npm | First CLI slice |
 | FE-02 | Frontend | Next App Router | None separate | None | Tailwind | npm | First CLI slice |
-| FE-03 | Frontend | Vue Vite | None | None | CSS/Tailwind | npm | V1 |
-| FE-04 | Frontend | Nuxt | None separate | None | CSS | npm | V1 |
-| FE-05 | Frontend | Angular | None | None | SCSS | npm | V1 |
+| FE-03 | Frontend | Vue 3 + Vite | None | None | Plain CSS | npm | Phase 04A |
+| FE-04 | Frontend | React + Vite | None | None | Bootstrap 5 CSS | npm | Phase 04A |
+| FE-05 | Frontend | Vue 3 + Vite | None | None | Bootstrap 5 CSS | npm | Phase 04A |
+| FE-06 | Frontend | Nuxt | None separate | None | CSS | npm | V1 |
+| FE-07 | Frontend | Angular | None | None | SCSS | npm | V1 |
 | BE-01 | Backend | None | Express | SQLite + Drizzle | N/A | npm | First backend slice |
 | BE-02 | Backend | None | NestJS | PostgreSQL + Prisma | N/A | npm | V1 |
 | BE-03 | Backend | None | Go + Gin | PostgreSQL + pgx | N/A | go | V1 |
@@ -134,6 +137,8 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | MOB-02 | Mobile | Flutter | Optional backend later | None | Material | pub | V1.1 |
 
 FE-01 evidence: [Windows React + Vite run](../qa/evidence/FE-01/2026-11-11-cli-e2e.md). FE-02 evidence: [Windows Next.js run](../qa/evidence/FE-02/2026-11-11-cli-e2e.md). Both were invoked with `--development-allow-planned`; remain `PLAN` pending the full independent acceptance/review gates.
+
+Phase 04A exact pins and local Windows evidence: [FE-03–FE-05 report](../qa/evidence/phase-04a-vue-bootstrap-expansion.md). Vue uses official `create-vue@3.24.0` with its npm integrity; Bootstrap CSS uses `bootstrap@5.3.9` with its npm integrity. All three recipes remain `PLAN`; no Forma/Vue compatibility is asserted.
 
 **Important:** the fullstack recipe must produce a real, reachable example API endpoint and frontend call when that is part of its advertised output. Generating two unrelated folder trees is insufficient.
 

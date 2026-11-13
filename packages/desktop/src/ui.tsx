@@ -20,7 +20,10 @@ import {
 
 type Page = 'home' | 'create' | 'frameworks' | 'templates' | 'projects' | 'environment' | 'settings' | 'generation' | 'result'
 type WizardStep = 'details' | 'stack' | 'design' | 'docs' | 'review'
-type RecipeId = 'FE-01' | 'FE-02'
+type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05'
+function isRecipeId(value: string): value is RecipeId {
+  return ['FE-01', 'FE-02', 'FE-03', 'FE-04', 'FE-05'].includes(value)
+}
 type Documentation = 'minimal' | 'standard' | 'full'
 type Selection = {
   projectName: string
@@ -210,7 +213,7 @@ function App() {
     ? 'This Forma metadata entry does not declare compatibility with the selected framework.'
     : null
   const selection = useMemo<Selection | null>(() => {
-    if (!recipe || (recipe.id !== 'FE-01' && recipe.id !== 'FE-02')) return null
+    if (!recipe || !isRecipeId(recipe.id)) return null
     return {
       projectName,
       parentDirectory,
@@ -293,7 +296,7 @@ function App() {
   }
 
   function startWizardForFramework(frontend: string) {
-    const targetRecipe = catalog?.recipes.find((item) => item.frontend === frontend && (item.id === 'FE-01' || item.id === 'FE-02'))
+    const targetRecipe = catalog?.recipes.find((item) => item.frontend === frontend && item.id.startsWith('FE-'))
     if (!targetRecipe) return
     startWizard()
     setFrontendId(frontend)
@@ -308,7 +311,7 @@ function App() {
   }
 
   function buildSelection(): Selection | null {
-    if (!recipe || (recipe.id !== 'FE-01' && recipe.id !== 'FE-02')) return null
+    if (!recipe || !isRecipeId(recipe.id)) return null
     return {
       projectName,
       parentDirectory,
@@ -593,20 +596,20 @@ function App() {
               <p className="section-intro">Framework options come from the packaged adapter catalog. Planned means browse and plan only in normal builds.</p>
               <fieldset className="choice-fieldset"><legend>Frontend framework</legend><div className="choice-grid">
                 {frontendAdapters.map((adapter) => {
-                  const adapterRecipe = catalog?.recipes.find((item) => item.frontend === adapter.id && (item.id === 'FE-01' || item.id === 'FE-02'))
+                  const adapterRecipe = catalog?.recipes.find((item) => item.frontend === adapter.id && item.id.startsWith('FE-'))
                   const enabled = Boolean(adapterRecipe)
                   return <button type="button" key={adapter.id} className={`select-card ${frontendId === adapter.id ? 'chosen' : ''}`} disabled={!enabled || busy} onClick={() => {
                     if (!adapterRecipe) return
                     setFrontendId(adapter.id)
                     invalidateReview()
                   }} aria-pressed={frontendId === adapter.id}>
-                    <span className="select-card-top"><span className="framework-monogram">{adapter.displayName.startsWith('Next') ? 'N' : 'R'}</span><StatusPill tone="warn">{adapterRecipe?.status ?? 'Catalog only'}</StatusPill></span>
+                    <span className="select-card-top"><span className="framework-monogram">{adapter.displayName.startsWith('Next') ? 'N' : adapter.displayName.startsWith('Vue') ? 'V' : 'R'}</span><StatusPill tone="warn">{adapterRecipe?.status ?? 'Catalog only'}</StatusPill></span>
                     <strong>{adapter.displayName}</strong><small>{adapterRecipe ? `${adapterRecipe.id} · TypeScript · ${adapterRecipe.manager}` : 'No desktop recipe maps to this adapter.'}</small>
                   </button>
                 })}
               </div></fieldset>
               <div className="unsupported-grid">
-                <UnsupportedGroup title="Other frameworks" description="Vue, Angular, Nuxt, and other future frameworks are not in the packaged adapter catalog." entries={[]} />
+                <UnsupportedGroup title="Other frameworks" description="Angular, Nuxt, and other future frameworks are not in the packaged adapter catalog." entries={[]} />
                 <UnsupportedGroup title="Backend" description="No backend adapters are implemented in this phase." entries={backendAdapters.map((adapter) => adapter.displayName)} />
                 <UnsupportedGroup title="Database" description="No database adapters or migration tools are implemented." entries={databaseAdapters.map((adapter) => adapter.displayName)} />
                 <UnsupportedGroup title="Full-stack / mobile" description="Outside current frontend-only generator scope." entries={[]} />
@@ -620,7 +623,7 @@ function App() {
               {!templateId ? <fieldset className="choice-fieldset"><legend>Styling</legend><div className="compact-choice-grid">
                 {stylingAdapters.map((adapter) => {
                   const compatible = adapter.compatibleWith.includes(frontendId)
-                  const matches = Boolean(catalog?.recipes.some((item) => item.frontend === frontendId && item.styling === adapter.id && item.manager === managerId && (item.id === 'FE-01' || item.id === 'FE-02')))
+                  const matches = Boolean(catalog?.recipes.some((item) => item.frontend === frontendId && item.styling === adapter.id && item.manager === managerId && item.id.startsWith('FE-')))
                   const enabled = compatible && matches
                   return <button type="button" key={adapter.id} className={`compact-choice ${stylingId === adapter.id ? 'chosen' : ''}`} disabled={!enabled || busy} onClick={() => { setStylingId(adapter.id); invalidateReview() }} aria-pressed={stylingId === adapter.id}>
                     <span className="radio-dot" aria-hidden="true" /><span><strong>{adapter.displayName}</strong><small>{enabled ? `Compatible with ${selectedFrontend?.displayName ?? 'selected framework'}` : compatible ? 'No compatible recipe is cataloged.' : `Not compatible with ${selectedFrontend?.displayName ?? 'selected framework'}.`}</small></span>
@@ -634,7 +637,7 @@ function App() {
                   const normalized = manager.toLowerCase()
                   const available = Boolean(selectedFrontend?.packageManagers.includes(normalized) && (templateId
                     ? findFrameworkRecipe(catalog, frontendId, normalized)
-                    : catalog?.recipes.some((item) => item.frontend === frontendId && item.styling === stylingId && item.manager === normalized && (item.id === 'FE-01' || item.id === 'FE-02'))))
+                    : catalog?.recipes.some((item) => item.frontend === frontendId && item.styling === stylingId && item.manager === normalized && item.id.startsWith('FE-'))))
                   return <button type="button" className={`manager-choice ${managerId === normalized ? 'chosen' : ''}`} key={manager} disabled={!available || busy} onClick={() => { setManagerId(normalized); invalidateReview() }} aria-pressed={managerId === normalized}>
                     <strong>{manager}</strong>{available ? <small>Catalog default</small> : <small>Not supported</small>}
                   </button>
@@ -721,14 +724,15 @@ function App() {
       {page === 'frameworks' && <section className="page-content" aria-labelledby="frameworks-title">
         <div className="page-heading"><div><p className="eyebrow">PACKAGED CATALOG</p><h1 id="frameworks-title">Framework catalog</h1><p className="lead">Browse framework metadata and recipe status. Catalog presence does not enable normal generation.</p></div></div>
         <div className="framework-catalog-grid">{frontendAdapters.map((adapter) => {
-          const adapterRecipe = catalog?.recipes.find((item) => item.frontend === adapter.id && (item.id === 'FE-01' || item.id === 'FE-02'))
+          const adapterRecipes = catalog?.recipes.filter((item) => item.frontend === adapter.id && item.id.startsWith('FE-')) ?? []
+          const adapterRecipe = adapterRecipes[0]
           return <article className="framework-card" key={adapter.id}>
-            <div className="framework-card-heading"><span className="framework-monogram">{adapter.displayName.startsWith('Next') ? 'N' : adapter.displayName.slice(0, 1)}</span><StatusPill tone="warn">{adapterRecipe?.status ?? adapter.supportState}</StatusPill></div>
-            <h2>{adapter.displayName}</h2><p>{adapterRecipe ? `${adapterRecipe.id} · ${adapterRecipe.manager} · ${adapterRecipe.scaffold.packageName}@${adapterRecipe.scaffold.version}` : 'No executable Project Generator recipe is packaged for this framework.'}</p>
+            <div className="framework-card-heading"><span className="framework-monogram">{adapter.displayName.startsWith('Next') ? 'N' : adapter.displayName.startsWith('Vue') ? 'V' : adapter.displayName.slice(0, 1)}</span><StatusPill tone="warn">{adapterRecipe?.status ?? adapter.supportState}</StatusPill></div>
+            <h2>{adapter.displayName}</h2><p>{adapterRecipe ? `Recipes ${adapterRecipes.map((item) => item.id).join(', ')} · ${adapterRecipe.manager} · ${adapterRecipe.scaffold.packageName}@${adapterRecipe.scaffold.version}` : 'No executable Project Generator recipe is packaged for this framework.'}</p>
             <button className="button secondary-button" disabled={!adapterRecipe || busy} onClick={() => startWizardForFramework(adapter.id)}>{adapterRecipe ? 'Configure project' : 'Unavailable'}</button>
           </article>
         })}</div>
-        <p className="catalog-pin">FE-01 and FE-02 remain planned. Normal generation remains blocked pending independent acceptance.</p>
+        <p className="catalog-pin">FE-01 through FE-05 remain planned. Normal generation remains blocked pending independent acceptance.</p>
       </section>}
 
       {page === 'templates' && <section className="page-content" aria-labelledby="templates-title">
@@ -809,7 +813,7 @@ function App() {
         {recovery !== null && <RecoveryDetails value={recovery} />}
       </section>}
 
-      <footer className="app-footer"><span>FormaForge · Project Generator</span><span>Local development · FE-01 / FE-02 / FM-01 / FM-02 remain planned · no release approval</span></footer>
+      <footer className="app-footer"><span>FormaForge · Project Generator</span><span>Local development · FE-01–FE-05 / FM-01 / FM-02 remain planned · no release approval</span></footer>
     </main>
   </div>
 }
@@ -824,7 +828,7 @@ function UnsupportedGroup({ title, description, entries }: { title: string; desc
 
 function ProjectList({ projects, vscodeAvailable, onOpen }: { projects: ProjectRecord[]; vscodeAvailable: boolean; onOpen: (path: string, command: 'open_project_folder' | 'open_project_in_vscode') => void }) {
   return <div className="project-list">{projects.map((project) => <article className="project-row" key={`${project.path}-${project.createdAt}`}>
-    <div className="project-type-mark" aria-hidden="true">{project.recipeId === 'FE-02' ? 'N' : 'R'}</div><div className="project-row-main"><strong>{project.name}</strong><code>{project.path}</code><div className="project-row-meta"><span>{project.recipeId}</span><span>·</span><span>{new Date(project.createdAt).toLocaleString()}</span></div></div>
+    <div className="project-type-mark" aria-hidden="true">{project.recipeId === 'FE-02' ? 'N' : ['FE-03', 'FE-05'].includes(project.recipeId) ? 'V' : 'R'}</div><div className="project-row-main"><strong>{project.name}</strong><code>{project.path}</code><div className="project-row-meta"><span>{project.recipeId}</span><span>·</span><span>{new Date(project.createdAt).toLocaleString()}</span></div></div>
     <div className="project-row-status"><StatusPill tone={project.status === 'completed' ? 'good' : 'warn'}>{project.status === 'completed' ? 'Checks passed' : 'Cleanup attention'}</StatusPill><div className="project-row-actions"><button className="button small-button secondary-button" onClick={() => onOpen(project.path, 'open_project_folder')}>Open folder</button>{vscodeAvailable && <button className="button small-button quiet-button" onClick={() => onOpen(project.path, 'open_project_in_vscode')}>VS Code</button>}</div></div>
   </article>)}</div>
 }

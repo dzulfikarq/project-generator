@@ -14,6 +14,10 @@ export function resolveSelection(selection: ProjectSelectionV1): ResolvedSelecti
   if (selection.frontend.language !== 'ts' || selection.frontend.manager !== 'npm') {
     throw incompatibleError('Phase 01 recipes require TypeScript and npm.')
   }
+  if ((selection.styling?.adapterId === 'styling.bootstrap' && selection.styling.uiLibraryId === 'styling.tailwind')
+    || (selection.styling?.adapterId === 'styling.tailwind' && selection.styling.uiLibraryId === 'styling.bootstrap')) {
+    throw incompatibleError('Bootstrap and Tailwind cannot be selected together.')
+  }
   if (selection.backend || selection.database || selection.styling?.uiLibraryId) {
     throw incompatibleError('Phase 01 recipes do not support separate backends, databases, or UI libraries.')
   }
@@ -22,7 +26,7 @@ export function resolveSelection(selection: ProjectSelectionV1): ResolvedSelecti
   }
 
   const frameworkRecipe = RECIPES.find((candidate) => candidate.frontend === selection.frontend?.adapterId)
-  if (!frameworkRecipe) throw incompatibleError('Selection does not match FE-01 React + Vite or FE-02 Next.js App Router.')
+  if (!frameworkRecipe) throw incompatibleError('Selection does not match a cataloged frontend recipe.')
 
   let recipe = frameworkRecipe
   if (selection.template) {
@@ -51,7 +55,7 @@ export function resolveSelection(selection: ProjectSelectionV1): ResolvedSelecti
   } else {
     if (!selection.styling) throw incompatibleError('Select a compatible styling adapter.')
     const selectedRecipe = RECIPES.find((candidate) => candidate.frontend === frameworkRecipe.frontend && candidate.styling === selection.styling?.adapterId)
-    if (!selectedRecipe) throw incompatibleError('Selection does not match FE-01 React + Vite + CSS or FE-02 Next.js + Tailwind.')
+     if (!selectedRecipe) throw incompatibleError('Selection does not match a cataloged framework and styling recipe.')
     recipe = selectedRecipe
   }
 

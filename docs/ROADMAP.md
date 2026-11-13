@@ -1,6 +1,6 @@
 # Roadmap — Project Generator Desktop V1
 
-Status: **Phase 01 bounded acceptance, Phase 02 local Forma integration/evidence, and Phase 03 internal UI implementation present; UI acceptance partial, no recipe release-approved.** Date: 2026-11-13.
+Status: **Phase 01 bounded acceptance, Phase 02 local Forma integration/evidence, Phase 03 internal UI implementation, and Phase 04A Vue/Bootstrap expansion present; UI acceptance partial, no recipe release-approved.** Date: 2026-11-13.
 
 ## Phase 0 — Specification and governance
 
@@ -35,9 +35,10 @@ Architecture specification: [`ARCHITECTURE.md`](ARCHITECTURE.md). UX specificati
 
 ## Phase 4 — Web/frontend breadth and styling
 
-- Add Vue+Vite, Nuxt, Angular adapters; CSS/SCSS, Tailwind, Bootstrap; framework-specific components after checks.
-- Implement npm default with Yarn/pnpm/Bun per-recipe support checks; pin CLI versions.
-- Output: tested frontend recipes; blocked invalid styling/manager choices.
+- **Phase 04A implemented locally:** Vue 3 + Vite + TypeScript via integrity-pinned official `create-vue`; React/Vue Bootstrap 5 CSS pins; npm-only FE-03–FE-05; desktop catalog/wizard; invalid combinations blocked. Local E2E does not promote recipes. See [DEC-021](decisions/DEC-021-phase-04a-vue-bootstrap.md) and [QA evidence](qa/evidence/phase-04a-vue-bootstrap-expansion.md).
+- **Phase 04B recommendation:** independent acceptance/review of FE-01–FE-05 and closure of per-recipe gaps before framework expansion. Keep Nuxt, Angular, extra styles, and non-npm managers deferred until separately scoped and verified.
+- Remaining breadth: Nuxt, Angular, framework-specific components after checks. npm remains Node default; native package managers remain required for non-Node ecosystems.
+- Output: independently accepted recipes only; block invalid styling/manager choices.
 
 ## Phase 5 — Backend and DB breadth
 

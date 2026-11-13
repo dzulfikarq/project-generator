@@ -89,6 +89,12 @@ enum DesktopRecipeId {
     Fe01,
     #[serde(rename = "FE-02")]
     Fe02,
+    #[serde(rename = "FE-03")]
+    Fe03,
+    #[serde(rename = "FE-04")]
+    Fe04,
+    #[serde(rename = "FE-05")]
+    Fe05,
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -114,6 +120,9 @@ impl DesktopSelectionV1 {
         let (frontend, styling) = match self.recipe_id {
             DesktopRecipeId::Fe01 => ("frontend.react-vite", "styling.css"),
             DesktopRecipeId::Fe02 => ("frontend.nextjs-app", "styling.tailwind"),
+            DesktopRecipeId::Fe03 => ("frontend.vue-vite", "styling.css"),
+            DesktopRecipeId::Fe04 => ("frontend.react-vite", "styling.bootstrap"),
+            DesktopRecipeId::Fe05 => ("frontend.vue-vite", "styling.bootstrap"),
         };
         let mut selection = json!({
             "schemaVersion": 1,
@@ -1297,6 +1306,33 @@ mod tests {
         assert_eq!(config["documentation"], "minimal");
         assert!(config.get("styling").is_none());
         assert!(config.get("command").is_none());
+
+        for (recipe_id, frontend, styling) in [
+            (DesktopRecipeId::Fe03, "frontend.vue-vite", "styling.css"),
+            (
+                DesktopRecipeId::Fe04,
+                "frontend.react-vite",
+                "styling.bootstrap",
+            ),
+            (
+                DesktopRecipeId::Fe05,
+                "frontend.vue-vite",
+                "styling.bootstrap",
+            ),
+        ] {
+            let generated = DesktopSelectionV1 {
+                project_name: "demo".into(),
+                parent_directory: "C:\\Projects".into(),
+                recipe_id,
+                documentation: DesktopDocumentationV1::Minimal,
+                template_id: None,
+                template_variant_id: None,
+            }
+            .to_core_json("");
+            assert_eq!(generated["frontend"]["adapterId"], frontend);
+            assert_eq!(generated["styling"]["adapterId"], styling);
+            assert_eq!(generated["frontend"]["manager"], "npm");
+        }
 
         let standalone = DesktopSelectionV1 {
             project_name: "demo".into(),

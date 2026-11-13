@@ -191,9 +191,11 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for component boundaries, Windows stagi
 
 - FE-01 React + Vite + npm + plain CSS.
 - FE-02 Next App Router + npm + Tailwind.
-- FE-03 Vue + Vite + npm + Tailwind or CSS.
-- FE-04 Nuxt + npm + CSS.
-- FE-05 Angular + npm + SCSS.
+- FE-03 Vue + Vite + npm + plain CSS.
+- FE-04 React + Vite + npm + Bootstrap 5 CSS.
+- FE-05 Vue + Vite + npm + Bootstrap 5 CSS.
+- FE-06 Nuxt + npm + CSS.
+- FE-07 Angular + npm + SCSS.
 - BE-01 Express + npm + SQLite + Drizzle (verify selected driver).
 - BE-02 NestJS + npm + PostgreSQL + Prisma.
 - BE-03 Go + Gin + PostgreSQL + pgx (Go Modules).
