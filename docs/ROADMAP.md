@@ -1,6 +1,6 @@
 # Roadmap — Project Generator Desktop V1
 
-Status: **Phase 01 CLI implementation present; acceptance and release review pending.** Date: 2026-11-11.
+Status: **Phase 01 bounded local-development acceptance recorded; no recipe release-approved. Forma integration is next.** Date: 2026-11-13.
 
 ## Phase 0 — Specification and governance
 
@@ -16,29 +16,33 @@ Architecture specification: [`ARCHITECTURE.md`](ARCHITECTURE.md). UX specificati
 - Local Windows E2E evidence exists for FE-01 and FE-02, using the explicit development-only planned-recipe override; see [QA evidence](qa/acceptance-matrix.md).
 - **Phase gate remains open:** broader security acceptance, independent review, and recipe promotion have not occurred. Both recipes stay `planned` and blocked in normal generation.
 
-## Phase 2 — Web/frontend breadth and styling
+## Phase 2 — Forma integration (local development)
+
+- Integrate private `dzulfikarq/design-templates` catalog through its existing portable exporter and installer; do not duplicate either implementation or modify Forma.
+- Fetch with authenticated Git access, pin full immutable commit SHA, verify exported SHA-256 manifest, and cache by source commit/template/version/integrity. Never persist credentials in config, cache metadata, logs, or generated projects.
+- Add opt-in template selection to config, resolver, plan, and CLI. Initially allow only Forma entries marked `tested` for the selected React + Vite or Next.js adapter; reject every incompatible pair before writes or network access.
+- Run Forma installation inside Project Generator's owned staging transaction; preserve cancellation, journal recovery, no-overwrite, and existing non-Forma generation. npm remains generated-project default; disclose and require explicit `generate` consent for lifecycle scripts.
+- Validate Staywise first, then other already-tested compatible catalog entries, with Windows E2E, npm install, lint/typecheck/build, and browser smoke as each template supports. Use the development-only planned-recipe override; keep FE-01/FE-02 `planned` and do not promote recipes.
+- Process-crash recovery is the accepted local-development model; power-loss durability is not claimed. Second-account ACL denial remains a public-release gate.
+- Output: evidence-backed local Forma integrations for FE-01/FE-02 only; no desktop UI, framework expansion, or public-release approval.
+
+## Phase 3 — Web/frontend breadth and styling
 
 - Add Vue+Vite, Nuxt, Angular adapters; CSS/SCSS, Tailwind, Bootstrap; framework-specific components after checks.
 - Implement npm default with Yarn/pnpm/Bun per-recipe support checks; pin CLI versions.
 - Output: tested frontend recipes; blocked invalid styling/manager choices.
 
-## Phase 3 — Backend and DB breadth
+## Phase 4 — Backend and DB breadth
 
 - Express, NestJS, Fastify, Go Gin, Laravel, FastAPI adapters.
 - DB drivers: PostgreSQL, MySQL/MariaDB, SQLite, MongoDB, with verified ORM pairings and real service checks.
 - Output: distinct backend-only recipes earning tested status; no DB readiness claims without available DB.
 
-## Phase 4 — Fullstack composition
+## Phase 5 — Fullstack composition
 
 - Implement workspace builder, frontend→backend API sample, environment templates, root dev commands, optional Docker Compose.
 - Prove Vue+Laravel+MySQL and React+Go+PostgreSQL before expanding; then Angular+Nest and Next+Nest.
 - Output: individually tested cross-language fullstack recipes.
-
-## Phase 5 — Forma integration and documentation generator
-
-- Integrate authenticated private registry, safe local cache, SHA/manifest checks, supported React/Next installer.
-- Implement Minimal/Standard/Full truthful document templates and decision register scaffolding.
-- Output: FM-01/FM-02 independent generator end-to-end validation.
 
 ## Phase 6 — Desktop UI / Windows release
 
