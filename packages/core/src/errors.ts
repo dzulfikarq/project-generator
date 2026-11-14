@@ -52,7 +52,7 @@ export function incompatibleError(message: string): GeneratorError {
     code: 'GEN_INCOMPATIBLE',
     stage: 'resolve',
     message,
-    nextAction: 'Choose one of the explicitly cataloged frontend recipes.',
+    nextAction: 'Choose an explicitly cataloged recipe and remove unsupported choices.',
     targetModified: false,
   })
 }

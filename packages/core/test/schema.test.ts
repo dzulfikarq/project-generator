@@ -8,7 +8,7 @@ import { createPlan } from '../src/plan.js'
 import { resolveSelection } from '../src/resolver.js'
 import { normalizeWindowsParent, resolveOutputPath } from '../src/paths.js'
 import { GeneratorError } from '../src/errors.js'
-import { supportsNodeForAngular, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue, supportsNpm } from '../src/toolchain.js'
+import { supportsNodeForAngular, supportsNodeForBackend, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue, supportsNpm } from '../src/toolchain.js'
 import { FORMA_COMMIT_SHA, isFormaCommit } from '../src/forma-catalog.js'
 import { runDoctor } from '../src/doctor.js'
 import { ADAPTERS, PACKAGE_MANAGERS } from '../src/catalog.js'
@@ -83,7 +83,7 @@ test('accepts exact FE-01 through FE-15 combinations without filesystem access',
   const nuxt = resolveSelection(parseSelection(nuxtConfig)).recipe
   assert.equal(nuxt.id, 'FE-06')
   assert.equal(nuxt.status, 'planned')
-  assert.equal(nuxt.scaffold.source?.commitSha, 'db01806fcb37f2e369fb09443c72cac696b31548')
+  assert.equal(nuxt.scaffold!.source?.commitSha, 'db01806fcb37f2e369fb09443c72cac696b31548')
   assert.ok(nuxt.dependencies?.every(({ integrity }) => integrity.startsWith('sha512-')))
   assert.deepEqual(nuxt.dependencies?.map(({ packageName, version, scope }) => [packageName, version, scope]), [
     ['nuxt', '4.6.4', undefined],
@@ -93,7 +93,7 @@ test('accepts exact FE-01 through FE-15 combinations without filesystem access',
   const angular = resolveSelection(parseSelection(angularConfig)).recipe
   assert.equal(angular.id, 'FE-07')
   assert.equal(angular.status, 'planned')
-  assert.equal(angular.scaffold.packageName, '@angular/cli')
+  assert.equal(angular.scaffold!.packageName, '@angular/cli')
   assert.deepEqual(angular.dependencies?.map(({ packageName, version }) => [packageName, version]), [['@angular/core', '21.2.26'], ['@angular/cli', '21.2.30']])
   const plan = createPlan(parseSelection(reactConfig))
   assert.equal(plan.recipeStatus, 'planned')
@@ -161,6 +161,57 @@ test('accepts exact FE-01 through FE-15 combinations without filesystem access',
   ])
   assert.ok(ADAPTERS.find(({ id }) => id === 'frontend.react-vite')?.packageManagers.includes('pnpm'))
   assert.ok(ADAPTERS.find(({ id }) => id === 'frontend.vue-vite')?.packageManagers.includes('yarn'))
+})
+
+test('BE-01 resolves standalone Express and pins every direct dependency', () => {
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'sample-api', type: 'backend', parentDirectory: 'E:\\Projects' },
+    backend: { adapterId: 'backend.express', manager: 'npm' },
+    documentation: 'standard',
+    git: { initialize: false, initialCommit: false },
+  })
+  const recipe = resolveSelection(selection).recipe
+  const plan = createPlan(selection)
+  assert.equal(recipe.id, 'BE-01')
+  assert.equal(recipe.status, 'planned')
+  assert.equal(recipe.projectType, 'backend')
+  assert.equal(recipe.backend, 'backend.express')
+  assert.equal(recipe.scaffold, undefined)
+  assert.deepEqual(recipe.dependencies?.map(({ packageName, version, scope }) => [packageName, version, scope]), [
+    ['express', '5.1.0', undefined],
+    ['@types/express', '5.0.3', 'devDependencies'],
+    ['@types/node', '22.20.5', 'devDependencies'],
+    ['tsx', '4.20.5', 'devDependencies'],
+    ['typescript', '5.9.3', 'devDependencies'],
+  ])
+  assert.ok(recipe.dependencies?.every(({ integrity }) => integrity.startsWith('sha512-')))
+  assert.equal(plan.executionAvailable, false)
+  assert.ok(plan.expectedWrites.includes('.env.example'))
+  assert.ok(plan.expectedWrites.includes('src/server.ts'))
+  assert.ok(plan.expectedWrites.includes('test/backend.test.ts'))
+  assert.ok(plan.expectedWrites.includes('test/shutdown.test.ts'))
+  assert.ok(!plan.expectedWrites.includes('src/shutdown.ts'))
+  assert.ok(plan.expectedWrites.includes('package-lock.json'))
+  assert.ok(plan.networkAccess.includes('https://registry.npmjs.org/'))
+  assert.equal(plan.steps.find((step) => step.id === 'scaffold')?.action, 'write-declared-files')
+  assert.equal(plan.steps.find((step) => step.id === 'scaffold')?.consentKind, undefined)
+  assert.match(plan.steps.find((step) => step.id === 'validate')?.readableSummary ?? '', /graceful-shutdown/)
+  assert.equal(supportsNodeForBackend('22.12.0'), false)
+  assert.equal(supportsNodeForBackend('22.13.0'), true)
+  assert.equal(supportsNodeForBackend('24.0.0'), true)
+
+  for (const invalid of [
+    { ...selection, project: { ...selection.project, type: 'fullstack' } },
+    { ...selection, backend: { adapterId: 'backend.express', manager: 'yarn' } },
+    { ...selection, frontend: { adapterId: 'frontend.react-vite', language: 'ts', manager: 'npm' } },
+    { ...selection, styling: { adapterId: 'styling.css' } },
+    { ...selection, database: { adapterId: 'database.postgresql', mode: 'existing-service' } },
+  ]) {
+    assert.throws(() => createPlan(parseSelection(invalid)), (error: unknown) => error instanceof GeneratorError
+      && error.code === 'GEN_INCOMPATIBLE'
+      && error.nextAction === 'Choose an explicitly cataloged recipe and remove unsupported choices.')
+  }
 })
 
 test('resolves only pinned Forma template/framework pairs without network access during planning', () => {

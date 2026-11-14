@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Version | Draft 0.1 — 2026-11-14 |
-| Status | **FE-03–FE-15 local native acceptance recorded; FE-01–FE-15/FM-01/FM-02 remain PLAN pending independent review; no recipe promoted or release-approved** |
+| Status | **FE-03–FE-15 and standalone BE-01 local native evidence recorded; FE-01–FE-15/BE-01/FM-01/FM-02 remain PLAN pending independent review; no recipe promoted or release-approved** |
 | Main platform | Windows 11 |
 | Source of truth | This matrix + machine-readable adapter manifests + QA results |
 
-> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-15 and FM-01/FM-02 have local implementation/evidence only, not independent acceptance or release approval; every recipe remains unavailable in normal generation.
+> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-15, BE-01, and FM-01/FM-02 have local implementation/evidence only, not independent acceptance or release approval; every recipe remains unavailable in normal generation.
 
 ## 1. Status and test gates
 
@@ -39,7 +39,7 @@ The catalog can mention `PLAN`, but normal generation is enabled only for `TEST`
 
 | ID | Backend | Runtime and manager | Scaffolding strategy | Example data integration | State |
 |---|---|---|---|---|---|
-| BE-EXPRESS | Express | Node.js / npm | Reviewed minimal TS scaffold + official dependencies | Drizzle + SQLite / PostgreSQL; Mongoose + MongoDB | PLAN |
+| BE-EXPRESS | Express | Node.js / npm | Reviewed minimal TS scaffold + official dependencies | None in bounded BE-01; database integrations remain separate proposed recipes | PLAN |
 | BE-NEST | NestJS | Node.js / npm | Nest CLI `new` (pinned) | Prisma/PostgreSQL or MySQL; Mongo requires separate verified driver | PLAN |
 | BE-FASTIFY | Fastify | Node.js / npm | Official starter or reviewed minimal TS scaffold | Drizzle or Prisma for compatible SQL | PLAN |
 | BE-GO | Go standard library | Go / Go Modules | `go mod init` + reviewed starter | `database/sql` + verified SQL driver | PLAN |
@@ -130,7 +130,7 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | FE-13 | Frontend | Vue 3 + Vite | None | None | Plain CSS | Yarn `4.18.1` (`node-modules`) | Phase 04B.3 |
 | FE-14 | Frontend | React + Vite | None | None | Plain CSS | pnpm `11.28.11` (`hoisted`) | Phase 04B.3 |
 | FE-15 | Frontend | Vue 3 + Vite | None | None | Plain CSS | pnpm `11.28.11` (`hoisted`) | Phase 04B.3 |
-| BE-01 | Backend | None | Express | SQLite + Drizzle | N/A | npm | First backend slice |
+| BE-01 | Backend | None | Express | None | N/A | npm | Phase 05A standalone API; DB excluded |
 | BE-02 | Backend | None | NestJS | PostgreSQL + Prisma | N/A | npm | V1 |
 | BE-03 | Backend | None | Go + Gin | PostgreSQL + pgx | N/A | go | V1 |
 | BE-04 | Backend | None | Laravel | MySQL + Eloquent | N/A | Composer (+ npm assets) | V1 |

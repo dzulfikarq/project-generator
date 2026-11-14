@@ -18,27 +18,27 @@ test('catalog emits local versioned JSON without network', () => {
     data: {
       adapters: { id: string; compatibleWith: string[]; incompatibleWith: string[] }[]
       packageManagers: { id: string; version: string; lockfile: string }[]
-      recipes: { id: string; status: string; scaffold: { packageName: string; version: string; integrity: string; source?: { commitSha: string } }; dependencies?: { packageName: string; version: string; integrity: string; scope?: string }[] }[]
+      recipes: { id: string; status: string; scaffold?: { packageName: string; version: string; integrity: string; source?: { commitSha: string } }; dependencies?: { packageName: string; version: string; integrity: string; scope?: string }[] }[]
     }
   }
   assert.equal(envelope.ok, true)
   assert.deepEqual(envelope.data.recipes.map(({ id, status }) => [id, status]), [
-    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'], ['FE-06', 'planned'], ['FE-07', 'planned'], ['FE-08', 'planned'], ['FE-09', 'planned'], ['FE-10', 'planned'], ['FE-11', 'planned'], ['FE-12', 'planned'], ['FE-13', 'planned'], ['FE-14', 'planned'], ['FE-15', 'planned'],
+    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'], ['FE-06', 'planned'], ['FE-07', 'planned'], ['FE-08', 'planned'], ['FE-09', 'planned'], ['FE-10', 'planned'], ['FE-11', 'planned'], ['FE-12', 'planned'], ['FE-13', 'planned'], ['FE-14', 'planned'], ['FE-15', 'planned'], ['BE-01', 'planned'],
   ])
   assert.deepEqual(envelope.data.packageManagers.map(({ id, version }) => [id, version]), [['npm', '>=10.0.0'], ['yarn', '4.18.1'], ['pnpm', '11.28.11']])
   const vue = envelope.data.recipes.find(({ id }) => id === 'FE-03')!
-  assert.equal(vue.scaffold.packageName, 'create-vue')
-  assert.equal(vue.scaffold.version, '3.24.0')
-  assert.match(vue.scaffold.integrity, /^sha512-/)
+  assert.equal(vue.scaffold!.packageName, 'create-vue')
+  assert.equal(vue.scaffold!.version, '3.24.0')
+  assert.match(vue.scaffold!.integrity, /^sha512-/)
   for (const id of ['FE-04', 'FE-05']) {
     const recipe = envelope.data.recipes.find((item) => item.id === id)!
     assert.deepEqual(recipe.dependencies?.map(({ packageName, version }) => [packageName, version]), [['bootstrap', '5.3.9']])
     assert.match(recipe.dependencies?.[0]?.integrity ?? '', /^sha512-/)
   }
   const nuxt = envelope.data.recipes.find(({ id }) => id === 'FE-06')!
-  assert.equal(nuxt.scaffold.packageName, 'create-nuxt')
-  assert.equal(nuxt.scaffold.version, '4.0.3')
-  assert.equal(nuxt.scaffold.source?.commitSha, 'db01806fcb37f2e369fb09443c72cac696b31548')
+  assert.equal(nuxt.scaffold!.packageName, 'create-nuxt')
+  assert.equal(nuxt.scaffold!.version, '4.0.3')
+  assert.equal(nuxt.scaffold!.source?.commitSha, 'db01806fcb37f2e369fb09443c72cac696b31548')
   assert.deepEqual(nuxt.dependencies?.map(({ packageName, version, scope }) => [packageName, version, scope]), [
     ['nuxt', '4.6.4', undefined],
     ['typescript', '5.9.3', 'devDependencies'],
@@ -46,9 +46,15 @@ test('catalog emits local versioned JSON without network', () => {
   ])
   assert.ok(nuxt.dependencies?.every(({ integrity }) => integrity.startsWith('sha512-')))
   const angular = envelope.data.recipes.find(({ id }) => id === 'FE-07')!
-  assert.equal(angular.scaffold.packageName, '@angular/cli')
-  assert.equal(angular.scaffold.version, '21.2.30')
+  assert.equal(angular.scaffold!.packageName, '@angular/cli')
+  assert.equal(angular.scaffold!.version, '21.2.30')
   assert.deepEqual(angular.dependencies?.map(({ packageName, version }) => [packageName, version]), [['@angular/core', '21.2.26'], ['@angular/cli', '21.2.30']])
+  const backend = envelope.data.recipes.find(({ id }) => id === 'BE-01')!
+  assert.equal(backend.scaffold, undefined)
+  assert.deepEqual(backend.dependencies?.map(({ packageName, version }) => [packageName, version]), [
+    ['express', '5.1.0'], ['@types/express', '5.0.3'], ['@types/node', '22.20.5'], ['tsx', '4.20.5'], ['typescript', '5.9.3'],
+  ])
+  assert.ok(backend.dependencies?.every(({ integrity }) => integrity.startsWith('sha512-')))
   const forma = envelope.data.adapters.find(({ id }) => id === 'template.forma')!
   assert.equal(forma.compatibleWith.includes('frontend.vue-vite'), false)
   const bootstrap = envelope.data.adapters.find(({ id }) => id === 'styling.bootstrap')!

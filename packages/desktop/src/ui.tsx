@@ -21,9 +21,9 @@ import {
 
 type Page = 'home' | 'create' | 'frameworks' | 'templates' | 'projects' | 'environment' | 'settings' | 'generation' | 'result'
 type WizardStep = 'details' | 'stack' | 'design' | 'docs' | 'review'
-type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15'
+type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15' | 'BE-01'
 function isRecipeId(value: string): value is RecipeId {
-  return ['FE-01', 'FE-02', 'FE-03', 'FE-04', 'FE-05', 'FE-06', 'FE-07', 'FE-08', 'FE-09', 'FE-10', 'FE-11', 'FE-12', 'FE-13', 'FE-14', 'FE-15'].includes(value)
+  return ['FE-01', 'FE-02', 'FE-03', 'FE-04', 'FE-05', 'FE-06', 'FE-07', 'FE-08', 'FE-09', 'FE-10', 'FE-11', 'FE-12', 'FE-13', 'FE-14', 'FE-15', 'BE-01'].includes(value)
 }
 type Documentation = 'minimal' | 'standard' | 'full'
 type Selection = {
@@ -164,6 +164,7 @@ function App() {
   const [step, setStep] = useState<WizardStep>('details')
   const [projectName, setProjectName] = useState('my-project')
   const [parentDirectory, setParentDirectory] = useState('')
+  const [projectType, setProjectType] = useState<'frontend' | 'backend'>('frontend')
   const [frontendId, setFrontendId] = useState('frontend.react-vite')
   const [stylingId, setStylingId] = useState('styling.css')
   const [managerId, setManagerId] = useState('npm')
@@ -193,9 +194,11 @@ function App() {
   const terminalEventRef = useRef<JobEvent | null>(null)
   const activeProjectRef = useRef<{ name: string; path: string; recipeId: string } | null>(null)
 
-  const recipe = useMemo(() => templateId
-    ? findFrameworkRecipe(catalog, frontendId, managerId)
-    : findRecipe(catalog, frontendId, stylingId, managerId), [catalog, frontendId, stylingId, managerId, templateId])
+  const recipe = useMemo(() => projectType === 'backend'
+    ? catalog?.recipes.find((item) => item.id === 'BE-01' && item.backend === 'backend.express' && managerId === 'npm')
+    : templateId
+      ? findFrameworkRecipe(catalog, frontendId, managerId)
+      : findRecipe(catalog, frontendId, stylingId, managerId), [catalog, frontendId, stylingId, managerId, templateId, projectType])
   const frontendAdapters = catalog?.adapters.filter((adapter) => adapter.kind === 'frontend') ?? []
   const stylingAdapters = catalog?.adapters.filter((adapter) => adapter.kind === 'styling') ?? []
   const backendAdapters = catalog?.adapters.filter((adapter) => adapter.kind === 'backend') ?? []
@@ -203,7 +206,8 @@ function App() {
   const formaTemplates = catalog?.forma.templates ?? []
   const templateCategories = [...new Set(formaTemplates.map((template) => template.category))].sort()
   const filteredTemplates = filterFormaTemplates(formaTemplates, templateSearch, templateCategory, templateFramework)
-  const selectedFrontend = frontendAdapters.find((adapter) => adapter.id === frontendId)
+  const selectedFrontend = projectType === 'frontend' ? frontendAdapters.find((adapter) => adapter.id === frontendId) : undefined
+  const selectedBackend = backendAdapters.find((adapter) => adapter.id === recipe?.backend)
   const activeTemplate = catalog?.forma.templates.find((template) => template.id === templateId)
   const selectedVariant = activeTemplate?.variants.find((variant) => variant.id === templateVariantId)
   const nameError = validateProjectName(projectName)
@@ -277,11 +281,12 @@ function App() {
 
   function startWizard(initialTemplate = '') {
     const template = catalog?.forma.templates.find((item) => item.id === initialTemplate)
-    const defaultRecipe = catalog?.recipes.find((item) => item.id === 'FE-01' && (!template || template.testedFrameworks.includes(item.frontend)))
-      ?? catalog?.recipes.find((item) => item.id === 'FE-02' && (!template || template.testedFrameworks.includes(item.frontend)))
+    const defaultRecipe = catalog?.recipes.find((item) => item.id === 'FE-01' && (!template || template.testedFrameworks.includes(item.frontend ?? '')))
+      ?? catalog?.recipes.find((item) => item.id === 'FE-02' && (!template || template.testedFrameworks.includes(item.frontend ?? '')))
       ?? catalog?.recipes.find((item) => item.id === 'FE-01')
     setProjectName('my-project')
     setParentDirectory(preferences.defaultParentDirectory)
+    setProjectType('frontend')
     setFrontendId(defaultRecipe?.frontend ?? 'frontend.react-vite')
     setStylingId(defaultRecipe?.styling ?? 'styling.css')
     setManagerId(defaultRecipe?.manager ?? 'npm')
@@ -300,6 +305,7 @@ function App() {
     const targetRecipe = catalog?.recipes.find((item) => item.frontend === frontend && item.id.startsWith('FE-'))
     if (!targetRecipe) return
     startWizard()
+    setProjectType('frontend')
     setFrontendId(frontend)
     setStylingId(targetRecipe.styling ?? '')
     setManagerId(targetRecipe.manager)
@@ -481,7 +487,7 @@ function App() {
   }
 
   function createSelectionError(): string | null {
-    if (!recipe) return 'Choose a framework, styling option, and package manager combination present in the recipe catalog.'
+    if (!recipe) return 'Choose a project type and a compatible catalog recipe.'
     if (!nameError && !parentError && !templateError) return null
     return nameError ?? parentError ?? templateError
   }
@@ -594,7 +600,18 @@ function App() {
 
             {step === 'stack' && <section className="wizard-card" aria-labelledby="stack-title">
               <div className="section-title-row"><div><p className="eyebrow">02 · FRAMEWORK</p><h2 id="stack-title">Choose a project type</h2></div><StatusPill tone="warn">Planned recipes</StatusPill></div>
-              <p className="section-intro">Framework options come from the packaged adapter catalog. Planned means browse and plan only in normal builds.</p>
+              <p className="section-intro">Choose Frontend or Backend first. Framework choices come from the packaged recipe catalog; planned recipes remain disabled in normal builds.</p>
+              <fieldset className="choice-fieldset"><legend>Project type</legend><div className="compact-choice-grid">
+                {(['frontend', 'backend'] as const).map((type) => <button type="button" key={type} className={`compact-choice ${projectType === type ? 'chosen' : ''}`} disabled={busy} aria-pressed={projectType === type} onClick={() => {
+                  setProjectType(type)
+                  setTemplateId('')
+                  setTemplateVariantId('')
+                  if (type === 'backend') { setManagerId('npm'); setStylingId('') }
+                  else { setManagerId('npm'); setStylingId('styling.css') }
+                  invalidateReview()
+                }}><span className="radio-dot" aria-hidden="true" /><span><strong>{type === 'frontend' ? 'Frontend' : 'Backend'}</strong><small>{type === 'frontend' ? 'Browser application recipes' : 'Standalone API recipes'}</small></span></button>)}
+              </div></fieldset>
+              {projectType === 'frontend' ? <>
               <fieldset className="choice-fieldset"><legend>Frontend framework</legend><div className="choice-grid">
                 {frontendAdapters.map((adapter) => {
                    const adapterRecipe = catalog?.recipes.find((item) => item.frontend === adapter.id && item.id.startsWith('FE-'))
@@ -612,16 +629,32 @@ function App() {
               </div></fieldset>
               <div className="unsupported-grid">
                 <UnsupportedGroup title="Other frameworks" description="SvelteKit and other future frameworks are not in the packaged adapter catalog." entries={[]} />
-                <UnsupportedGroup title="Backend" description="No backend adapters are implemented in this phase." entries={backendAdapters.map((adapter) => adapter.displayName)} />
+                <UnsupportedGroup title="Backend" description="Choose Backend to view standalone API recipes." entries={backendAdapters.map((adapter) => adapter.displayName)} />
                 <UnsupportedGroup title="Database" description="No database adapters or migration tools are implemented." entries={databaseAdapters.map((adapter) => adapter.displayName)} />
                 <UnsupportedGroup title="Full-stack / mobile" description="Outside current frontend-only generator scope." entries={[]} />
               </div>
-              <div className="wizard-actions"><button className="button secondary-button" disabled={busy} onClick={() => setStep('details')}>Back</button><button className="button primary-button" disabled={!selectedFrontend || busy} onClick={() => setStep('design')}>Choose tools <span aria-hidden="true">→</span></button></div>
+              </> : <>
+                <fieldset className="choice-fieldset"><legend>Backend framework</legend><div className="choice-grid">
+                  {backendAdapters.map((adapter) => {
+                    const adapterRecipe = catalog?.recipes.find((item) => item.id === 'BE-01' && item.backend === adapter.id)
+                    return <button type="button" key={adapter.id} className={`select-card ${recipe?.backend === adapter.id ? 'chosen' : ''}`} disabled={!adapterRecipe || busy} onClick={() => {
+                      setManagerId('npm')
+                      invalidateReview()
+                    }} aria-pressed={recipe?.backend === adapter.id}>
+                      <span className="select-card-top"><span className="framework-monogram">E</span><StatusPill tone="warn">{adapterRecipe?.status ?? 'Catalog only'}</StatusPill></span>
+                      <strong>{adapter.displayName}</strong><small>{adapterRecipe ? `${adapterRecipe.id} · TypeScript · npm` : 'No backend recipe is cataloged.'}</small>
+                    </button>
+                  })}
+                </div></fieldset>
+                <div className="unsupported-grid"><UnsupportedGroup title="Database" description="BE-01 is database-free. Database adapters are not implemented." entries={databaseAdapters.map((adapter) => adapter.displayName)} /><UnsupportedGroup title="Full-stack / mobile" description="Frontend-backend composition and mobile generation are outside this phase." entries={[]} /></div>
+              </>}
+              <div className="wizard-actions"><button className="button secondary-button" disabled={busy} onClick={() => setStep('details')}>Back</button><button className="button primary-button" disabled={projectType === 'frontend' ? !selectedFrontend || busy : !selectedBackend || busy} onClick={() => setStep('design')}>Choose tools <span aria-hidden="true">→</span></button></div>
             </section>}
 
             {step === 'design' && <section className="wizard-card" aria-labelledby="design-title">
-              <div className="section-title-row"><div><p className="eyebrow">03 · TOOLING</p><h2 id="design-title">Styling and starting template</h2></div><StatusPill>Catalog-backed</StatusPill></div>
-              <p className="section-intro">Only combinations with an existing recipe can be selected. Framework changes never silently replace your styling choice.</p>
+              <div className="section-title-row"><div><p className="eyebrow">03 · TOOLING</p><h2 id="design-title">{projectType === 'backend' ? 'Backend tools' : 'Styling and starting template'}</h2></div><StatusPill>Catalog-backed</StatusPill></div>
+              <p className="section-intro">{projectType === 'backend' ? 'BE-01 uses TypeScript and npm. No styling, database, or frontend is added.' : 'Only combinations with an existing recipe can be selected. Framework changes never silently replace your styling choice.'}</p>
+              {projectType === 'backend' ? <div className="template-style-note"><strong>Express · TypeScript · npm</strong><span>Node.js backend, standalone REST API. npm is the required and only package manager for BE-01.</span></div> : <>
               {!templateId ? <fieldset className="choice-fieldset"><legend>Styling</legend><div className="compact-choice-grid">
                  {stylingAdapters.filter((adapter) => !['styling.scss', 'styling.tailwind'].includes(adapter.id) || adapter.compatibleWith.includes(frontendId)).map((adapter) => {
                   const compatible = adapter.compatibleWith.includes(frontendId)
@@ -669,6 +702,7 @@ function App() {
                 </select></div>}
                 <p className="form-note">Forma compatibility is metadata from a pinned external snapshot, not Project Generator support. Private source fetch uses your configured Git credentials only after generation starts.</p>
               </fieldset>
+              </>}
               <div className="wizard-actions"><button className="button secondary-button" disabled={busy} onClick={() => setStep('stack')}>Back</button><button className="button primary-button" disabled={!recipe || Boolean(templateError) || busy} onClick={() => setStep('docs')}>Documentation <span aria-hidden="true">→</span></button></div>
             </section>}
 
@@ -693,7 +727,7 @@ function App() {
               {busy && <div className="inline-loading" role="status"><span className="spinner" /> Resolving read-only plan and checking prerequisites…</div>}
               {!busy && !plan && <div className="review-empty"><p>{commandError ? 'Review could not be completed.' : 'Resolve the configuration to load current plan and environment checks.'}</p><button className="button secondary-button" disabled={!selection} onClick={() => void loadReview()}>Resolve plan and run checks</button></div>}
               {plan && <>
-                <div className="stack-summary"><div><small>PROJECT</small><strong>{projectName}</strong><code>{plan.targetPath}</code></div><div><small>STACK</small><strong>{selectedFrontend?.displayName ?? frontendId} + {activeTemplate ? 'Forma-managed styling' : stylingAdapters.find((adapter) => adapter.id === stylingId)?.displayName ?? stylingId}</strong><span>{plan.recipeId} · TypeScript · {managerId} · {documentation} docs</span></div>{activeTemplate && <div><small>FORMA TEMPLATE</small><strong>{activeTemplate.name}</strong><span>{selectedVariant?.name ?? activeTemplate.variants.find((variant) => variant.default)?.name ?? 'Default'} variant · planned integration</span></div>}</div>
+                <div className="stack-summary"><div><small>PROJECT</small><strong>{projectName}</strong><code>{plan.targetPath}</code></div><div><small>STACK</small><strong>{projectType === 'backend' ? `${selectedBackend?.displayName ?? 'Express'} REST API` : `${selectedFrontend?.displayName ?? frontendId} + ${activeTemplate ? 'Forma-managed styling' : stylingAdapters.find((adapter) => adapter.id === stylingId)?.displayName ?? stylingId}`}</strong><span>{plan.recipeId} · TypeScript · {managerId} · {documentation} docs</span></div>{activeTemplate && <div><small>FORMA TEMPLATE</small><strong>{activeTemplate.name}</strong><span>{selectedVariant?.name ?? activeTemplate.variants.find((variant) => variant.default)?.name ?? 'Default'} variant · planned integration</span></div>}</div>
 
                 <div className="review-section"><div className="review-section-heading"><div><span className="review-icon" aria-hidden="true">✓</span><h3>Environment checks</h3></div><StatusPill tone={doctor?.ready ? 'good' : 'bad'}>{doctor?.ready ? 'READY' : 'BLOCKED'}</StatusPill></div>
                   {doctor?.tools.filter((tool) => tool.id !== 'target').map((tool) => <div className="doctor-row" key={tool.id}><span className={tool.available ? 'check-state ok' : 'check-state missing'} aria-hidden="true">{tool.available ? '✓' : '!'}</span><div><strong>{tool.id}{tool.version ? ` · ${tool.version}` : ''}</strong><small>{tool.message}</small></div><span className={tool.available ? 'doctor-status ok' : 'doctor-status missing'}>{tool.available ? 'Ready' : 'Required'}</span></div>)}
@@ -731,11 +765,11 @@ function App() {
           const adapterRecipe = adapterRecipes[0]
           return <article className="framework-card" key={adapter.id}>
             <div className="framework-card-heading"><span className="framework-monogram">{adapter.displayName.startsWith('Next') ? 'N' : adapter.displayName.startsWith('Nuxt') ? 'U' : adapter.displayName.startsWith('Angular') ? 'A' : adapter.displayName.startsWith('Vue') ? 'V' : adapter.displayName.slice(0, 1)}</span><StatusPill tone="warn">{adapterRecipe?.status ?? adapter.supportState}</StatusPill></div>
-            <h2>{adapter.displayName}</h2><p>{adapterRecipe ? `Recipes ${adapterRecipes.map((item) => item.id).join(', ')} · ${adapterRecipe.manager} · ${adapterRecipe.scaffold.packageName}@${adapterRecipe.scaffold.version}` : 'No executable Project Generator recipe is packaged for this framework.'}</p>
+            <h2>{adapter.displayName}</h2><p>{adapterRecipe ? `Recipes ${adapterRecipes.map((item) => item.id).join(', ')} · ${adapterRecipe.manager} · ${adapterRecipe.scaffold ? `${adapterRecipe.scaffold.packageName}@${adapterRecipe.scaffold.version}` : 'reviewed built-in starter'}` : 'No executable Project Generator recipe is packaged for this framework.'}</p>
             <button className="button secondary-button" disabled={!adapterRecipe || busy} onClick={() => startWizardForFramework(adapter.id)}>{adapterRecipe ? 'Configure project' : 'Unavailable'}</button>
           </article>
         })}</div>
-         <p className="catalog-pin">FE-01 through FE-15 remain planned. Normal generation remains blocked pending independent acceptance.</p>
+          <p className="catalog-pin">FE-01 through FE-15 and BE-01 remain planned. Normal generation remains blocked pending independent acceptance.</p>
       </section>}
 
       {page === 'templates' && <section className="page-content" aria-labelledby="templates-title">
@@ -805,7 +839,7 @@ function App() {
 
       {page === 'result' && <section className="page-content result-page" aria-labelledby="result-title">
         <div className={`result-hero ${resultClass}`}><span className="result-symbol" aria-hidden="true">{jobStatus === 'completed' ? '✓' : jobStatus === 'partial' ? '!' : jobStatus === 'cancelled' ? '–' : '×'}</span><p className="eyebrow">GENERATION RESULT</p><h1 id="result-title">{jobStatus === 'completed' ? 'Project checks passed' : jobStatus === 'partial' ? 'Project created with cleanup attention' : jobStatus === 'cancelled' ? 'Generation cancelled' : 'Generation did not complete'}</h1><p>{jobStatus === 'completed' ? 'The generated project passed the checks reported below.' : jobStatus === 'partial' ? 'A project was finalized, but staging cleanup needs manual attention.' : jobStatus === 'cancelled' ? 'Cancellation completed. Check recovery state before retrying.' : 'Do not assume the destination is untouched. Inspect the folder and recovery state before retrying.'}</p>
-          <div className="result-caveat"><strong>Recipe remains planned.</strong> This internal evidence run does not promote FE/FM recipes, verify independent acceptance, or approve public release.</div>
+          <div className="result-caveat"><strong>Recipe remains planned.</strong> This internal evidence run does not promote FE/BE/FM recipes, verify independent acceptance, or approve public release.</div>
         </div>
         {currentProject && <div className="result-project-card"><div className="result-project-icon" aria-hidden="true">⌘</div><div className="result-project-details"><p className="eyebrow">{jobStatus === 'completed' ? 'GENERATED PROJECT' : 'REQUESTED DESTINATION'}</p><h2>{currentProject.name}</h2><code>{currentProject.path}</code><div className="result-tags"><span>{currentProject.recipeId}</span><span>{jobStatus ? formatStatus(jobStatus) : 'Unknown status'}</span></div></div><div className="result-actions">{hasGeneratedProject && <><button className="button primary-button" onClick={() => void openProject(currentProject.path, 'open_project_folder')}>Open folder</button>{vscodeAvailable && <button className="button secondary-button" onClick={() => void openProject(currentProject.path, 'open_project_in_vscode')}>Open in VS Code</button>}</>}</div></div>}
         <section className="result-section"><div className="section-title-row"><div><p className="eyebrow">CLI VALIDATION EVENTS</p><h2>Validation results</h2></div><StatusPill tone={jobTone}>{jobStatus ? formatStatus(jobStatus).toUpperCase() : 'UNKNOWN'}</StatusPill></div>
@@ -816,7 +850,7 @@ function App() {
         {recovery !== null && <RecoveryDetails value={recovery} />}
       </section>}
 
-      <footer className="app-footer"><span>FormaForge · Project Generator</span><span>Local development · FE-01–FE-15 / FM-01 / FM-02 remain planned · no release approval</span></footer>
+      <footer className="app-footer"><span>FormaForge · Project Generator</span><span>Local development · FE-01–FE-15 / BE-01 / FM-01 / FM-02 remain planned · no release approval</span></footer>
     </main>
   </div>
 }

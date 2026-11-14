@@ -47,7 +47,7 @@ Application
     └── Privacy & Logs
 ```
 
-Phase 03 implements dashboard, catalog-driven project wizard, pinned Forma metadata gallery, read-only plan/doctor review, lifecycle consent, JSONL generation/cancellation/result surfaces, local generated-project metadata, theme/default-location settings, and fixed Folder/VS Code native actions. Destination is entered as a local path; no native folder picker or live Forma preview is packaged. Backend/database adapters remain absent, and FE/FM recipes remain planned. Browser/UI and native acceptance evidence is tracked separately; implementation presence alone is not a PASS.
+Phase 03 implements dashboard, catalog-driven project wizard, pinned Forma metadata gallery, read-only plan/doctor review, lifecycle consent, JSONL generation/cancellation/result surfaces, local generated-project metadata, theme/default-location settings, and fixed Folder/VS Code native actions. Phase 05A adds one planned backend choice: standalone Express/TypeScript/npm with no database. Other backend/database/fullstack adapters remain absent, and FE/BE/FM recipes remain planned. Browser/UI and native acceptance evidence is tracked separately; implementation presence alone is not a PASS.
 
 ## 3. Layout and visual foundation
 

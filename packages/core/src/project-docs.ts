@@ -27,6 +27,13 @@ export function expectedDocumentationFiles(mode: ResolvedSelection['selection'][
 
 function recipeText(resolved: ResolvedSelection): { title: string; scaffold: string; nodeRange: string; devCommand: string; smokeCommand: string } {
   const commands = managerCommands(resolved.recipe.manager)
+  if (resolved.recipe.projectType === 'backend') return {
+    title: 'Node.js + TypeScript + Express REST API',
+    scaffold: 'BE-01 TypeScript starter',
+    nodeRange: 'Node.js 22.13+',
+    devCommand: commands.run('dev'),
+    smokeCommand: commands.run('start'),
+  }
   if (resolved.selection.template) {
     const reactVite = resolved.recipe.frontend === 'frontend.react-vite'
     return {
@@ -52,7 +59,7 @@ function recipeText(resolved: ResolvedSelection): { title: string; scaffold: str
   if (resolved.recipe.frontend === 'frontend.nuxt') {
     return {
       title: 'Nuxt 4 + TypeScript',
-      scaffold: `create-nuxt 4.0.3 with nuxt/starter@${resolved.recipe.scaffold.source!.commitSha} (Nuxt 4.6.4)`,
+      scaffold: `create-nuxt 4.0.3 with nuxt/starter@${resolved.recipe.scaffold!.source!.commitSha} (Nuxt 4.6.4)`,
       nodeRange: 'Node.js 22.22.3+, 24.15.0+, or 26+',
       devCommand: commands.run('dev'),
       smokeCommand: commands.run('preview'),
@@ -106,12 +113,15 @@ function generatedContent(resolved: ResolvedSelection, nodeVersion: string, npmV
     : ''
   const name = resolved.selection.project.name
   const styling = forma ? 'Forma-managed template styling and theme'
+    : resolved.recipe.projectType === 'backend' ? 'Not applicable'
     : resolved.recipe.styling === 'styling.bootstrap' ? 'Bootstrap 5 CSS'
       : resolved.recipe.styling === 'styling.tailwind' ? 'Tailwind CSS'
         : resolved.recipe.styling === 'styling.scss' ? 'SCSS' : 'Plain CSS'
   const origin = forma
     ? `Generated from the Forma template ${forma.id}@${forma.version} at immutable commit ${forma.commitSha}. Portable package SHA-256: ${forma.contentHash}.\n\n`
-    : `Generated from the official ${details.scaffold} scaffold.\n\n`
+    : resolved.recipe.projectType === 'backend'
+      ? `Generated from the reviewed ${details.scaffold}.\n\n`
+      : `Generated from the official ${details.scaffold} scaffold.\n\n`
   const bootstrapNote = resolved.recipe.styling === 'styling.bootstrap'
     ? '\nBootstrap is configured as CSS only. Project `.npmrc` disables automatic installation of its unused `@popperjs/core` peer; no Bootstrap JavaScript is configured.\n'
     : ''
@@ -122,7 +132,9 @@ function generatedContent(resolved: ResolvedSelection, nodeVersion: string, npmV
       && (resolved.recipe.frontend === 'frontend.react-vite' || resolved.recipe.frontend === 'frontend.vue-vite')
       ? 'Tailwind CSS `4.3.5` uses the official `@tailwindcss/vite` plugin `4.3.5`. Tailwind v4 auto-detects source files; no legacy `tailwind.config.js` or content globs are generated.\n'
       : ''
-  const checks = forma
+  const checks = resolved.recipe.projectType === 'backend'
+      ? `## Checks\n\n\`\`\`sh\n${commands.run('typecheck')}\n${commands.run('test')}\n${commands.run('build')}\n\`\`\`\n\nThe generator also starts the built server in an isolated local smoke test and checks GET /health and /api/info.\n`
+      : forma
       ? `## Checks\n\n\`\`\`sh\n${commands.run('typecheck')}\n${commands.run('build')}\n\`\`\`\n\nThe Forma installer does not define a lint script; lint was not run. The generator HTTP smoke check is recorded in .project-generator/manifest.json.\n`
       : resolved.recipe.frontend === 'frontend.nuxt'
       ? `## Checks\n\n\`\`\`sh\n${commands.run('typecheck')}\n${commands.run('build')}\n\`\`\`\n\nThe recipe adds integrity-pinned TypeScript and vue-tsc dev dependencies because the official starter does not bundle a type checker. The starter does not define lint or unit-test scripts. The generator HTTP preview smoke check is recorded in .project-generator/manifest.json.\n`
@@ -131,21 +143,35 @@ function generatedContent(resolved: ResolvedSelection, nodeVersion: string, npmV
       : resolved.recipe.frontend === 'frontend.vue-vite'
         ? `## Checks\n\n\`\`\`sh\n${commands.run('lint')}\n${commands.run('type-check')}\n${commands.run('build')}\n\`\`\`\n`
       : `## Checks\n\n\`\`\`sh\n${commands.run('lint')}\n${commands.run('build')}\n\`\`\`\n`
-  const readme = `# ${name}\n\n${origin}${details.title} project.\n${bootstrapNote}${stylingNote}${managerConfigNote}\n## Prerequisites\n\n- ${nodeRange}\n- ${managerRequirement}\n\n## Run locally\n\n\`\`\`sh\n${commands.install}\n${details.devCommand}\n\`\`\`\n\n${checks}\nSee [docs/SETUP.md](docs/SETUP.md) for setup and verification details.\n\nThis is a frontend-only project. No separate backend, database, or deployment is included. ${resolved.recipe.manager} installation may run dependency lifecycle scripts; dependencies are not sandboxed.\n`
-  const setupChecks = forma || resolved.recipe.frontend === 'frontend.nuxt' ? `${commands.run('typecheck')}\n${commands.run('build')}`
+  const backendApi = resolved.recipe.projectType === 'backend'
+    ? '## API\n\n- `GET /health` — process health status.\n- `GET /api/info` — service and runtime details.\n\nServer reads `HOST`, `PORT`, and `NODE_ENV` from environment variables; `.env.example` lists local defaults. SIGINT and SIGTERM close the HTTP listener gracefully.\n\n'
+    : ''
+  const scopeNote = resolved.recipe.projectType === 'backend'
+    ? 'This standalone REST API has no frontend, database, ORM, authentication, or deployment configuration.'
+    : 'This is a frontend-only project. No separate backend, database, or deployment is included.'
+  const envInstruction = resolved.recipe.projectType === 'backend' ? 'Copy `.env.example` to `.env` if you want to override local defaults.\n\n' : ''
+  const readme = `# ${name}\n\n${origin}${details.title} project.\n${bootstrapNote}${stylingNote}${managerConfigNote}\n## Prerequisites\n\n- ${nodeRange}\n- ${managerRequirement}\n\n## Run locally\n\n${envInstruction}\`\`\`sh\n${commands.install}\n${details.devCommand}\n\`\`\`\n\n${backendApi}${checks}\nSee [docs/SETUP.md](docs/SETUP.md) for setup and verification details.\n\n${scopeNote} ${resolved.recipe.manager} installation may run dependency lifecycle scripts; dependencies are not sandboxed.\n`
+  const setupChecks = resolved.recipe.projectType === 'backend' ? `${commands.run('typecheck')}\n${commands.run('test')}\n${commands.run('build')}`
+    : forma || resolved.recipe.frontend === 'frontend.nuxt' ? `${commands.run('typecheck')}\n${commands.run('build')}`
     : resolved.recipe.frontend === 'frontend.angular' ? `${commands.run('build')}\nnpm test -- --watch=false`
       : resolved.recipe.frontend === 'frontend.vue-vite' ? `${commands.run('lint')}\n${commands.run('type-check')}\n${commands.run('build')}` : `${commands.run('lint')}\n${commands.run('build')}`
-  const setup = `# Setup\n\n## Toolchain\n\nGenerated with ${details.scaffold}, Node.js ${nodeVersion}, ${managerToolchain}.\n${managerConfigNote}${forma ? `Forma source: private GitHub repository, commit ${forma.commitSha}. Template ${forma.id}@${forma.version}; portable SHA-256 ${forma.contentHash}; theme ${forma.variantName}.\n` : ''}${bootstrapNote}${stylingNote}\n## Install and run\n\n\`\`\`sh\n${commands.install}\n${details.devCommand}\n\`\`\`\n\n## Validate\n\n\`\`\`sh\n${setupChecks}\n\`\`\`\n\nThe generator's HTTP smoke check verifies an HTML response from the local server. It does not launch a browser or verify visual rendering.\n`
+  const envSetup = resolved.recipe.projectType === 'backend' ? 'Optional local configuration: copy `.env.example` to `.env` in PowerShell with `Copy-Item .env.example .env`; edit `HOST`, `PORT`, or `NODE_ENV` as needed. The server reads `.env` through Node.js built-in env-file support.\n\n' : ''
+  const setup = `# Setup\n\n## Toolchain\n\nGenerated with ${details.scaffold}, Node.js ${nodeVersion}, ${managerToolchain}.\n${managerConfigNote}${forma ? `Forma source: private GitHub repository, commit ${forma.commitSha}. Template ${forma.id}@${forma.version}; portable SHA-256 ${forma.contentHash}; theme ${forma.variantName}.\n` : ''}${bootstrapNote}${stylingNote}\n## Install and run\n\n${envSetup}\`\`\`sh\n${commands.install}\n${details.devCommand}\n\`\`\`\n\n## Validate\n\n\`\`\`sh\n${setupChecks}\n\`\`\`\n\n${resolved.recipe.projectType === 'backend' ? 'The API exposes GET `/health` and GET `/api/info`; generated tests verify 404/error handling and graceful shutdown. The generator starts the built server only for its HTTP smoke check and stops it before finalization.\n' : "The generator's HTTP smoke check verifies an HTML response from the local server. It does not launch a browser or verify visual rendering.\n"}`
   const files = new Map<string, string>([['README.md', readme], ['docs/SETUP.md', setup]])
   if (resolved.selection.documentation === 'minimal') return files
 
-  const checkCommands = forma ? `\`${commands.run('typecheck')}\` and \`${commands.run('build')}\``
+  const checkCommands = resolved.recipe.projectType === 'backend' ? `\`${commands.run('typecheck')}\`, \`${commands.run('test')}\`, and \`${commands.run('build')}\``
+    : forma ? `\`${commands.run('typecheck')}\` and \`${commands.run('build')}\``
     : resolved.recipe.frontend === 'frontend.nuxt' ? `\`${commands.run('typecheck')}\` and \`${commands.run('build')}\``
       : resolved.recipe.frontend === 'frontend.angular' ? `\`${commands.run('build')}\` and \`npm test -- --watch=false\``
         : resolved.recipe.frontend === 'frontend.vue-vite' ? `\`${commands.run('lint')}\`, \`${commands.run('type-check')}\`, and \`${commands.run('build')}\`` : `\`${commands.run('lint')}\` and \`${commands.run('build')}\``
-  files.set('AGENTS.md', `# Agent instructions\n\n- Project: ${details.title}.\n- Package manager: ${manager.id}; retain ${manager.lockfile}${manager.configFile ? ` and ${manager.configFile}` : ''}.\n- Run ${checkCommands} before reporting changes.\n- No separate backend or database is configured.\n- Generated by Project Generator; no approval or project history is implied.\n`)
-  files.set('docs/ARCHITECTURE.md', `# Architecture\n\nThis repository is a ${details.title} frontend application generated from ${details.scaffold}. Styling: ${styling}. It uses ${manager.id} and has no separate backend or database.\n\nThe framework/template owns application source and build configuration. The Project Generator owns this document and the setup/manifest files.\n`)
-  files.set('docs/TESTING.md', forma
+  files.set('AGENTS.md', `# Agent instructions\n\n- Project: ${details.title}.\n- Package manager: ${manager.id}; retain ${manager.lockfile}${manager.configFile ? ` and ${manager.configFile}` : ''}.\n- Run ${checkCommands} before reporting changes.\n- ${scopeNote}\n- Generated by FormaForge; no approval or project history is implied.\n`)
+  files.set('docs/ARCHITECTURE.md', resolved.recipe.projectType === 'backend'
+    ? `# Architecture\n\nStandalone Node.js + TypeScript + Express REST API. Express application and middleware live in \`src/app.ts\`; \`src/server.ts\` loads environment configuration and owns the HTTP listener and graceful shutdown. No frontend, database, ORM, authentication, or fullstack workspace is included.\n\nFormaForge owns the reviewed starter files and generated setup/manifest documentation.\n`
+    : `# Architecture\n\nThis repository is a ${details.title} frontend application generated from ${details.scaffold}. Styling: ${styling}. It uses ${manager.id} and has no separate backend or database.\n\nThe framework/template owns application source and build configuration. FormaForge owns this document and the setup/manifest files.\n`)
+  files.set('docs/TESTING.md', resolved.recipe.projectType === 'backend'
+    ? `# Testing\n\n- Typecheck: \`${commands.run('typecheck')}\`.\n- Unit and integration tests: \`${commands.run('test')}\` (Node.js built-in test runner).\n- Production build: \`${commands.run('build')}\`.\n- Generator smoke: starts the built API in isolated staging and checks GET \`/health\` and \`/api/info\`.\n- Tests cover 404/error handling and graceful shutdown.\n\nNo database or external service is required.\n`
+    : forma
     ? `# Testing\n\n- TypeScript: \`${commands.run('typecheck')}\`.\n- Production build: \`${commands.run('build')}\`.\n- Local server: \`${details.devCommand}\`.\n- Lint: not installed by the pinned Forma installer; no lint command is provided.\n\nThe generator performed only checks recorded in .project-generator/manifest.json. Its HTTP smoke check is not browser automation.\n`
     : resolved.recipe.frontend === 'frontend.nuxt'
         ? `# Testing\n\n- TypeScript: \`${commands.run('typecheck')}\` (pinned TypeScript and vue-tsc dev dependencies).\n- Production build: \`${commands.run('build')}\`.\n- Local server: \`${details.devCommand}\`.\n- The official starter does not define lint or unit-test scripts.\n\nThe generator performed only checks recorded in .project-generator/manifest.json. Its HTTP smoke check is not browser automation.\n`
@@ -158,7 +184,7 @@ function generatedContent(resolved: ResolvedSelection, nodeVersion: string, npmV
   files.set('agent.md', '# Agent notes\n\nInitial generated instructions only. No AI agent history or approval is asserted.\n')
   files.set('decision.md', '# Decision policy\n\nRecord future material decisions in docs/decisions/index.md. Generated baseline is not an approval.\n')
   files.set('design.md', `# Design notes\n\nFramework: ${details.title}. Styling: ${styling}. No custom product UI requirements were supplied.\n`)
-  files.set('docs/PRD.md', `# Project brief\n\n- Project: ${name}\n- Stack: ${details.title}\n- Scope: frontend only; no separate backend or database.\n- Status: initial generated scaffold; no product approvals are implied.\n`)
+  files.set('docs/PRD.md', `# Project brief\n\n- Project: ${name}\n- Stack: ${details.title}\n- Scope: ${scopeNote}\n- Status: initial generated project; no product approvals are implied.\n`)
   files.set('docs/decisions/index.md', '# Decision register\n\nNo material decisions or approvals have been recorded. Add entries only when decisions occur.\n')
   files.set('docs/qa/acceptance-matrix.md', '# Verification status\n\nSee `.project-generator/manifest.json` for checks executed during generation. No release approval is implied.\n')
   return files
@@ -202,11 +228,12 @@ export async function writeProjectManifest(
     createdAt: new Date().toISOString(),
     platform: `${process.platform}-${process.arch}`,
     projectName: resolved.selection.project.name,
-    projectType: 'frontend',
+    projectType: resolved.recipe.projectType ?? 'frontend',
     documentationMode: resolved.selection.documentation,
     selectedAdapters: [
-      { id: resolved.recipe.frontend, version: '0.1.0' },
-      ...(forma ? [{ id: 'template.forma', version: '0.1.0' }] : [{ id: resolved.recipe.styling!, version: '0.1.0' }]),
+      ...(resolved.recipe.frontend ? [{ id: resolved.recipe.frontend, version: '0.1.0' }] : []),
+      ...(resolved.recipe.backend ? [{ id: resolved.recipe.backend, version: '0.1.0' }] : []),
+      ...(forma ? [{ id: 'template.forma', version: '0.1.0' }] : resolved.recipe.styling ? [{ id: resolved.recipe.styling, version: '0.1.0' }] : []),
     ],
     packageManager: resolved.recipe.manager,
     ...(manager.nodeLinker && manager.configFile ? { packageManagerConfig: { nodeLinker: manager.nodeLinker, file: manager.configFile } } : {}),
@@ -218,12 +245,12 @@ export async function writeProjectManifest(
     upstreamSources: forma
       ? [{ repository: 'private Forma repository', commitSha: forma.commitSha, templateId: forma.id, resolvedVersion: forma.version, integrity: { algorithm: 'sha256', contentHash: forma.contentHash } }]
       : [
-        {
+        ...(resolved.recipe.scaffold ? [{
           package: resolved.recipe.scaffold.packageName,
           resolvedVersion: resolved.recipe.scaffold.version,
           integrity: resolved.recipe.scaffold.integrity,
           ...(resolved.recipe.scaffold.source ? { repository: resolved.recipe.scaffold.source.repository, commitSha: resolved.recipe.scaffold.source.commitSha } : {}),
-        },
+        }] : []),
         ...(resolved.recipe.dependencies ?? []).map((dependency) => ({ package: dependency.packageName, resolvedVersion: dependency.version, integrity: dependency.integrity })),
         ...(manager.packageName && manager.integrity ? [{ package: manager.packageName, resolvedVersion: manager.version, integrity: manager.integrity, role: 'package-manager' }] : []),
       ],

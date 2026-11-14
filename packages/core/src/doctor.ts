@@ -1,6 +1,6 @@
 import { inspectTarget } from './paths.js'
 import { packageManager } from './catalog.js'
-import { resolveNpmTool, supportsNpm, supportsNodeForAngular, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue } from './toolchain.js'
+import { resolveNpmTool, supportsNpm, supportsNodeForAngular, supportsNodeForBackend, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue } from './toolchain.js'
 import type { DoctorReport, ProjectSelectionV1, ToolStatus } from './types.js'
 import { resolveSelection } from './resolver.js'
 
@@ -8,11 +8,13 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
   const resolved = resolveSelection(selection)
   const recipe = resolved.recipe
   const nodeVersion = process.version.replace(/^v/, '')
-  const frameworkNodeSupported = recipe.frontend === 'frontend.vue-vite'
-    ? supportsNodeForVue(nodeVersion)
-    : recipe.frontend === 'frontend.nuxt' ? supportsNodeForNuxt(nodeVersion)
-      : recipe.frontend === 'frontend.angular' ? supportsNodeForAngular(nodeVersion)
-        : recipe.frontend === 'frontend.nextjs-app' ? supportsNodeForNext(nodeVersion) : supportsNodeForVite(nodeVersion)
+  const frameworkNodeSupported = recipe.backend
+    ? supportsNodeForBackend(nodeVersion)
+    : recipe.frontend === 'frontend.vue-vite'
+      ? supportsNodeForVue(nodeVersion)
+      : recipe.frontend === 'frontend.nuxt' ? supportsNodeForNuxt(nodeVersion)
+        : recipe.frontend === 'frontend.angular' ? supportsNodeForAngular(nodeVersion)
+          : recipe.frontend === 'frontend.nextjs-app' ? supportsNodeForNext(nodeVersion) : supportsNodeForVite(nodeVersion)
   const nodeSupported = frameworkNodeSupported && (recipe.manager !== 'pnpm' || supportsNodeForPnpm(nodeVersion))
   const node: ToolStatus = {
     id: 'node',

@@ -196,7 +196,7 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for component boundaries, Windows stagi
 - FE-05 Vue + Vite + npm + Bootstrap 5 CSS.
 - FE-06 Nuxt + npm + CSS.
 - FE-07 Angular + npm + SCSS.
-- BE-01 Express + npm + SQLite + Drizzle (verify selected driver).
+- BE-01 proposed target: Express + npm + SQLite + Drizzle (verify selected driver). Phase 05A is narrower: standalone API with no database; it does not claim this tuple.
 - BE-02 NestJS + npm + PostgreSQL + Prisma.
 - BE-03 Go + Gin + PostgreSQL + pgx (Go Modules).
 - BE-04 Laravel + MySQL + Eloquent (Composer + npm for assets as relevant).

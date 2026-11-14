@@ -1,6 +1,6 @@
 # Roadmap — Project Generator Desktop V1
 
-Status: **Phase 01 bounded acceptance, Phase 02 local Forma integration/evidence, Phase 03 internal UI implementation, Phase 04A local acceptance, Phase 04B Nuxt/Angular acceptance, Phase 04B.2 styling acceptance, and Phase 04B.3 Yarn/pnpm CLI/native desktop acceptance present; broader UI acceptance remains partial, no recipe release-approved.** Date: 2026-11-14.
+Status: **Phase 01 bounded acceptance, Phase 02 local Forma integration/evidence, Phase 03 internal UI implementation, Phase 04A–04B.3 frontend evidence, and Phase 05A standalone BE-01 CLI/native evidence present; broader acceptance remains partial, no recipe release-approved.** Date: 2026-11-14.
 
 ## Phase 0 — Specification and governance
 
@@ -45,8 +45,10 @@ Architecture specification: [`ARCHITECTURE.md`](ARCHITECTURE.md). UX specificati
 
 ## Phase 5 — Backend and DB breadth
 
-- Express, NestJS, Fastify, Go Gin, Laravel, FastAPI adapters.
+- **Phase 05A local acceptance passed for BE-01 standalone Express + TypeScript + npm, no database.** CLI and Tauri flows passed pinned dependency integrity, tests/typecheck/build/HTTP/shutdown checks, consent, result/history/open actions, cancellation, and collision controls. BE-01 remains `planned`; see [DEC-025](decisions/DEC-025-phase-05a-express-rest-api.md) and [Phase 05A evidence](qa/evidence/phase-05a-express-rest-api.md).
+- Remaining breadth: NestJS, Fastify, Go, Laravel, FastAPI adapters.
 - DB drivers: PostgreSQL, MySQL/MariaDB, SQLite, MongoDB, with verified ORM pairings and real service checks.
+- **Phase 05A gate: GO for independent BE-01 review/acceptance only; NO-GO for promotion/release.** Recommend Phase 05B evaluate a separate Go standard-library `net/http` + Go Modules recipe before database/fullstack expansion.
 - Output: distinct backend-only recipes earning tested status; no DB readiness claims without available DB.
 
 ## Phase 6 — Fullstack composition

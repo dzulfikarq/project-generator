@@ -7,6 +7,7 @@ import { dirname, win32 } from 'node:path'
 import { GeneratorError, asGeneratorError } from './errors.js'
 import { ALLOW_PLANNED_RECIPE_GENERATION } from './build-policy.js'
 import { packageManager, packageManagerConfiguration } from './catalog.js'
+import { writeBackendStarter } from './backend-starter.js'
 import { runDoctor } from './doctor.js'
 import { createPlan } from './plan.js'
 import { writeProjectDocs, writeProjectManifest } from './project-docs.js'
@@ -47,10 +48,10 @@ const fixedStageOwners: Partial<Record<StageId, string>> = {
   finalizing: 'core',
 }
 
-function stageOwner(stage: StageId, frontendId: string, managerId: string, isForma = false): string {
+function stageOwner(stage: StageId, recipeOwnerId: string, managerId: string, isForma = false): string {
   if (stage === 'scaffolding' && isForma) return 'template.forma'
   if (stage === 'installing') return managerId
-  return fixedStageOwners[stage] ?? frontendId
+  return fixedStageOwners[stage] ?? recipeOwnerId
 }
 
 function replacePath(text: string, path: string | undefined): string {
@@ -266,15 +267,17 @@ async function configureRecipeDependencies(stage: OwnedStage, resolved: Resolved
   const manager = packageManager(resolved.recipe.manager)
   const bootstrap = resolved.recipe.styling === 'styling.bootstrap'
   const frameworkPins = resolved.recipe.frontend === 'frontend.nuxt' || resolved.recipe.frontend === 'frontend.angular'
+  const backend = resolved.recipe.projectType === 'backend'
   const viteScss = resolved.recipe.styling === 'styling.scss'
     && (resolved.recipe.frontend === 'frontend.react-vite' || resolved.recipe.frontend === 'frontend.vue-vite')
   const viteTailwind = resolved.recipe.styling === 'styling.tailwind'
     && (resolved.recipe.frontend === 'frontend.react-vite' || resolved.recipe.frontend === 'frontend.vue-vite')
-  const expectedPins = bootstrap ? ['bootstrap']
+  const expectedPins = backend ? ['express', '@types/express', '@types/node', 'tsx', 'typescript']
+    : bootstrap ? ['bootstrap']
     : resolved.recipe.frontend === 'frontend.nuxt' ? ['nuxt', 'typescript', 'vue-tsc']
       : resolved.recipe.frontend === 'frontend.angular' ? ['@angular/core', '@angular/cli']
         : viteScss ? ['sass'] : viteTailwind ? ['tailwindcss', '@tailwindcss/vite'] : []
-  if (pins.length > 0 && ((!bootstrap && !frameworkPins && !viteScss && !viteTailwind) || pins.length !== expectedPins.length || pins.some((pin) => !expectedPins.includes(pin.packageName)))) {
+  if (pins.length > 0 && ((!backend && !bootstrap && !frameworkPins && !viteScss && !viteTailwind) || pins.length !== expectedPins.length || pins.some((pin) => !expectedPins.includes(pin.packageName)))) {
     throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Recipe dependency pin does not match its reviewed framework or styling adapter.', 'Use an exact catalog recipe and retry.')
   }
 
@@ -429,8 +432,12 @@ async function verifyProjectLockfile(projectPath: string, manager: PackageManage
     if (manager.id === 'yarn' && (!lock.includes('__metadata:') || !/^\s+checksum:\s+\S+/m.test(lock))) throw new Error('Yarn lockfile lacks modern metadata or package checksums.')
     if (manager.id === 'pnpm' && (!/^lockfileVersion:/m.test(lock) || !/integrity:\s*['"]?sha512-/m.test(lock))) throw new Error('pnpm lockfile lacks version metadata or package integrity entries.')
     if (manager.id === 'npm') {
-      const parsed = JSON.parse(lock) as { lockfileVersion?: number; packages?: Record<string, unknown> }
+      const parsed = JSON.parse(lock) as { lockfileVersion?: number; packages?: Record<string, { version?: string; integrity?: string; resolved?: string; link?: boolean }> }
       if (!parsed.lockfileVersion || !parsed.packages) throw new Error('npm lockfile metadata is missing.')
+      for (const [path, entry] of Object.entries(parsed.packages)) {
+        if (!path || entry.link) continue
+        if (entry.resolved && (!entry.version || !entry.integrity)) throw new Error('npm lockfile contains an unpinned or unchecked registry package.')
+      }
     }
     const hash = createHash('sha256').update(lock).digest('hex')
     if (!/^[a-f0-9]{64}$/.test(hash)) throw new Error('Lockfile hash could not be computed.')
@@ -589,6 +596,53 @@ async function servedPageSmoke(
   return outcome
 }
 
+async function servedBackendSmoke(
+  projectPath: string,
+  stage: OwnedStage,
+  dirs: { home: string; temp: string },
+  signal: AbortSignal | undefined,
+  log: JobLog,
+): Promise<ValidationOutcome> {
+  const port = await freePort()
+  const running = await startNodeProcess({
+    scriptPath: win32.join(projectPath, 'dist', 'server.js'),
+    allowedScriptRoot: projectPath,
+    cwd: projectPath,
+    allowedCwdRoot: stage.path,
+    args: [],
+    homeDirectory: dirs.home,
+    tempDirectory: dirs.temp,
+    environment: { HOST: '127.0.0.1', PORT: String(port), NODE_ENV: 'test' },
+    ...(signal ? { signal } : {}),
+  })
+  let outcome: ValidationOutcome | undefined
+  try {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      throwIfCancelled(signal, 'validating')
+      try {
+        const health = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(800) })
+        const healthBody = await health.json() as { status?: string }
+        const info = await fetch(`http://127.0.0.1:${port}/api/info`, { signal: AbortSignal.timeout(800) })
+        const infoBody = await info.json() as { name?: string; version?: string; environment?: string }
+        if (health.status === 200 && healthBody.status === 'ok' && info.status === 200
+          && infoBody.name === 'BE-01 Express API' && infoBody.version === '0.1.0' && infoBody.environment === 'test') {
+          outcome = { id: 'http-smoke', status: 'pass', message: 'Built API returned valid JSON from /health and /api/info.', exitCode: 0 }
+          break
+        }
+      } catch {
+        // Keep probing until bounded smoke-test timeout; no response body is surfaced.
+      }
+      await new Promise((resolveWait) => setTimeout(resolveWait, 500))
+    }
+  } finally {
+    await running.stop()
+    const result = await running.result.catch(() => undefined)
+    if (result) log.process('http-smoke-server', result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
+  }
+  if (!outcome) throw userError('GEN_VALIDATE_FAILED', 'validating', 'Built API did not return valid JSON from /health and /api/info within 15 seconds.', 'Review the local redacted job log and retry.')
+  return outcome
+}
+
 async function verifyGeneratedStyling(projectPath: string, recipe: RecipeManifestV1): Promise<ValidationOutcome | undefined> {
   const viteScss = recipe.styling === 'styling.scss'
     && (recipe.frontend === 'frontend.react-vite' || recipe.frontend === 'frontend.vue-vite')
@@ -625,10 +679,12 @@ async function executeScaffold(
   log: JobLog,
   signal?: AbortSignal,
 ): Promise<{ managerCliPath?: string }> {
+  const scaffoldPin = resolved.recipe.scaffold
+  if (!scaffoldPin) throw userError('GEN_SCAFFOLD_FAILED', 'scaffolding', 'Recipe has no external scaffold pin.', 'Use the reviewed built-in backend starter or a valid catalog recipe.')
   const npmRoot = npmRootFromCli(npmCliPath)
   const manager = packageManager(resolved.recipe.manager)
   const toolDependencies = {
-    [resolved.recipe.scaffold.packageName]: resolved.recipe.scaffold.version,
+    [scaffoldPin.packageName]: scaffoldPin.version,
     ...(manager.packageName ? { [manager.packageName]: manager.version } : {}),
   }
   await writeToolPackage(stage, toolDependencies)
@@ -637,7 +693,7 @@ async function executeScaffold(
     ...Object.entries(toolDependencies).map(([name, version]) => `${name}@${version}`),
   ], stage.path, stage, npmCliPath, npmRoot, dirs, log, 'scaffold-package-install', signal)
   if (scaffoldInstall.exitCode !== 0) throw mappedProcessError('scaffolding', scaffoldInstall)
-  const scaffoldBin = await checkPackagePin(dirs.tools, resolved.recipe.scaffold, 'scaffold')
+  const scaffoldBin = await checkPackagePin(dirs.tools, scaffoldPin, 'scaffold')
   const managerCliPath = manager.packageName && manager.integrity && manager.binPath
     ? await checkPackagePin(dirs.tools, { packageName: manager.packageName, version: manager.version, integrity: manager.integrity, binPath: manager.binPath }, 'package-manager')
     : undefined
@@ -646,9 +702,9 @@ async function executeScaffold(
     allowedScriptRoot: dirs.tools,
     cwd: stage.path,
     allowedCwdRoot: stage.path,
-    args: resolved.recipe.scaffold.packageName === '@angular/cli'
-      ? ['new', resolved.selection.project.name, ...resolved.recipe.scaffoldArgs]
-      : [resolved.selection.project.name, ...resolved.recipe.scaffoldArgs],
+    args: scaffoldPin.packageName === '@angular/cli'
+      ? ['new', resolved.selection.project.name, ...(resolved.recipe.scaffoldArgs ?? [])]
+      : [resolved.selection.project.name, ...(resolved.recipe.scaffoldArgs ?? [])],
     homeDirectory: dirs.home,
     tempDirectory: dirs.temp,
     ...(signal ? { signal } : {}),
@@ -666,7 +722,8 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
   const validations: ValidationOutcome[] = []
   const resolved = resolveSelection(selection)
   const isForma = Boolean(selection.template)
-  const eventOwner = (id: StageId): string => stageOwner(id, resolved.recipe.frontend, resolved.recipe.manager, isForma)
+  const recipeOwnerId = resolved.recipe.backend ?? resolved.recipe.frontend ?? 'core'
+  const eventOwner = (id: StageId): string => stageOwner(id, recipeOwnerId, resolved.recipe.manager, isForma)
   const stageStart = (id: StageId): void => { currentStage = id; emit({ type: 'stage-started', stageId: id, stageOwner: eventOwner(id), stageStatus: 'running', message: `${id} started.` }) }
   const stageFinish = (id: StageId, status: 'passed' | 'failed' | 'skipped', message = `${id} completed.`): void => { emit({ type: 'stage-finished', stageId: id, stageOwner: eventOwner(id), stageStatus: status, message }) }
   let formaEvidence: FormaInstallEvidence | undefined
@@ -698,8 +755,11 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     stageStart('scaffolding')
     throwIfCancelled(options.signal, currentStage)
     let managerCliPath: string | undefined
+    let starterFiles: string[] = []
     if (selection.template) {
-      formaEvidence = await installFormaTemplate(stage, selection.template, resolved.recipe.frontend, selection.project.name, dirs, log, options.signal)
+      formaEvidence = await installFormaTemplate(stage, selection.template, resolved.recipe.frontend!, selection.project.name, dirs, log, options.signal)
+    } else if (resolved.recipe.projectType === 'backend') {
+      starterFiles = await writeBackendStarter(stage, selection.project.name, resolved.recipe.dependencies ?? [])
     } else {
       ({ managerCliPath } = await executeScaffold(stage, resolved, npmTool.cliPath, dirs, log, options.signal))
       if (resolved.recipe.manager !== 'npm') {
@@ -725,7 +785,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       if (error instanceof GeneratorError) throw error
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
-    const generatedFiles = await configureRecipeDependencies(stage, resolved)
+    const generatedFiles = [...starterFiles, ...await configureRecipeDependencies(stage, resolved)]
     const managerConfig = packageManagerConfiguration(resolved.recipe.manager)
     if (managerConfig) {
       const projectPrefix = `${win32.basename(projectPath)}/`
@@ -752,7 +812,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     if (resolved.recipe.dependencies?.length) {
       const integrity: ValidationOutcome = { id: 'dependency-integrity', status: 'pass', message: 'Pinned project dependency versions and npm integrity match the reviewed catalog.', exitCode: 0 }
       validations.push(integrity)
-      emitValidation(emit, integrity, resolved.recipe.frontend)
+      emitValidation(emit, integrity, recipeOwnerId)
     }
     const lockHash = await verifyProjectLockfile(projectPath, manager)
     const lockIntegrity: ValidationOutcome = {
@@ -768,7 +828,14 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
 
     stageStart('validating')
     throwIfCancelled(options.signal, currentStage)
-    const checks: { id: string; path: string; args: string[] }[] = selection.template
+    const checks: { id: string; path: string; args: string[] }[] = resolved.recipe.projectType === 'backend'
+      ? [
+        { id: 'typecheck', path: win32.join(projectPath, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['--project', 'tsconfig.json', '--noEmit'] },
+        { id: 'unit-tests', path: win32.join(projectPath, 'node_modules', 'tsx', 'dist', 'cli.mjs'), args: ['--test', 'test/backend.test.ts'] },
+        { id: 'graceful-shutdown', path: win32.join(projectPath, 'node_modules', 'tsx', 'dist', 'cli.mjs'), args: ['--test', 'test/shutdown.test.ts'] },
+        { id: 'build', path: win32.join(projectPath, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['--project', 'tsconfig.json'] },
+      ]
+      : selection.template
       ? [
         { id: 'typecheck', path: win32.join(projectPath, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['--noEmit'] },
         ...(resolved.recipe.frontend === 'frontend.react-vite'
@@ -806,23 +873,25 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       const result = await runAppScript(check.path, check.args, projectPath, stage, dirs, options.signal, log, check.id)
       const outcome = checkOutcome(check.id, result)
       validations.push(outcome)
-      emitValidation(emit, outcome, resolved.recipe.frontend)
+      emitValidation(emit, outcome, recipeOwnerId)
       if (result.exitCode !== 0) throw mappedProcessError('validating', result)
     }
     const stylingOutput = await verifyGeneratedStyling(projectPath, resolved.recipe)
     if (stylingOutput) {
       validations.push(stylingOutput)
-      emitValidation(emit, stylingOutput, resolved.recipe.frontend)
+      emitValidation(emit, stylingOutput, recipeOwnerId)
     }
     if (selection.template) {
       const lint: ValidationOutcome = { id: 'lint', status: 'skipped', message: 'The pinned Forma installer does not define a lint script or install a lint tool.' }
       validations.push(lint)
-      emitValidation(emit, lint, resolved.recipe.frontend)
+      emitValidation(emit, lint, recipeOwnerId)
     }
     throwIfCancelled(options.signal, currentStage)
-    const smoke = await servedPageSmoke(projectPath, stage, dirs, resolved.recipe.frontend, options.signal, log)
+    const smoke = resolved.recipe.projectType === 'backend'
+      ? await servedBackendSmoke(projectPath, stage, dirs, options.signal, log)
+      : await servedPageSmoke(projectPath, stage, dirs, resolved.recipe.frontend!, options.signal, log)
     validations.push(smoke)
-    emitValidation(emit, smoke, resolved.recipe.frontend)
+    emitValidation(emit, smoke, recipeOwnerId)
     const allPassed = validations.every((item) => item.status === 'pass'
       || (selection.template !== undefined && item.id === 'lint' && item.status === 'skipped'))
     if (!allPassed) throw userError('GEN_VALIDATE_FAILED', 'validating', 'One or more required checks did not pass.', 'Review the local redacted job log and retry.')

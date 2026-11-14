@@ -115,6 +115,8 @@ enum DesktopRecipeId {
     Fe14,
     #[serde(rename = "FE-15")]
     Fe15,
+    #[serde(rename = "BE-01")]
+    Be01,
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -137,6 +139,19 @@ impl DesktopDocumentationV1 {
 
 impl DesktopSelectionV1 {
     fn to_core_json(&self, forma_commit_sha: &str) -> Value {
+        if matches!(self.recipe_id, DesktopRecipeId::Be01) {
+            return json!({
+                "schemaVersion": 1,
+                "project": {
+                    "name": self.project_name,
+                    "parentDirectory": self.parent_directory,
+                    "type": "backend"
+                },
+                "backend": { "adapterId": "backend.express", "manager": "npm" },
+                "documentation": self.documentation.as_str(),
+                "git": { "initialize": false, "initialCommit": false }
+            });
+        }
         let (frontend, styling, manager) = match self.recipe_id {
             DesktopRecipeId::Fe01 => ("frontend.react-vite", "styling.css", "npm"),
             DesktopRecipeId::Fe02 => ("frontend.nextjs-app", "styling.tailwind", "npm"),
@@ -153,6 +168,7 @@ impl DesktopSelectionV1 {
             DesktopRecipeId::Fe13 => ("frontend.vue-vite", "styling.css", "yarn"),
             DesktopRecipeId::Fe14 => ("frontend.react-vite", "styling.css", "pnpm"),
             DesktopRecipeId::Fe15 => ("frontend.vue-vite", "styling.css", "pnpm"),
+            DesktopRecipeId::Be01 => unreachable!("BE-01 selection returned above"),
         };
         let mut selection = json!({
             "schemaVersion": 1,
@@ -217,6 +233,15 @@ impl DesktopSelectionV1 {
                 "DESKTOP_SELECTION_INVALID",
                 "Forma variant requires a selected Forma template.",
                 "Choose a template before choosing its variant.",
+            ));
+        }
+        if matches!(self.recipe_id, DesktopRecipeId::Be01)
+            && (self.template_id.is_some() || self.template_variant_id.is_some())
+        {
+            return Err(error(
+                "DESKTOP_SELECTION_INVALID",
+                "BE-01 is standalone and cannot include a Forma frontend template.",
+                "Remove the template selection and resolve the BE-01 plan again.",
             ));
         }
         Ok(())
@@ -1444,6 +1469,21 @@ mod tests {
             assert_eq!(generated["styling"]["adapterId"], styling);
             assert_eq!(generated["frontend"]["manager"], manager);
         }
+
+        let backend = DesktopSelectionV1 {
+            project_name: "demo-api".into(),
+            parent_directory: "C:\\Projects".into(),
+            recipe_id: DesktopRecipeId::Be01,
+            documentation: DesktopDocumentationV1::Standard,
+            template_id: None,
+            template_variant_id: None,
+        }
+        .to_core_json("");
+        assert_eq!(backend["project"]["type"], "backend");
+        assert_eq!(backend["backend"]["adapterId"], "backend.express");
+        assert_eq!(backend["backend"]["manager"], "npm");
+        assert!(backend.get("frontend").is_none());
+        assert!(backend.get("styling").is_none());
 
         let standalone = DesktopSelectionV1 {
             project_name: "demo".into(),

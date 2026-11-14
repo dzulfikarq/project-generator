@@ -87,6 +87,9 @@ function processEnvironment(home: string, temp: string, cwd: string, extraPath: 
 }
 
 const allowedEnvironmentOverrides = new Set([
+  'HOST',
+  'PORT',
+  'NODE_ENV',
   'YARN_ENABLE_SCRIPTS',
   'YARN_ENABLE_IMMUTABLE_INSTALLS',
   'YARN_NODE_LINKER',

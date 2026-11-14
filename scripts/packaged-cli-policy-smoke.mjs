@@ -39,11 +39,19 @@ const configs = [
   ['FE-13', 'frontend.vue-vite', 'styling.css', undefined, 'yarn'],
   ['FE-14', 'frontend.react-vite', 'styling.css', undefined, 'pnpm'],
   ['FE-15', 'frontend.vue-vite', 'styling.css', undefined, 'pnpm'],
+  ['BE-01', 'backend.express', undefined, undefined, 'npm'],
   ['FM-01', 'frontend.react-vite', undefined, 'focus-planner'],
   ['FM-02', 'frontend.nextjs-app', undefined, 'staywise-host-dashboard'],
 ]
 
 function selection(id, frontend, styling, templateId, manager = 'npm') {
+  if (id === 'BE-01') return {
+    schemaVersion: 1,
+    project: { name: 'planned-be-01', parentDirectory: root, type: 'backend' },
+    backend: { adapterId: 'backend.express', manager: 'npm' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  }
   const project = {
     schemaVersion: 1,
     project: { name: `planned-${id.toLowerCase()}`, parentDirectory: root, type: 'frontend' },
@@ -83,7 +91,10 @@ try {
   assert.equal(catalogResult.status, 0, catalogResult.stderr)
   const catalog = JSON.parse(catalogResult.stdout)
   assert.equal(catalog.ok, true)
-  assert.deepEqual(catalog.data.recipes.map(({ id, status }) => [id, status]), configs.filter(([id]) => id.startsWith('FE-')).map(([id]) => [id, 'planned']))
+  assert.deepEqual(catalog.data.recipes.map(({ id, status }) => [id, status]), [
+    ...configs.filter(([id]) => id.startsWith('FE-')).map(([id]) => [id, 'planned']),
+    ['BE-01', 'planned'],
+  ])
   assert.deepEqual(catalog.data.forma.integrations.map(({ recipeId, status }) => [recipeId, status]), [['FM-01', 'planned'], ['FM-02', 'planned']])
 
   const planResult = invoke(['plan', '--config', configPaths[0], '--json'])
@@ -92,6 +103,12 @@ try {
   assert.equal(plan.recipeId, 'FE-01')
   assert.equal(plan.recipeStatus, 'planned')
   assert.equal(plan.executionAvailable, false)
+
+  const backendConfigPath = join(root, 'BE-01.json')
+  const backendPlan = invoke(['plan', '--config', backendConfigPath, '--json'])
+  assert.equal(backendPlan.status, 0, backendPlan.stdout)
+  assert.equal(JSON.parse(backendPlan.stdout).data.recipeId, 'BE-01')
+  assert.equal(JSON.parse(backendPlan.stdout).data.executionAvailable, false)
 
   const doctorResult = invoke(['doctor', '--config', configPaths[0], '--json'])
   assert.equal(doctorResult.status, 0, doctorResult.stdout)
@@ -124,6 +141,15 @@ try {
     await cleanJobLog(result.stderr)
   }
 
+  for (const args of [[], ['--development-allow-planned']]) {
+    const blocked = invoke(['generate', '--config', backendConfigPath, '--jsonl', ...args])
+    assert.equal(blocked.status, 3, `BE-01 release block: ${blocked.stderr}\n${blocked.stdout}`)
+    assert.ok(events(blocked.stdout).some((event) => event.code === 'GEN_RECIPE_UNTESTED'), blocked.stdout)
+    assert.equal(events(blocked.stdout).some((event) => event.type === 'stage-started' && ['staging', 'scaffolding', 'installing'].includes(event.stageId)), false)
+    await assert.rejects(access(join(root, 'planned-be-01')))
+    await cleanJobLog(blocked.stderr)
+  }
+
   const coreUrl = pathToFileURL(core).href
   const directCore = spawnSync(runtime, ['--input-type=module', '-e', `
     import { dirname } from 'node:path'
@@ -141,7 +167,7 @@ try {
   assert.equal(directResult.error?.code, 'GEN_RECIPE_UNTESTED')
 
   assert.deepEqual((await readdir(root)).sort(), configPaths.map((path) => path.split(/[\\/]/).at(-1)).sort())
-  console.log(`Packaged ${mode} CLI policy smoke passed: catalog/plan/doctor read-only; release override rejected; FE-01–FE-15 and FM-01/FM-02 blocked before staging.`)
+  console.log(`Packaged ${mode} CLI policy smoke passed: catalog/plan/doctor read-only; release override rejected; FE-01–FE-15, BE-01, and FM-01/FM-02 blocked before staging.`)
 } finally {
   await rm(root, { recursive: true, force: true })
 }

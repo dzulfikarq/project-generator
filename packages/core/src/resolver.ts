@@ -8,8 +8,18 @@ import type { ProjectSelectionV1, RecipeManifestV1, ResolvedSelection } from './
 export function resolveSelection(selection: ProjectSelectionV1): ResolvedSelection {
   const { project } = selection
   const outputPath = resolveOutputPath(project.parentDirectory, project.name)
-  if (project.type !== 'frontend' || !selection.frontend) {
-    throw incompatibleError('Phase 01 supports frontend projects only; backend, database, and mobile choices are unavailable.')
+  if (project.type === 'backend') {
+    const manager = selection.backend?.manager ?? 'npm'
+    if (!selection.backend || selection.backend.adapterId !== 'backend.express' || manager !== 'npm'
+      || selection.frontend || selection.database || selection.styling || selection.template) {
+      throw incompatibleError('BE-01 supports standalone Express + TypeScript + npm only; frontend, database, and fullstack choices are unavailable.')
+    }
+    const recipe = RECIPES.find((candidate) => candidate.id === 'BE-01')
+    if (!recipe) throw incompatibleError('Selection does not match a cataloged backend recipe.')
+    return { selection: Object.freeze(selection), recipe, outputPath: win32.normalize(outputPath) }
+  }
+  if (project.type !== 'frontend' || !selection.frontend || selection.backend) {
+    throw incompatibleError('Phase 01 supports frontend recipes and standalone BE-01 only; fullstack and mobile choices are unavailable.')
   }
   const manager = selection.frontend.manager ?? 'npm'
   if (selection.frontend.language !== 'ts' || !['npm', 'yarn', 'pnpm'].includes(manager)) {
@@ -37,7 +47,7 @@ export function resolveSelection(selection: ProjectSelectionV1): ResolvedSelecti
     if (!isFormaCommit(selection.template.commitSha) || template.commitSha !== FORMA_COMMIT_SHA) {
       throw incompatibleError('Forma template commit does not match the immutable catalog pin.')
     }
-    if (!template.testedFrameworks.includes(frameworkRecipe.frontend)) {
+    if (!template.testedFrameworks.includes(frameworkRecipe.frontend!)) {
       throw incompatibleError(`${template.name} is not verified for the selected framework adapter.`)
     }
     if (selection.template.variantId && !template.variants.some((variant) => variant.id === selection.template?.variantId)) {

@@ -37,7 +37,7 @@ V1 does not execute unreviewed third-party adapters. New adapters are repository
 
 ## 3. Proposed TypeScript-facing contract (illustrative; not identical to Phase 01 code)
 
-Phase 01 implements FE-01/FE-02 selection; Phase 02 adds planned Forma FM-01/FM-02; Phase 04A adds planned FE-03/FE-04/FE-05; scoped Phase 04B adds planned FE-06/FE-07; Phase 04B.2 adds planned FE-08–FE-11 for React/Vue Vite SCSS and Tailwind CSS 4; Phase 04B.3 adds planned FE-12–FE-15 for React/Vue Vite Plain CSS with pinned Yarn/pnpm. Broader interfaces below remain a target contract for future adapters and components. No integration is release-approved.
+Phase 01 implements FE-01/FE-02 selection; Phase 02 adds planned Forma FM-01/FM-02; Phase 04A–04B.3 add planned frontend recipes; Phase 05A adds planned standalone BE-01 Express + TypeScript + npm with no database. Broader interfaces below remain a target contract for future adapters and components. No integration is release-approved.
 
 ```ts
 type SupportState =

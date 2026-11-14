@@ -28,12 +28,14 @@ export type Adapter = {
 export type Recipe = {
   id: string
   status: string
-  frontend: string
+  projectType?: string
+  frontend?: string
+  backend?: string
   styling?: string
   manager: string
   limitations: string[]
   checks: string[]
-  scaffold: { packageName: string; version: string }
+  scaffold?: { packageName: string; version: string }
 }
 
 export type Template = {
