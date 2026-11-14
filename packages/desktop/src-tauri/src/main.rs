@@ -1288,6 +1288,25 @@ fn cancel_generation(
     })
 }
 
+fn main() {
+    tauri::Builder::default()
+        .manage(DesktopState::default())
+        .invoke_handler(tauri::generate_handler![
+            get_catalog,
+            get_runtime_status,
+            resolve_plan,
+            run_environment_doctor,
+            inspect_recovery,
+            start_generation,
+            cancel_generation,
+            open_project_folder,
+            open_project_in_vscode,
+            get_vscode_status
+        ])
+        .run(tauri::generate_context!())
+        .expect("failed to run Project Generator desktop PoC");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1469,23 +1488,4 @@ mod tests {
             cfg!(debug_assertions)
         );
     }
-}
-
-fn main() {
-    tauri::Builder::default()
-        .manage(DesktopState::default())
-        .invoke_handler(tauri::generate_handler![
-            get_catalog,
-            get_runtime_status,
-            resolve_plan,
-            run_environment_doctor,
-            inspect_recovery,
-            start_generation,
-            cancel_generation,
-            open_project_folder,
-            open_project_in_vscode,
-            get_vscode_status
-        ])
-        .run(tauri::generate_context!())
-        .expect("failed to run Project Generator desktop PoC");
 }

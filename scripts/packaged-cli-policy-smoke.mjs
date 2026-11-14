@@ -29,6 +29,8 @@ const configs = [
   ['FE-03', 'frontend.vue-vite', 'styling.css'],
   ['FE-04', 'frontend.react-vite', 'styling.bootstrap'],
   ['FE-05', 'frontend.vue-vite', 'styling.bootstrap'],
+  ['FE-06', 'frontend.nuxt', 'styling.css'],
+  ['FE-07', 'frontend.angular', 'styling.scss'],
   ['FM-01', 'frontend.react-vite', undefined, 'focus-planner'],
   ['FM-02', 'frontend.nextjs-app', undefined, 'staywise-host-dashboard'],
 ]
@@ -104,6 +106,13 @@ try {
     assert.ok(output.some((event) => event.code === 'GEN_RECIPE_UNTESTED'), `${id}: ${result.stdout}`)
     assert.equal(output.some((event) => event.type === 'stage-started' && ['staging', 'scaffolding', 'installing'].includes(event.stageId)), false, `${id} entered execution stage`)
     await assert.rejects(access(join(root, `planned-${id.toLowerCase()}`)))
+    if (id === 'FE-06' || id === 'FE-07') {
+      const override = invoke(['generate', '--config', configPaths[index], '--jsonl', '--development-allow-planned'])
+      assert.equal(override.status, 3, `${id} release override: ${override.stderr}\n${override.stdout}`)
+      assert.ok(events(override.stdout).some((event) => event.code === 'GEN_RECIPE_UNTESTED'), `${id} release override was not blocked: ${override.stdout}`)
+      assert.equal(events(override.stdout).some((event) => event.type === 'stage-started' && ['staging', 'scaffolding', 'installing'].includes(event.stageId)), false, `${id} override entered execution stage`)
+      await assert.rejects(access(join(root, `planned-${id.toLowerCase()}`)))
+    }
     await cleanJobLog(result.stderr)
   }
 
@@ -124,7 +133,7 @@ try {
   assert.equal(directResult.error?.code, 'GEN_RECIPE_UNTESTED')
 
   assert.deepEqual((await readdir(root)).sort(), configPaths.map((path) => path.split(/[\\/]/).at(-1)).sort())
-  console.log(`Packaged ${mode} CLI policy smoke passed: catalog/plan/doctor read-only; release override rejected; FE-01–FE-05 and FM-01/FM-02 blocked before staging.`)
+  console.log(`Packaged ${mode} CLI policy smoke passed: catalog/plan/doctor read-only; release override rejected; FE-01–FE-07 and FM-01/FM-02 blocked before staging.`)
 } finally {
   await rm(root, { recursive: true, force: true })
 }

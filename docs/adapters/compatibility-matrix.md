@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Version | Draft 0.1 — 2026-11-14 |
-| Status | **FE-03–FE-05 native acceptance complete; FE-06/FE-07 scoped implementation and local CLI verification recorded (native desktop unverified); FE-01–FE-07/FM-01/FM-02 remain PLAN; no recipe promoted or release-approved** |
+| Status | **FE-03–FE-07 local native acceptance recorded; FE-01–FE-07/FM-01/FM-02 remain PLAN pending independent review; no recipe promoted or release-approved** |
 | Main platform | Windows 11 |
 | Source of truth | This matrix + machine-readable adapter manifests + QA results |
 
@@ -140,7 +140,7 @@ FE-01 evidence: [Windows React + Vite run](../qa/evidence/FE-01/2026-11-11-cli-e
 
 Phase 04A pins and implementation evidence: [FE-03–FE-05 report](../qa/evidence/phase-04a-vue-bootstrap-expansion.md). Fresh CLI/native desktop acceptance and negative Vue/Forma plan evidence: [acceptance report](../qa/evidence/phase-04a-native-desktop-acceptance.md). Vue uses official `create-vue@3.24.0`; Bootstrap CSS uses `bootstrap@5.3.9`. All three recipes remain `PLAN`; no Forma/Vue compatibility is asserted.
 
-Phase 04B uses official `create-nuxt@4.0.3`, Nuxt `4.6.4`, and immutable `nuxt/starter` commit `db01806fcb37f2e369fb09443c72cac696b31548` for FE-06; FE-07 uses local `@angular/cli@21.2.30` and Angular core `21.2.26`. CLI verification, source/package pins, npm workaround, and untested native-desktop scope: [Phase 04B report](../qa/evidence/phase-04b-nuxt-angular.md). Both recipes remain `PLAN`; no Forma support is asserted.
+Phase 04B uses official `create-nuxt@4.0.3`, Nuxt `4.6.4`, and immutable `nuxt/starter` commit `db01806fcb37f2e369fb09443c72cac696b31548` for FE-06; FE-07 uses local `@angular/cli@21.2.30` and Angular core `21.2.26`. Fresh CLI and native Tauri acceptance, package/source pins, Angular npm workaround, release planned-gate checks, and bounded limitations: [Phase 04B report](../qa/evidence/phase-04b-nuxt-angular.md). Both recipes remain `PLAN`; no Forma support is asserted.
 
 **Important:** the fullstack recipe must produce a real, reachable example API endpoint and frontend call when that is part of its advertised output. Generating two unrelated folder trees is insufficient.
 
