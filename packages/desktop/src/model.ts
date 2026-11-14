@@ -1,3 +1,5 @@
+import { isValidGoModulePath } from '@project-generator/core/go-module'
+
 export type Theme = 'system' | 'light' | 'dark'
 export type HistoryStatus = 'completed' | 'partial'
 
@@ -83,14 +85,9 @@ export function validateProjectName(name: string): string | null {
 }
 
 export function validateGoModulePath(value: string): string | null {
-  const parts = value.split('/')
-  const validParts = parts.length >= 2 && (parts[0]!.includes('.') || parts[0] === 'localhost')
-    && parts.every((part) => /^[a-z0-9][a-z0-9._~-]*$/.test(part) && !part.endsWith('.') && !part.includes('..'))
-  const major = parts.at(-1)!.match(/^v(\d+)$/)
-  if (!value || value.length > 512 || value !== value.toLowerCase() || !validParts || (major && Number(major[1]) < 2)) {
-    return 'Use a lowercase Go module path, such as github.com/user/project or example.com/project.'
-  }
-  return null
+  return isValidGoModulePath(value)
+    ? null
+    : 'Use a valid Go module path, such as github.com/user/project or example.com/project.'
 }
 
 export function validateParentDirectory(path: string): string | null {

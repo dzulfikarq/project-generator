@@ -28,6 +28,13 @@ await mkdir(collisionPath)
 const sentinelPath = join(collisionPath, 'keep.txt')
 await writeFile(sentinelPath, 'preserve this file\n')
 const sentinelHash = createHash('sha256').update(await readFile(sentinelPath)).digest('hex')
+const invalidModulePaths = [
+  'github.com/con/api',
+  'github.com/acme/pkg~1',
+  'github.com/acme/pkg/v02',
+  'github.com/acme/pkg/v2.1',
+  'github.com/acme/COM1/api',
+]
 
 let socket
 let nextCommandId = 0
@@ -146,15 +153,17 @@ async function chooseGoBackend(name, modulePath, testInvalidPath = false) {
   await click('.wizard-actions .primary-button', 'Choose tools')
   await waitFor("document.querySelector('#go-module-path') !== null", `${name} Go module path`)
   if (testInvalidPath) {
-    await fill('#go-module-path', 'github.com/../escape')
-    const invalidState = await evaluate(`({
-      invalid: document.querySelector('#go-module-path').getAttribute('aria-invalid') === 'true',
-      nextDisabled: [...document.querySelectorAll('.wizard-actions .primary-button')].some((button) => button.textContent.includes('Documentation') && button.disabled),
-      error: document.querySelector('#go-module-path-error')?.textContent,
-    })`)
-    assert.equal(invalidState.invalid, true)
-    assert.equal(invalidState.nextDisabled, true)
-    assert.match(invalidState.error ?? '', /lowercase Go module path/)
+    for (const invalidPath of invalidModulePaths) {
+      await fill('#go-module-path', invalidPath)
+      const invalidState = await evaluate(`({
+        invalid: document.querySelector('#go-module-path').getAttribute('aria-invalid') === 'true',
+        nextDisabled: [...document.querySelectorAll('.wizard-actions .primary-button')].some((button) => button.textContent.includes('Documentation') && button.disabled),
+        error: document.querySelector('#go-module-path-error')?.textContent,
+      })`)
+      assert.equal(invalidState.invalid, true, invalidPath)
+      assert.equal(invalidState.nextDisabled, true, invalidPath)
+      assert.match(invalidState.error ?? '', /valid Go module path/, invalidPath)
+    }
   }
   await fill('#go-module-path', modulePath)
   await click('.wizard-actions .primary-button', 'Documentation')

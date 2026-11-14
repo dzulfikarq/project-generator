@@ -26,11 +26,22 @@ test('project validation matches npm-safe and Windows-reserved name boundaries',
 })
 
 test('Go module paths accept valid import paths and reject invalid paths', () => {
-  for (const value of ['example.com/api', 'github.com/acme/api', 'example.com/api/v2']) {
+  for (const value of [
+    'example.com/api', 'github.com/acme/api', 'example.com/api/v2',
+    'github.com/acme/pkg/v2', 'github.com/acme/pkg/v3',
+    'github.com/acme/pkg..name',
+    'github.com/GoogleCloudPlatform/cloudsql-proxy', 'gopkg.in/yaml.v2', 'gopkg.in/check.v2-unstable',
+  ]) {
     assert.equal(validateGoModulePath(value), null, value)
   }
-  for (const value of ['', 'single-segment', 'github.com/../escape', 'github.com/acme/v1', 'Example.com/api', 'github.com/acme\\api']) {
-    assert.match(validateGoModulePath(value) ?? '', /lowercase Go module path/, value)
+  const invalidPaths = [
+    '', 'single-segment', 'github.com/../escape', 'github.com/acme/v1', 'Example.com/api',
+    'github.com/acme\\api', 'github.com/con/api', 'github.com/acme/pkg~1',
+    'github.com/acme/pkg/v02', 'github.com/acme/pkg/v2.1',
+    'github.com/acme/COM1/api', 'github.com/acme/LPT9/api', 'gopkg.in/yaml.v01', 'gopkg.in/yaml.v0-unstable',
+  ]
+  for (const value of invalidPaths) {
+    assert.match(validateGoModulePath(value) ?? '', /valid Go module path/, value)
   }
 })
 

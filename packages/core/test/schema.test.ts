@@ -243,10 +243,30 @@ test('BE-02 resolves standalone Go net/http with Go Modules and validates module
   assert.equal(defaultGoModulePath('sample-api'), 'example.com/sample-api')
   assert.equal(isValidGoModulePath('github.com/example/sample-api'), true)
   assert.equal(isValidGoModulePath('example.com/sample-api/v2'), true)
+  assert.equal(isValidGoModulePath('github.com/acme/pkg/v2'), true)
+  assert.equal(isValidGoModulePath('github.com/acme/pkg/v3'), true)
+  assert.equal(isValidGoModulePath('github.com/acme/pkg..name'), true)
+  assert.equal(isValidGoModulePath('github.com/GoogleCloudPlatform/cloudsql-proxy'), true)
+  assert.equal(isValidGoModulePath('gopkg.in/yaml.v2'), true)
+  assert.equal(isValidGoModulePath('gopkg.in/check.v1'), true)
+  assert.equal(isValidGoModulePath('gopkg.in/check.v2-unstable'), true)
   assert.equal(supportsGo('1.22.0'), true)
   assert.equal(supportsGo('1.21.13'), false)
   assert.equal(supportsGo('go1.26.7'), false)
-  for (const modulePath of ['bad path/name', 'github.com/../escape', 'github.com/name/v1', 'Example.com/project', 'github.com/name\\project', 'single-segment']) {
+  const invalidModulePaths = [
+    'bad path/name', 'github.com/../escape', 'github.com/name/v1', 'Example.com/project',
+    'github.com/name\\project', 'single-segment', 'localhost/api', '-example.com/api',
+    'example_com/api', 'github.com/con/api', 'github.com/PRN/api', 'github.com/acme/AUX/api',
+    'github.com/acme/NUL/api', ...Array.from({ length: 9 }, (_, index) => `github.com/acme/COM${index + 1}/api`),
+    ...Array.from({ length: 9 }, (_, index) => `github.com/acme/LPT${index + 1}/api`),
+    'github.com/acme/con.txt/api', 'github.com/acme/pkg~1', 'github.com/acme/pkg~12.txt',
+    'github.com/acme/pkg/v02', 'github.com/acme/pkg/v2.1', 'github.com/acme/pkg/v.2',
+    'github.com/acme/.hidden', 'github.com/acme/name.',
+    'github.com/acme/name//child', 'github.com/acme/+name', 'github.com/acme/名前',
+    'gopkg.in/yaml', 'gopkg.in/yaml.v01', 'gopkg.in/yaml.v0-unstable', 'gopkg.in/yaml.v2/child',
+  ]
+  for (const modulePath of invalidModulePaths) {
+    assert.equal(isValidGoModulePath(modulePath), false, modulePath)
     assert.throws(() => createPlan(parseSelection({
       ...selection,
       backend: { ...selection.backend!, modulePath },

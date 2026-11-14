@@ -176,8 +176,19 @@ try {
   await access(cli)
   const configPath = join(parent, 'BE-02.json')
   await writeFile(configPath, JSON.stringify(selection('go-api'), null, 2))
-  const invalidPath = join(parent, 'invalid-module.json')
-  await writeFile(invalidPath, JSON.stringify(selection('invalid-go-api', 'github.com/../escape'), null, 2))
+  const invalidModulePaths = [
+    'github.com/con/api',
+    'github.com/acme/pkg~1',
+    'github.com/acme/pkg/v02',
+    'github.com/acme/pkg/v2.1',
+    'github.com/COM1/api',
+  ]
+  const invalidConfigs = await Promise.all(invalidModulePaths.map(async (modulePath, index) => {
+    const name = `invalid-go-api-${index}`
+    const configPath = join(parent, `invalid-module-${index}.json`)
+    await writeFile(configPath, JSON.stringify(selection(name, modulePath), null, 2))
+    return { configPath, name }
+  }))
   const cancelPath = join(parent, 'cancel.json')
   await writeFile(cancelPath, JSON.stringify(selection('cancel-go-api'), null, 2))
 
@@ -205,13 +216,16 @@ try {
   assert.ok(doctorData.tools.some((tool) => tool.id === 'go' && tool.available && tool.version === goVersion))
   assert.ok(!doctorData.tools.some((tool) => tool.id === 'npm' || tool.id === 'node'))
 
-  const invalidPlan = invoke(['plan', '--config', invalidPath, '--json'])
-  assert.equal(invalidPlan.status, 2)
-  assert.equal(JSON.parse(invalidPlan.stdout).error.code, 'GEN_CONFIG_INVALID')
-  const invalidGenerate = invoke(['generate', '--config', invalidPath, '--jsonl', '--development-allow-planned'])
-  assert.equal(invalidGenerate.status, 3)
-  assert.ok(events(invalidGenerate.stdout).some((event) => event.code === 'GEN_CONFIG_INVALID'), `${invalidGenerate.stderr}\n${invalidGenerate.stdout}`)
-  await assert.rejects(access(join(parent, 'invalid-go-api')))
+  for (const { configPath, name } of invalidConfigs) {
+    const invalidPlan = invoke(['plan', '--config', configPath, '--json'])
+    assert.equal(invalidPlan.status, 2, invalidPlan.stdout)
+    assert.equal(JSON.parse(invalidPlan.stdout).error.code, 'GEN_CONFIG_INVALID')
+    const invalidGenerate = invoke(['generate', '--config', configPath, '--jsonl', '--development-allow-planned'])
+    assert.equal(invalidGenerate.status, 3, `${invalidGenerate.stderr}\n${invalidGenerate.stdout}`)
+    assert.ok(events(invalidGenerate.stdout).some((event) => event.code === 'GEN_CONFIG_INVALID'), `${invalidGenerate.stderr}\n${invalidGenerate.stdout}`)
+    await assert.rejects(access(join(parent, name)))
+  }
+  assert.deepEqual((await readdir(parent)).filter((entry) => entry.startsWith('.project-generator-stage-')), [])
 
   const missingGoEnvironment = { ...baseEnvironment, PATH: `${dirname(process.execPath)};${win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32')}` }
   delete missingGoEnvironment.GOROOT
