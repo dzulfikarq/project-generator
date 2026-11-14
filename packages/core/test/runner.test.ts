@@ -62,6 +62,28 @@ test('cancellation during runner path checks is not lost', { skip: process.platf
   }
 })
 
+test('runner rejects unreviewed environment overrides before process start', { skip: process.platform !== 'win32' }, async () => {
+  const root = await mkdtemp(win32.join(tmpdir(), 'pg-runner-env-'))
+  const script = win32.join(root, 'must-not-start.cjs')
+  const marker = win32.join(root, 'started')
+  await writeFile(script, `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'started')`)
+  try {
+    await assert.rejects(runNodeProcess({
+      scriptPath: script,
+      allowedScriptRoot: root,
+      cwd: root,
+      allowedCwdRoot: root,
+      args: [],
+      homeDirectory: root,
+      tempDirectory: root,
+      environment: { PATH: 'unreviewed' },
+    }), (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && error.code === 'GEN_RUNNER_BLOCKED')
+    await assert.rejects(access(marker))
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('native preflight blocks workload when caller token is elevated', { skip: process.platform !== 'win32' }, async () => {
   const root = await mkdtemp(win32.join(tmpdir(), 'pg-elevation-block-'))
   const script = win32.join(root, 'must-not-start.cjs')

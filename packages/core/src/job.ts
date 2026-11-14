@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { appendFileSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { access, lstat, readFile, readdir } from 'node:fs/promises'
 import { createServer } from 'node:net'
@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, win32 } from 'node:path'
 import { GeneratorError, asGeneratorError } from './errors.js'
 import { ALLOW_PLANNED_RECIPE_GENERATION } from './build-policy.js'
+import { packageManager, packageManagerConfiguration } from './catalog.js'
 import { runDoctor } from './doctor.js'
 import { createPlan } from './plan.js'
 import { writeProjectDocs, writeProjectManifest } from './project-docs.js'
@@ -15,7 +16,7 @@ import { resolveNpmTool, supportsNpm } from './toolchain.js'
 import { assertGenerationAllowed } from './native-supervisor.js'
 import { resolveSelection } from './resolver.js'
 import { installFormaTemplate, type FormaInstallEvidence } from './forma.js'
-import type { DoctorReport, JobEventV1, JobStatus, ProjectSelectionV1, RecipeManifestV1, ResolvedSelection, StageId, ValidationOutcome } from './types.js'
+import type { DoctorReport, JobEventV1, JobStatus, PackageManagerManifestV1, ProjectSelectionV1, RecipeManifestV1, ResolvedSelection, StageId, ValidationOutcome } from './types.js'
 
 export interface GenerateOptions {
   allowPlanned?: boolean
@@ -43,12 +44,12 @@ const fixedStageOwners: Partial<Record<StageId, string>> = {
   preflight: 'core',
   staging: 'core',
   configuring: 'documentation-adapter',
-  installing: 'npm',
   finalizing: 'core',
 }
 
-function stageOwner(stage: StageId, frontendId: string, isForma = false): string {
+function stageOwner(stage: StageId, frontendId: string, managerId: string, isForma = false): string {
   if (stage === 'scaffolding' && isForma) return 'template.forma'
+  if (stage === 'installing') return managerId
   return fixedStageOwners[stage] ?? frontendId
 }
 
@@ -106,7 +107,7 @@ function preflightError(report: DoctorReport): GeneratorError {
   const node = report.tools.find((tool) => tool.id === 'node')
   const npm = report.tools.find((tool) => tool.id === 'npm')
   if (!node?.available) {
-    return userError('GEN_TOOL_UNSUPPORTED', 'preflight', 'Active Node.js version does not satisfy this recipe.', 'Install a supported Node.js version, restart the CLI, and rerun doctor.')
+    return userError('GEN_TOOL_UNSUPPORTED', 'preflight', 'Active Node.js version does not satisfy this recipe and selected package manager.', 'Install a supported Node.js version, restart the CLI, and rerun doctor.')
   }
   if (!npm?.available) {
     return userError('GEN_TOOL_MISSING', 'preflight', 'Trusted npm CLI is missing or unsupported beside active Node.js.', 'Install Node.js with npm 10 or newer and rerun doctor.')
@@ -127,7 +128,7 @@ function mappedProcessError(stage: StageId, result: ProcessResult): GeneratorErr
     staging: { code: 'GEN_STAGE_CREATE_FAILED', message: 'Could not prepare owned staging.', nextAction: 'Check destination permissions and retry.' },
     scaffolding: { code: 'GEN_SCAFFOLD_FAILED', message: `Pinned official scaffold exited with code ${result.exitCode}.`, nextAction: 'Review the local redacted job log and retry.' },
     configuring: { code: 'GEN_CONFIGURE_FAILED', message: 'Could not write declared project documentation.', nextAction: 'Review the local redacted job log and retry.' },
-    installing: { code: 'GEN_INSTALL_FAILED', message: `npm install exited with code ${result.exitCode}.`, nextAction: 'Check npm registry/network access and review the local redacted job log.' },
+    installing: { code: 'GEN_INSTALL_FAILED', message: `Selected package-manager install exited with code ${result.exitCode}.`, nextAction: 'Check npm registry/network access and review the local redacted job log.' },
     validating: { code: 'GEN_VALIDATE_FAILED', message: `Required project check exited with code ${result.exitCode}.`, nextAction: 'Review the local redacted job log and fix the reported check before retrying.' },
     finalizing: { code: 'GEN_FINALIZE_FAILED', message: 'Could not finalize the validated project.', nextAction: 'Review the local redacted job log and retry at a new destination.' },
   }
@@ -179,6 +180,7 @@ function processOptions(
   dirs: { home: string; temp: string },
   args: readonly string[],
   signal?: AbortSignal,
+  environment?: Readonly<Record<string, string>>,
 ): SafeProcessOptions {
   return {
     scriptPath: npmCliPath,
@@ -188,7 +190,8 @@ function processOptions(
     args,
     homeDirectory: dirs.home,
     tempDirectory: dirs.temp,
-  ...(signal ? { signal } : {}),
+    ...(signal ? { signal } : {}),
+    ...(environment ? { environment } : {}),
     timeoutMs: 10 * 60 * 1000,
   }
 }
@@ -217,24 +220,27 @@ async function runNpm(
   return result
 }
 
-async function checkToolPin(tools: string, recipe: RecipeManifestV1): Promise<string> {
+async function checkPackagePin(tools: string, pin: { packageName: string; version: string; integrity: string; binPath: string }, label: string): Promise<string> {
   const lockPath = win32.join(tools, 'package-lock.json')
   try {
     const lock = JSON.parse(await readFile(lockPath, 'utf8')) as { packages?: Record<string, { version?: string; integrity?: string }> }
-    const installed = lock.packages?.[`node_modules/${recipe.scaffold.packageName}`]
-    if (!installed || installed.version !== recipe.scaffold.version || installed.integrity !== recipe.scaffold.integrity) throw new Error('Pinned scaffold lock entry does not match expected metadata.')
-    const binPath = win32.join(tools, 'node_modules', recipe.scaffold.packageName, recipe.scaffold.binPath)
+    const installed = lock.packages?.[`node_modules/${pin.packageName}`]
+    if (!installed || installed.version !== pin.version || installed.integrity !== pin.integrity) throw new Error('Pinned package lock entry does not match expected metadata.')
+    const packagePath = win32.join(tools, 'node_modules', pin.packageName)
+    const packageJson = JSON.parse(await readFile(win32.join(packagePath, 'package.json'), 'utf8')) as { name?: string; version?: string }
+    if (packageJson.name !== pin.packageName || packageJson.version !== pin.version) throw new Error('Installed package metadata does not match the pin.')
+    const binPath = win32.join(packagePath, pin.binPath)
     await access(binPath)
     return binPath
   } catch {
-    throw userError('GEN_SCAFFOLD_INTEGRITY', 'scaffolding', 'Pinned scaffold version or package integrity did not match the reviewed catalog.', 'Check npm registry integrity and retry; no target project was committed.')
+    throw userError(label === 'package-manager' ? 'GEN_PACKAGE_MANAGER_INTEGRITY' : 'GEN_SCAFFOLD_INTEGRITY', 'scaffolding', `Pinned ${label} version or npm integrity did not match the reviewed catalog.`, 'Check npm registry integrity and retry; no target project was committed.')
   }
 }
 
-async function writeToolPackage(stage: OwnedStage, name: string, version: string): Promise<void> {
+async function writeToolPackage(stage: OwnedStage, dependencies: Record<string, string>): Promise<void> {
   await mutateOwnedStage(stage, [], [{
     path: '.tools/package.json',
-    content: JSON.stringify({ name: 'project-generator-staging-tools', private: true, version: '0.0.0', dependencies: { [name]: version } }, null, 2),
+    content: JSON.stringify({ name: 'project-generator-staging-tools', private: true, version: '0.0.0', dependencies }, null, 2),
   }])
 }
 
@@ -256,7 +262,8 @@ function replaceScaffoldText(source: string, expected: string, replacement: stri
 
 async function configureRecipeDependencies(stage: OwnedStage, resolved: ResolvedSelection): Promise<string[]> {
   const pins = resolved.recipe.dependencies ?? []
-  if (pins.length === 0) return []
+  if (pins.length === 0 && resolved.recipe.manager === 'npm') return []
+  const manager = packageManager(resolved.recipe.manager)
   const bootstrap = resolved.recipe.styling === 'styling.bootstrap'
   const frameworkPins = resolved.recipe.frontend === 'frontend.nuxt' || resolved.recipe.frontend === 'frontend.angular'
   const viteScss = resolved.recipe.styling === 'styling.scss'
@@ -267,7 +274,7 @@ async function configureRecipeDependencies(stage: OwnedStage, resolved: Resolved
     : resolved.recipe.frontend === 'frontend.nuxt' ? ['nuxt', 'typescript', 'vue-tsc']
       : resolved.recipe.frontend === 'frontend.angular' ? ['@angular/core', '@angular/cli']
         : viteScss ? ['sass'] : viteTailwind ? ['tailwindcss', '@tailwindcss/vite'] : []
-  if ((!bootstrap && !frameworkPins && !viteScss && !viteTailwind) || pins.length !== expectedPins.length || pins.some((pin) => !expectedPins.includes(pin.packageName))) {
+  if (pins.length > 0 && ((!bootstrap && !frameworkPins && !viteScss && !viteTailwind) || pins.length !== expectedPins.length || pins.some((pin) => !expectedPins.includes(pin.packageName)))) {
     throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Recipe dependency pin does not match its reviewed framework or styling adapter.', 'Use an exact catalog recipe and retry.')
   }
 
@@ -282,6 +289,7 @@ async function configureRecipeDependencies(stage: OwnedStage, resolved: Resolved
     || typeof packageJson.dependencies !== 'object' || packageJson.dependencies === null || Array.isArray(packageJson.dependencies)) {
     throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Pinned dependency integration found an unexpected scaffold package manifest.', 'Review the local redacted job log and retry with the pinned official scaffold.')
   }
+  if (resolved.recipe.manager !== 'npm') packageJson.packageManager = `${manager.id}@${manager.version}`
   const dependencies = packageJson.dependencies as Record<string, unknown>
   let developmentDependencies = typeof packageJson.devDependencies === 'object' && packageJson.devDependencies !== null && !Array.isArray(packageJson.devDependencies)
     ? packageJson.devDependencies as Record<string, unknown>
@@ -412,6 +420,26 @@ async function verifyDependencyPins(projectPath: string, pins: NonNullable<Recip
   }
 }
 
+async function verifyProjectLockfile(projectPath: string, manager: PackageManagerManifestV1): Promise<string> {
+  try {
+    const entries = await readdir(projectPath)
+    const present = entries.filter((entry) => ['package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lock', 'bun.lockb'].includes(entry))
+    if (present.length !== 1 || present[0] !== manager.lockfile) throw new Error('Project must contain only the selected package-manager lockfile.')
+    const lock = await readFile(win32.join(projectPath, manager.lockfile), 'utf8')
+    if (manager.id === 'yarn' && (!lock.includes('__metadata:') || !/^\s+checksum:\s+\S+/m.test(lock))) throw new Error('Yarn lockfile lacks modern metadata or package checksums.')
+    if (manager.id === 'pnpm' && (!/^lockfileVersion:/m.test(lock) || !/integrity:\s*['"]?sha512-/m.test(lock))) throw new Error('pnpm lockfile lacks version metadata or package integrity entries.')
+    if (manager.id === 'npm') {
+      const parsed = JSON.parse(lock) as { lockfileVersion?: number; packages?: Record<string, unknown> }
+      if (!parsed.lockfileVersion || !parsed.packages) throw new Error('npm lockfile metadata is missing.')
+    }
+    const hash = createHash('sha256').update(lock).digest('hex')
+    if (!/^[a-f0-9]{64}$/.test(hash)) throw new Error('Lockfile hash could not be computed.')
+    return hash
+  } catch {
+    throw userError('GEN_LOCKFILE_INTEGRITY', 'installing', `Expected exactly one valid ${manager.id} lockfile (${manager.lockfile}).`, 'Check the selected package manager output and retry; no target project was committed.')
+  }
+}
+
 function npmRootFromCli(cliPath: string): string {
   return dirname(dirname(cliPath))
 }
@@ -438,6 +466,44 @@ async function runAppScript(
     timeoutMs: 10 * 60 * 1000,
   })
   log.process(label, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
+  return result
+}
+
+async function runPinnedPackageManager(
+  manager: PackageManagerManifestV1,
+  managerCliPath: string,
+  cwd: string,
+  stage: OwnedStage,
+  dirs: { tools: string; home: string; temp: string },
+  log: JobLog,
+  signal?: AbortSignal,
+): Promise<ProcessResult> {
+  const environment = manager.id === 'yarn' ? {
+    YARN_ENABLE_SCRIPTS: 'true',
+    YARN_ENABLE_IMMUTABLE_INSTALLS: 'false',
+    YARN_NODE_LINKER: manager.nodeLinker ?? 'node-modules',
+    YARN_NPM_REGISTRY_SERVER: 'https://registry.npmjs.org',
+    YARN_ENABLE_TELEMETRY: '0',
+  } : {
+    pnpm_config_dangerously_allow_all_builds: 'true',
+    pnpm_config_registry: 'https://registry.npmjs.org/',
+  }
+  const args = manager.id === 'yarn'
+    ? ['install']
+    : ['install', ...(manager.nodeLinker ? [`--node-linker=${manager.nodeLinker}`] : []), '--registry', 'https://registry.npmjs.org/']
+  const result = await runNodeProcess({
+    scriptPath: managerCliPath,
+    allowedScriptRoot: dirs.tools,
+    cwd,
+    allowedCwdRoot: stage.path,
+    args,
+    homeDirectory: dirs.home,
+    tempDirectory: dirs.temp,
+    environment,
+    ...(signal ? { signal } : {}),
+    timeoutMs: 10 * 60 * 1000,
+  })
+  log.process(`${manager.id}-project-dependency-install`, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
   return result
 }
 
@@ -558,15 +624,23 @@ async function executeScaffold(
   dirs: { tools: string; home: string; temp: string; cache: string; userConfig: string; globalConfig: string },
   log: JobLog,
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<{ managerCliPath?: string }> {
   const npmRoot = npmRootFromCli(npmCliPath)
-  await writeToolPackage(stage, resolved.recipe.scaffold.packageName, resolved.recipe.scaffold.version)
+  const manager = packageManager(resolved.recipe.manager)
+  const toolDependencies = {
+    [resolved.recipe.scaffold.packageName]: resolved.recipe.scaffold.version,
+    ...(manager.packageName ? { [manager.packageName]: manager.version } : {}),
+  }
+  await writeToolPackage(stage, toolDependencies)
   const scaffoldInstall = await runNpm([
     'install', '--prefix', dirs.tools, '--package-lock=true', '--ignore-scripts',
-    `${resolved.recipe.scaffold.packageName}@${resolved.recipe.scaffold.version}`,
+    ...Object.entries(toolDependencies).map(([name, version]) => `${name}@${version}`),
   ], stage.path, stage, npmCliPath, npmRoot, dirs, log, 'scaffold-package-install', signal)
   if (scaffoldInstall.exitCode !== 0) throw mappedProcessError('scaffolding', scaffoldInstall)
-  const scaffoldBin = await checkToolPin(dirs.tools, resolved.recipe)
+  const scaffoldBin = await checkPackagePin(dirs.tools, resolved.recipe.scaffold, 'scaffold')
+  const managerCliPath = manager.packageName && manager.integrity && manager.binPath
+    ? await checkPackagePin(dirs.tools, { packageName: manager.packageName, version: manager.version, integrity: manager.integrity, binPath: manager.binPath }, 'package-manager')
+    : undefined
   const scaffold = await runNodeProcess({
     scriptPath: scaffoldBin,
     allowedScriptRoot: dirs.tools,
@@ -582,6 +656,7 @@ async function executeScaffold(
   })
   log.process('pinned-official-scaffold', scaffold, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
   if (scaffold.exitCode !== 0) throw mappedProcessError('scaffolding', scaffold)
+  return managerCliPath ? { managerCliPath } : {}
 }
 
 async function generateInJob(selection: ProjectSelectionV1, options: GenerateOptions, emit: ReturnType<typeof createEventEmitter>, log: JobLog, jobId: string): Promise<GenerateResult> {
@@ -591,13 +666,13 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
   const validations: ValidationOutcome[] = []
   const resolved = resolveSelection(selection)
   const isForma = Boolean(selection.template)
-  const eventOwner = (id: StageId): string => stageOwner(id, resolved.recipe.frontend, isForma)
+  const eventOwner = (id: StageId): string => stageOwner(id, resolved.recipe.frontend, resolved.recipe.manager, isForma)
   const stageStart = (id: StageId): void => { currentStage = id; emit({ type: 'stage-started', stageId: id, stageOwner: eventOwner(id), stageStatus: 'running', message: `${id} started.` }) }
   const stageFinish = (id: StageId, status: 'passed' | 'failed' | 'skipped', message = `${id} completed.`): void => { emit({ type: 'stage-finished', stageId: id, stageOwner: eventOwner(id), stageStatus: status, message }) }
   let formaEvidence: FormaInstallEvidence | undefined
 
   emit({ type: 'job-started', stageOwner: 'core', status: 'running', message: `Generation job ${jobId} started.` })
-  emit({ type: 'warning', stageOwner: 'core', code: 'GEN_LIFECYCLE_SCRIPTS', message: 'npm install can execute third-party lifecycle scripts; execution is not sandboxed.' })
+  emit({ type: 'warning', stageOwner: 'core', code: 'GEN_LIFECYCLE_SCRIPTS', message: `${resolved.recipe.manager} install can execute third-party lifecycle scripts; execution is not sandboxed.` })
   try {
     stageStart('preflight')
     throwIfCancelled(options.signal, currentStage)
@@ -622,10 +697,16 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
 
     stageStart('scaffolding')
     throwIfCancelled(options.signal, currentStage)
+    let managerCliPath: string | undefined
     if (selection.template) {
       formaEvidence = await installFormaTemplate(stage, selection.template, resolved.recipe.frontend, selection.project.name, dirs, log, options.signal)
     } else {
-      await executeScaffold(stage, resolved, npmTool.cliPath, dirs, log, options.signal)
+      ({ managerCliPath } = await executeScaffold(stage, resolved, npmTool.cliPath, dirs, log, options.signal))
+      if (resolved.recipe.manager !== 'npm') {
+        const integrity: ValidationOutcome = { id: 'package-manager-integrity', status: 'pass', message: `Pinned ${resolved.recipe.manager} ${packageManager(resolved.recipe.manager).version} package version and npm integrity verified.`, exitCode: 0 }
+        validations.push(integrity)
+        emitValidation(emit, integrity, resolved.recipe.manager)
+      }
     }
     const projectPath = stage.childPath
     await bindOwnedStageProjectIdentity(stage, selection.project.name)
@@ -645,6 +726,12 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
     const generatedFiles = await configureRecipeDependencies(stage, resolved)
+    const managerConfig = packageManagerConfiguration(resolved.recipe.manager)
+    if (managerConfig) {
+      const projectPrefix = `${win32.basename(projectPath)}/`
+      const written = await mutateOwnedStage(stage, [], [{ ...managerConfig, path: `${projectPrefix}${managerConfig.path}` }])
+      generatedFiles.push(...written.map((path) => path.slice(projectPrefix.length)))
+    }
     generatedFiles.push(...await writeProjectDocs(stage, resolved, process.version.replace(/^v/, ''), npmTool, formaEvidence))
     if (formaEvidence) generatedFiles.push('FORMA-INSTALL.md', 'INSTALL.md', 'forma.install.json', 'forma-install-report.json')
     stageFinish('configuring', 'passed')
@@ -653,8 +740,12 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     throwIfCancelled(options.signal, currentStage)
     // ponytail: clean Angular 21 scaffold crashes npm 10.9.8 Arborist; remove when ordinary install passes on pinned toolchain.
     const legacyPeerHandling = resolved.recipe.styling === 'styling.bootstrap' || resolved.recipe.frontend === 'frontend.angular'
-    const npmArgs = ['install', ...(legacyPeerHandling ? ['--legacy-peer-deps'] : []), '--package-lock=true']
-    const install = await runNpm(npmArgs, projectPath, stage, npmTool.cliPath, npmRootFromCli(npmTool.cliPath), dirs, log, 'project-dependency-install', options.signal)
+    const manager = packageManager(resolved.recipe.manager)
+    const install = manager.id === 'npm'
+      ? await runNpm(['install', ...(legacyPeerHandling ? ['--legacy-peer-deps'] : []), '--package-lock=true'], projectPath, stage, npmTool.cliPath, npmRootFromCli(npmTool.cliPath), dirs, log, 'project-dependency-install', options.signal)
+      : managerCliPath
+        ? await runPinnedPackageManager(manager, managerCliPath, projectPath, stage, dirs, log, options.signal)
+        : (() => { throw userError('GEN_PACKAGE_MANAGER_INTEGRITY', 'installing', `Pinned ${manager.id} executable was not staged.`, 'Retry with the verified catalog package-manager pin.') })()
     validations.push(checkOutcome('dependency-install', install))
     if (install.exitCode !== 0) throw mappedProcessError('installing', install)
     await verifyDependencyPins(projectPath, resolved.recipe.dependencies ?? [])
@@ -663,7 +754,16 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       validations.push(integrity)
       emitValidation(emit, integrity, resolved.recipe.frontend)
     }
-    emit({ type: 'validation', stageId: 'installing', stageOwner: 'npm', stageStatus: 'passed', message: 'npm dependency install passed; package lifecycle scripts were allowed.' })
+    const lockHash = await verifyProjectLockfile(projectPath, manager)
+    const lockIntegrity: ValidationOutcome = {
+      id: 'lockfile-integrity',
+      status: 'pass',
+      message: `Exactly one ${manager.lockfile} is present with ${manager.id} integrity metadata (SHA-256 ${lockHash}).`,
+      exitCode: 0,
+    }
+    validations.push(lockIntegrity)
+    emitValidation(emit, lockIntegrity, resolved.recipe.manager)
+    emit({ type: 'validation', stageId: 'installing', stageOwner: resolved.recipe.manager, stageStatus: 'passed', message: `${resolved.recipe.manager} dependency install passed after lifecycle-script consent.` })
     stageFinish('installing', 'passed')
 
     stageStart('validating')

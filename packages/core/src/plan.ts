@@ -1,10 +1,12 @@
 import { resolveSelection } from './resolver.js'
+import { packageManager } from './catalog.js'
 import { expectedDocumentationFiles } from './project-docs.js'
 import type { GenerationPlan, ProjectSelectionV1 } from './types.js'
 
 export function createPlan(selection: ProjectSelectionV1): GenerationPlan {
   const resolved = resolveSelection(selection)
   const recipe = resolved.recipe
+  const manager = packageManager(recipe.manager)
   const isForma = Boolean(resolved.selection.template)
   const bootstrap = recipe.styling === 'styling.bootstrap'
   const viteScss = recipe.styling === 'styling.scss'
@@ -31,7 +33,7 @@ export function createPlan(selection: ProjectSelectionV1): GenerationPlan {
     recipeStatus: recipe.status,
     targetPath: resolved.outputPath,
     steps: [
-      { id: 'preflight', ownerAdapterId: 'core', phase: 'preflight', action: 'inspect', readableSummary: 'Check Node/npm versions and destination safety.', sideEffects: [] },
+      { id: 'preflight', ownerAdapterId: 'core', phase: 'preflight', action: 'inspect', readableSummary: `Check Node.js, npm bootstrap, pinned ${recipe.manager}${recipe.manager === 'npm' ? '' : ` ${manager.version}`}, and destination safety.`, sideEffects: [] },
       { id: 'staging', ownerAdapterId: 'core', phase: 'stage', action: 'create-owned-stage', readableSummary: 'Create generator-owned staging beside the destination.', sideEffects: ['Create temporary directory in destination parent.'] },
       { id: 'scaffold', ownerAdapterId: isForma ? 'template.forma' : recipe.frontend, phase: 'scaffold', action: 'run-pinned-cli', readableSummary: scaffoldSummary, sideEffects: isForma
         ? ['Authenticated read-only fetch from the pinned private Forma repository when cache misses.', 'Export and verify the SHA-256 package manifest.', 'Install reviewed template files into owned staging.']
@@ -41,7 +43,7 @@ export function createPlan(selection: ProjectSelectionV1): GenerationPlan {
           'Run reviewed scaffold code.',
         ], consentKind: 'network' },
       { id: 'configure', ownerAdapterId: 'documentation', phase: 'configure', action: 'write-declared-files', readableSummary: `Configure ${bootstrap ? `pinned Bootstrap ${pinnedDependencies?.replace(/^bootstrap@/, '')} CSS only` : viteScss ? `Dart Sass ${pinnedDependencies?.replace(/^sass@/, '')} with an imported SCSS starter` : viteTailwind ? `Tailwind CSS 4.3.5 with its official Vite plugin, automatic source detection, and utility-class starter` : 'selected framework styling'}${pinnedDependencies && !bootstrap && !viteScss && !viteTailwind ? ` and pinned dependencies ${pinnedDependencies}` : ''} and write truthful ${resolved.selection.documentation} documentation.`, sideEffects: ['Write declared files under staged project.'] },
-      { id: 'install', ownerAdapterId: 'npm', phase: 'install', action: 'install-dependencies', readableSummary: `Install project dependencies with npm${bootstrap ? ' using legacy peer handling to omit unused Bootstrap Popper' : isAngular ? ' using legacy peer handling for the Angular 21 dependency tree' : ''} and write package-lock.json.`, sideEffects: ['Download project dependencies.', 'Run npm package lifecycle scripts.'], consentKind: 'network' },
+      { id: 'install', ownerAdapterId: recipe.manager, phase: 'install', action: 'install-dependencies', readableSummary: `Install project dependencies with ${recipe.manager}${recipe.manager === 'npm' ? '' : ` ${manager.version}`}${manager.nodeLinker ? ` using the ${manager.nodeLinker} node_modules linker` : ''}${bootstrap ? ' using legacy peer handling to omit unused Bootstrap Popper' : isAngular ? ' using legacy peer handling for the Angular 21 dependency tree' : ''} and write ${manager.lockfile}.`, sideEffects: ['Download project dependencies.', ...(manager.configFile ? [`Write ${manager.configFile} to keep the selected ${manager.nodeLinker} linker for future installs.`] : []), `Run ${recipe.manager} package lifecycle scripts only after explicit consent.`], consentKind: 'network' },
       { id: 'validate', ownerAdapterId: recipe.frontend, phase: 'validate', action: 'run-check', readableSummary: validationSummary, sideEffects: ['Execute generated framework tools in staging.', 'Write reproducibility manifest with observed check outcomes.'] },
       { id: 'finalize', ownerAdapterId: 'core', phase: 'finalize', action: 'commit-no-replace', readableSummary: 'Move validated project to destination only if destination remains absent.', sideEffects: ['Create final destination with Windows fail-if-exists rename.'] },
     ],
@@ -50,7 +52,7 @@ export function createPlan(selection: ProjectSelectionV1): GenerationPlan {
       ...(viteScss ? ['package.json', recipe.frontend === 'frontend.react-vite' ? 'src/main.tsx' : 'src/main.ts', recipe.frontend === 'frontend.react-vite' ? 'src/App.tsx' : 'src/App.vue', 'src/project-generator.scss'] : []),
       ...(viteTailwind ? ['package.json', 'vite.config.ts', recipe.frontend === 'frontend.react-vite' ? 'src/main.tsx' : 'src/main.ts', recipe.frontend === 'frontend.react-vite' ? 'src/App.tsx' : 'src/App.vue', 'src/project-generator-tailwind.css'] : []),
       ...(isForma ? ['FORMA-INSTALL.md', 'forma.install.json', 'forma-install-report.json', 'INSTALL.md'] : []),
-      ...expectedDocumentationFiles(resolved.selection.documentation), 'package-lock.json', '.project-generator/manifest.json'],
+       ...expectedDocumentationFiles(resolved.selection.documentation), ...(manager.configFile ? [manager.configFile] : []), manager.lockfile, '.project-generator/manifest.json'],
     networkAccess: [
       ...(isForma ? ['https://github.com (authenticated private Forma source; pinned commit)'] : []),
       ...(recipe.scaffold.source ? ['https://api.github.com', 'https://codeload.github.com'] : []),
@@ -60,7 +62,7 @@ export function createPlan(selection: ProjectSelectionV1): GenerationPlan {
     executionAvailable: recipe.status === 'tested',
     warnings: [
       'Recipe remains planned until independent Windows evidence and review promote its status.',
-      'npm package lifecycle scripts may execute third-party code; generation is not sandboxed.',
+      `${recipe.manager} package lifecycle scripts may execute third-party code after consent; generation is not sandboxed.`,
       'Generation installs dependencies from npm and needs network access unless package caches are available.',
       ...(isForma ? ['Forma source is read through the configured Git credential helper; no token is stored or copied to the project.', 'Forma templates own their styling; source integrity is verified but does not constitute a publisher signature.'] : []),
     ],

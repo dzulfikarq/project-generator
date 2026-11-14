@@ -15,6 +15,7 @@ export interface SafeProcessOptions {
   timeoutMs?: number
   signal?: AbortSignal
   extraPath?: readonly string[]
+  environment?: Readonly<Record<string, string>>
 }
 
 export interface ProcessResult {
@@ -58,7 +59,7 @@ async function checkedDirectory(directory: string, root: string): Promise<string
   return realDirectory
 }
 
-function processEnvironment(home: string, temp: string, cwd: string, extraPath: readonly string[] = []): NodeJS.ProcessEnv {
+function processEnvironment(home: string, temp: string, cwd: string, extraPath: readonly string[] = [], overrides: Readonly<Record<string, string>> = {}): NodeJS.ProcessEnv {
   const systemRoot = process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows'
   const system32 = win32.join(systemRoot, 'System32')
   const nodeDirectory = dirname(process.execPath)
@@ -81,14 +82,28 @@ function processEnvironment(home: string, temp: string, cwd: string, extraPath: 
     CI: '1',
     NO_COLOR: '1',
     NEXT_TELEMETRY_DISABLED: '1',
+    ...overrides,
   }
 }
+
+const allowedEnvironmentOverrides = new Set([
+  'YARN_ENABLE_SCRIPTS',
+  'YARN_ENABLE_IMMUTABLE_INSTALLS',
+  'YARN_NODE_LINKER',
+  'YARN_NPM_REGISTRY_SERVER',
+  'YARN_ENABLE_TELEMETRY',
+  'pnpm_config_dangerously_allow_all_builds',
+  'pnpm_config_registry',
+])
 
 export async function startNodeProcess(options: SafeProcessOptions): Promise<RunningProcess> {
   if (process.platform !== 'win32') throw new GeneratorError({ code: 'GEN_NATIVE_SUPERVISOR_UNAVAILABLE', stage: 'process', message: 'Windows native supervisor is required for generation.', nextAction: 'Build and run Project Generator on supported Windows.', targetModified: false })
   if (options.signal?.aborted) throw new GeneratorError({ code: 'GEN_CANCELLED', stage: 'process', message: 'Generation was cancelled.', nextAction: 'Retry from the beginning.', targetModified: false })
   if (options.args.some((arg) => typeof arg !== 'string' || arg.includes('\0')) || options.args.join('').length > 28_000) {
     throw new GeneratorError({ code: 'GEN_RUNNER_BLOCKED', stage: 'process', message: 'Refused invalid process arguments.', nextAction: 'Use a valid generator config and retry.', targetModified: false })
+  }
+  if (Object.entries(options.environment ?? {}).some(([key, value]) => !allowedEnvironmentOverrides.has(key) || value.includes('\0'))) {
+    throw new GeneratorError({ code: 'GEN_RUNNER_BLOCKED', stage: 'process', message: 'Refused unreviewed process environment overrides.', nextAction: 'Use the pinned package-manager adapter and retry.', targetModified: false })
   }
   const [scriptPath, cwd, extraPath] = await Promise.all([
     checkedFile(options.scriptPath, options.allowedScriptRoot),
@@ -107,7 +122,7 @@ export async function startNodeProcess(options: SafeProcessOptions): Promise<Run
       executable: process.execPath,
       args: [scriptPath, ...options.args],
       cwd,
-      env: Object.fromEntries(Object.entries(processEnvironment(options.homeDirectory, options.tempDirectory, cwd, extraPath)).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
+      env: Object.fromEntries(Object.entries(processEnvironment(options.homeDirectory, options.tempDirectory, cwd, extraPath, options.environment)).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
       ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
     })
   })

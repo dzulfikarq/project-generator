@@ -53,6 +53,7 @@ export type Template = {
 export type Catalog = {
   schemaVersion: number
   adapters: Adapter[]
+  packageManagers: { id: string; version: string; lockfile: string; nodeLinker?: string }[]
   recipes: Recipe[]
   forma: {
     commitSha: string
@@ -100,6 +101,7 @@ export function retainCompatibleStyling(catalog: Catalog | null, frontendId: str
 }
 
 export function findFrameworkRecipe(catalog: Catalog | null, frontendId: string, managerId: string): Recipe | undefined {
+  if (managerId !== 'npm') return undefined
   const forma = catalog?.adapters.find((adapter) => adapter.id === 'template.forma')
   if (!forma?.compatibleWith.includes(frontendId)) return undefined
   return catalog?.recipes.find((recipe) => recipe.id.startsWith('FE-')

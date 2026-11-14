@@ -38,12 +38,16 @@ test('production generation blocks planned recipes before destination writes', a
 test('production generation blocks planned frontend recipes before destination writes', async () => {
   const parent = await mkdtemp(win32.join(tmpdir(), 'pg-phase04b-planned-'))
   const cases = [
-    { name: 'planned-nuxt', frontend: 'frontend.nuxt', style: 'styling.css' },
-    { name: 'planned-angular', frontend: 'frontend.angular', style: 'styling.scss' },
-    { name: 'planned-react-scss', frontend: 'frontend.react-vite', style: 'styling.scss' },
-    { name: 'planned-vue-scss', frontend: 'frontend.vue-vite', style: 'styling.scss' },
-    { name: 'planned-react-tailwind', frontend: 'frontend.react-vite', style: 'styling.tailwind' },
-    { name: 'planned-vue-tailwind', frontend: 'frontend.vue-vite', style: 'styling.tailwind' },
+    { name: 'planned-nuxt', frontend: 'frontend.nuxt', style: 'styling.css', manager: 'npm' },
+    { name: 'planned-angular', frontend: 'frontend.angular', style: 'styling.scss', manager: 'npm' },
+    { name: 'planned-react-scss', frontend: 'frontend.react-vite', style: 'styling.scss', manager: 'npm' },
+    { name: 'planned-vue-scss', frontend: 'frontend.vue-vite', style: 'styling.scss', manager: 'npm' },
+    { name: 'planned-react-tailwind', frontend: 'frontend.react-vite', style: 'styling.tailwind', manager: 'npm' },
+    { name: 'planned-vue-tailwind', frontend: 'frontend.vue-vite', style: 'styling.tailwind', manager: 'npm' },
+    { name: 'planned-react-yarn', frontend: 'frontend.react-vite', style: 'styling.css', manager: 'yarn' },
+    { name: 'planned-vue-yarn', frontend: 'frontend.vue-vite', style: 'styling.css', manager: 'yarn' },
+    { name: 'planned-react-pnpm', frontend: 'frontend.react-vite', style: 'styling.css', manager: 'pnpm' },
+    { name: 'planned-vue-pnpm', frontend: 'frontend.vue-vite', style: 'styling.css', manager: 'pnpm' },
   ] as const
   const logs: string[] = []
   try {
@@ -51,7 +55,7 @@ test('production generation blocks planned frontend recipes before destination w
       const selection = parseSelection({
         schemaVersion: 1,
         project: { name: item.name, type: 'frontend', parentDirectory: parent },
-        frontend: { adapterId: item.frontend, language: 'ts', manager: 'npm' },
+        frontend: { adapterId: item.frontend, language: 'ts', manager: item.manager },
         styling: { adapterId: item.style },
         documentation: 'minimal',
         git: { initialize: false, initialCommit: false },

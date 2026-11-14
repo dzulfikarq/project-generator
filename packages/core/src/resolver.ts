@@ -11,8 +11,9 @@ export function resolveSelection(selection: ProjectSelectionV1): ResolvedSelecti
   if (project.type !== 'frontend' || !selection.frontend) {
     throw incompatibleError('Phase 01 supports frontend projects only; backend, database, and mobile choices are unavailable.')
   }
-  if (selection.frontend.language !== 'ts' || selection.frontend.manager !== 'npm') {
-    throw incompatibleError('Phase 01 recipes require TypeScript and npm.')
+  const manager = selection.frontend.manager ?? 'npm'
+  if (selection.frontend.language !== 'ts' || !['npm', 'yarn', 'pnpm'].includes(manager)) {
+    throw incompatibleError('Recipes require TypeScript and a supported package manager.')
   }
   if ((selection.styling?.adapterId === 'styling.bootstrap' && selection.styling.uiLibraryId === 'styling.tailwind')
     || (selection.styling?.adapterId === 'styling.tailwind' && selection.styling.uiLibraryId === 'styling.bootstrap')) {
@@ -30,6 +31,7 @@ export function resolveSelection(selection: ProjectSelectionV1): ResolvedSelecti
 
   let recipe = frameworkRecipe
   if (selection.template) {
+    if (manager !== 'npm') throw incompatibleError('Forma integrations remain npm-only; select npm or omit the template.')
     const template = formaTemplate(selection.template.templateId)
     if (!template) throw incompatibleError('Forma template is not in the pinned, reviewed catalog.')
     if (!isFormaCommit(selection.template.commitSha) || template.commitSha !== FORMA_COMMIT_SHA) {
@@ -54,7 +56,8 @@ export function resolveSelection(selection: ProjectSelectionV1): ResolvedSelecti
     }
   } else {
     if (!selection.styling) throw incompatibleError('Select a compatible styling adapter.')
-    const selectedRecipe = RECIPES.find((candidate) => candidate.frontend === frameworkRecipe.frontend && candidate.styling === selection.styling?.adapterId)
+    const selectedRecipe = RECIPES.find((candidate) => candidate.frontend === frameworkRecipe.frontend
+      && candidate.styling === selection.styling?.adapterId && candidate.manager === manager)
      if (!selectedRecipe) throw incompatibleError('Selection does not match a cataloged framework and styling recipe.')
     recipe = selectedRecipe
   }

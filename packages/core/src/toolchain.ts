@@ -53,6 +53,11 @@ export function supportsNpm(version: string): boolean {
   return atLeast(version, [10, 0, 0])
 }
 
+export function supportsNodeForPnpm(version: string): boolean {
+  const major = versionParts(version)?.[0]
+  return (major === 22 && atLeast(version, [22, 13, 0])) || (major ?? 0) > 22
+}
+
 async function npmAt(path: string, nodeRoot: string): Promise<NpmTool | undefined> {
   try {
     const [entry, realRoot, realScript] = await Promise.all([

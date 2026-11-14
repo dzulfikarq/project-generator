@@ -37,7 +37,7 @@ V1 does not execute unreviewed third-party adapters. New adapters are repository
 
 ## 3. Proposed TypeScript-facing contract (illustrative; not identical to Phase 01 code)
 
-Phase 01 implements FE-01/FE-02 selection; Phase 02 adds planned Forma FM-01/FM-02; Phase 04A adds planned FE-03/FE-04/FE-05; scoped Phase 04B adds planned FE-06/FE-07; Phase 04B.2 adds planned FE-08–FE-11 for React/Vue Vite SCSS and Tailwind CSS 4. Broader interfaces below remain a target contract for future adapters and components. No integration is release-approved.
+Phase 01 implements FE-01/FE-02 selection; Phase 02 adds planned Forma FM-01/FM-02; Phase 04A adds planned FE-03/FE-04/FE-05; scoped Phase 04B adds planned FE-06/FE-07; Phase 04B.2 adds planned FE-08–FE-11 for React/Vue Vite SCSS and Tailwind CSS 4; Phase 04B.3 adds planned FE-12–FE-15 for React/Vue Vite Plain CSS with pinned Yarn/pnpm. Broader interfaces below remain a target contract for future adapters and components. No integration is release-approved.
 
 ```ts
 type SupportState =
@@ -308,7 +308,7 @@ Mandatory for a `TEST` recipe:
 
 See `docs/qa/acceptance-matrix.md` for traceability.
 
-The shared pipeline implements FE-01–FE-11. All still have `planned` status: the development-only CLI override permits local evidence gathering but does not enable normal generation or promote support status. See per-recipe reports linked from the QA matrix.
+The shared pipeline implements FE-01–FE-15. All still have `planned` status: the development-only CLI override permits local evidence gathering but does not enable normal generation or promote support status. Yarn and pnpm linker settings are recipe-pinned and written into generated projects; package-manager choice never silently changes. See per-recipe reports linked from the QA matrix.
 
 ## 13. Prohibited shortcuts
 

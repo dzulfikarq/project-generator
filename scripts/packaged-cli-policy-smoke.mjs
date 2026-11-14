@@ -35,15 +35,19 @@ const configs = [
   ['FE-09', 'frontend.vue-vite', 'styling.scss'],
   ['FE-10', 'frontend.react-vite', 'styling.tailwind'],
   ['FE-11', 'frontend.vue-vite', 'styling.tailwind'],
+  ['FE-12', 'frontend.react-vite', 'styling.css', undefined, 'yarn'],
+  ['FE-13', 'frontend.vue-vite', 'styling.css', undefined, 'yarn'],
+  ['FE-14', 'frontend.react-vite', 'styling.css', undefined, 'pnpm'],
+  ['FE-15', 'frontend.vue-vite', 'styling.css', undefined, 'pnpm'],
   ['FM-01', 'frontend.react-vite', undefined, 'focus-planner'],
   ['FM-02', 'frontend.nextjs-app', undefined, 'staywise-host-dashboard'],
 ]
 
-function selection(id, frontend, styling, templateId) {
+function selection(id, frontend, styling, templateId, manager = 'npm') {
   const project = {
     schemaVersion: 1,
     project: { name: `planned-${id.toLowerCase()}`, parentDirectory: root, type: 'frontend' },
-    frontend: { adapterId: frontend, language: 'ts', manager: 'npm' },
+    frontend: { adapterId: frontend, language: 'ts', manager },
     documentation: 'minimal',
     git: { initialize: false, initialCommit: false },
   }
@@ -69,9 +73,9 @@ async function cleanJobLog(stderr) {
 
 try {
   const configPaths = []
-  for (const [id, frontend, styling, templateId] of configs) {
+  for (const [id, frontend, styling, templateId, manager] of configs) {
     const configPath = join(root, `${id}.json`)
-    await writeFile(configPath, JSON.stringify(selection(id, frontend, styling, templateId)))
+    await writeFile(configPath, JSON.stringify(selection(id, frontend, styling, templateId, manager)))
     configPaths.push(configPath)
   }
 
@@ -137,7 +141,7 @@ try {
   assert.equal(directResult.error?.code, 'GEN_RECIPE_UNTESTED')
 
   assert.deepEqual((await readdir(root)).sort(), configPaths.map((path) => path.split(/[\\/]/).at(-1)).sort())
-  console.log(`Packaged ${mode} CLI policy smoke passed: catalog/plan/doctor read-only; release override rejected; FE-01–FE-11 and FM-01/FM-02 blocked before staging.`)
+  console.log(`Packaged ${mode} CLI policy smoke passed: catalog/plan/doctor read-only; release override rejected; FE-01–FE-15 and FM-01/FM-02 blocked before staging.`)
 } finally {
   await rm(root, { recursive: true, force: true })
 }

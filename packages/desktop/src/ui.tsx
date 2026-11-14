@@ -21,9 +21,9 @@ import {
 
 type Page = 'home' | 'create' | 'frameworks' | 'templates' | 'projects' | 'environment' | 'settings' | 'generation' | 'result'
 type WizardStep = 'details' | 'stack' | 'design' | 'docs' | 'review'
-type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11'
+type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15'
 function isRecipeId(value: string): value is RecipeId {
-  return ['FE-01', 'FE-02', 'FE-03', 'FE-04', 'FE-05', 'FE-06', 'FE-07', 'FE-08', 'FE-09', 'FE-10', 'FE-11'].includes(value)
+  return ['FE-01', 'FE-02', 'FE-03', 'FE-04', 'FE-05', 'FE-06', 'FE-07', 'FE-08', 'FE-09', 'FE-10', 'FE-11', 'FE-12', 'FE-13', 'FE-14', 'FE-15'].includes(value)
 }
 type Documentation = 'minimal' | 'standard' | 'full'
 type Selection = {
@@ -75,7 +75,7 @@ type DesktopError = { code?: string; message?: string; nextAction?: string; targ
 const WIZARD_STEPS: { id: WizardStep; label: string; hint: string }[] = [
   { id: 'details', label: 'Project details', hint: 'Name and destination' },
   { id: 'stack', label: 'Framework', hint: 'Catalog-backed choices' },
-  { id: 'design', label: 'Tools and template', hint: 'Styling, npm, Forma' },
+  { id: 'design', label: 'Tools and template', hint: 'Styling, package manager, Forma' },
   { id: 'docs', label: 'Documentation', hint: 'Generated file set' },
   { id: 'review', label: 'Review and create', hint: 'Plan, checks, consent' },
 ]
@@ -635,16 +635,17 @@ function App() {
                 : <div className="template-style-note"><strong>{activeTemplate?.name ?? 'Forma template'} supplies its own styling.</strong><span>The separate styling adapter is omitted from this selection. Clear the template below if you want to choose a catalog styling option.</span></div>}
 
               <fieldset className="choice-fieldset manager-fieldset"><legend>Package manager</legend><div className="manager-row">
-                {['npm', 'pnpm', 'Yarn', 'Bun'].map((manager) => {
-                  const normalized = manager.toLowerCase()
-                  const available = Boolean(selectedFrontend?.packageManagers.includes(normalized) && (templateId
-                    ? findFrameworkRecipe(catalog, frontendId, normalized)
-                    : catalog?.recipes.some((item) => item.frontend === frontendId && item.styling === stylingId && item.manager === normalized && item.id.startsWith('FE-'))))
-                  return <button type="button" className={`manager-choice ${managerId === normalized ? 'chosen' : ''}`} key={manager} disabled={!available || busy} onClick={() => { setManagerId(normalized); invalidateReview() }} aria-pressed={managerId === normalized}>
-                    <strong>{manager}</strong>{available ? <small>Catalog default</small> : <small>Not supported</small>}
-                  </button>
-                })}
-              </div><p className="field-help">Node recipes use npm by default. Other managers remain disabled until catalog support exists.</p></fieldset>
+                  {['npm', 'pnpm', 'Yarn', 'Bun'].map((manager) => {
+                    const normalized = manager.toLowerCase()
+                    const available = Boolean(selectedFrontend?.packageManagers.includes(normalized) && (templateId
+                      ? findFrameworkRecipe(catalog, frontendId, normalized)
+                      : catalog?.recipes.some((item) => item.frontend === frontendId && item.styling === stylingId && item.manager === normalized && item.id.startsWith('FE-'))))
+                    const pin = catalog?.packageManagers.find((item) => item.id === normalized)
+                    return <button type="button" className={`manager-choice ${managerId === normalized ? 'chosen' : ''}`} key={manager} disabled={!available || busy} onClick={() => { setManagerId(normalized); invalidateReview() }} aria-pressed={managerId === normalized}>
+                      <strong>{normalized === 'pnpm' ? 'pnpm' : manager}</strong>{available ? <small>{normalized === 'npm' ? 'Default' : `Pinned ${pin?.version ?? ''}${pin?.nodeLinker ? ` · ${pin.nodeLinker} linker` : ''}`}</small> : <small>Not supported</small>}
+                    </button>
+                  })}
+              </div><p className="field-help">npm stays default. Pinned Yarn and pnpm are available only for React/Vue + Vite + Plain CSS; Forma remains npm-only.</p></fieldset>
 
               <fieldset className="choice-fieldset forma-picker"><legend>Forma template <span className="optional-label">Optional</span></legend>
                 <button type="button" className={`template-select-row ${templateId === '' ? 'chosen' : ''}`} onClick={() => { setTemplateId(''); setTemplateVariantId(''); invalidateReview() }} aria-pressed={templateId === ''}>
@@ -710,7 +711,7 @@ function App() {
                 </div>
 
                 {plan.warnings.length > 0 && <div className="risk-box"><strong>Risks and limitations</strong><ul>{plan.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div>}
-                <div className="consent-box"><p className="eyebrow">YOUR APPROVAL REQUIRED</p><strong>Dependency lifecycle scripts run without a sandbox.</strong><p>npm installation can execute third-party scripts with your Windows user permissions. Process supervision does not sandbox those scripts. Network access and generated validation commands are listed above.</p>
+                <div className="consent-box"><p className="eyebrow">YOUR APPROVAL REQUIRED</p><strong>Dependency lifecycle scripts run without a sandbox.</strong><p>{managerId} installation can execute third-party scripts with your Windows user permissions. Process supervision does not sandbox those scripts. Network access and generated validation commands are listed above.</p>
                   <label className="check-line"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>I understand and consent to lifecycle scripts running unsandboxed for this generation.</span></label>
                 </div>
                 {canUsePlanned && !plan.executionAvailable && <label className="internal-consent"><input type="checkbox" checked={allowPlanned} onChange={(event) => setAllowPlanned(event.target.checked)} /><span><strong>Internal evidence run only:</strong> allow this planned recipe. Recipe remains unavailable in normal builds and is not promoted.</span></label>}
@@ -734,7 +735,7 @@ function App() {
             <button className="button secondary-button" disabled={!adapterRecipe || busy} onClick={() => startWizardForFramework(adapter.id)}>{adapterRecipe ? 'Configure project' : 'Unavailable'}</button>
           </article>
         })}</div>
-         <p className="catalog-pin">FE-01 through FE-11 remain planned. Normal generation remains blocked pending independent acceptance.</p>
+         <p className="catalog-pin">FE-01 through FE-15 remain planned. Normal generation remains blocked pending independent acceptance.</p>
       </section>}
 
       {page === 'templates' && <section className="page-content" aria-labelledby="templates-title">
@@ -771,7 +772,7 @@ function App() {
       {page === 'environment' && <section className="page-content environment-page" aria-labelledby="environment-title">
         <div className="page-heading"><div><p className="eyebrow">LOCAL TOOLCHAIN</p><h1 id="environment-title">Environment Doctor</h1><p className="lead">Check the app runtime here. Node, npm, and destination checks need a selected project and run during review.</p></div><button className="button secondary-button" disabled={runtimeBusy} onClick={() => void refreshRuntime()}>{runtimeBusy ? 'Checking…' : 'Refresh runtime'}</button></div>
         <section className="environment-card"><div className="environment-card-icon" aria-hidden="true">⌘</div><div className="environment-card-main"><div className="environment-title-row"><div><p className="eyebrow">APPLICATION ENGINE</p><h2>{runtime?.available ? 'Ready to plan' : runtime ? 'Needs attention' : 'Checking runtime'}</h2></div><StatusPill tone={runtime?.available ? 'good' : runtime ? 'bad' : 'neutral'}>{runtime?.available ? 'Available' : runtime ? 'Unavailable' : 'Checking'}</StatusPill></div><p>{runtime?.message ?? 'Reading the configured runtime status…'}</p><dl className="environment-facts"><div><dt>Runtime mode</dt><dd>{runtime?.mode === 'bundled' ? 'Bundled Node.js' : 'System Node.js'}</dd></div><div><dt>Node.js</dt><dd>{runtime?.version ?? 'Not detected'}</dd></div><div><dt>Visual Studio Code</dt><dd>{vscodeAvailable ? 'Detected' : 'Not detected'}</dd></div></dl></div></section>
-        <section className="doctor-next-card"><div><h2>Project-specific checks</h2><p>Choose framework, package manager, and destination to run the native Doctor. It checks Node/npm prerequisites and target-folder safety without installing anything.</p></div><button className="button primary-button" disabled={!catalog} onClick={() => startWizard()}>Choose a project <span aria-hidden="true">→</span></button></section>
+         <section className="doctor-next-card"><div><h2>Project-specific checks</h2><p>Choose framework, package manager, and destination to run the native Doctor. It checks Node.js, npm bootstrap, pinned manager compatibility, and target-folder safety without installing anything.</p></div><button className="button primary-button" disabled={!catalog} onClick={() => startWizard()}>Choose a project <span aria-hidden="true">→</span></button></section>
         <section className="recovery-strip"><div><strong>Interrupted generation?</strong><p>Inspect recovery journal read-only. No recovery action is applied.</p></div><button className="button secondary-button" disabled={busy} onClick={() => void inspectRecovery()}>Inspect recovery</button></section>
         {recovery !== null && <RecoveryDetails value={recovery} />}
       </section>}
@@ -815,7 +816,7 @@ function App() {
         {recovery !== null && <RecoveryDetails value={recovery} />}
       </section>}
 
-      <footer className="app-footer"><span>FormaForge · Project Generator</span><span>Local development · FE-01–FE-11 / FM-01 / FM-02 remain planned · no release approval</span></footer>
+      <footer className="app-footer"><span>FormaForge · Project Generator</span><span>Local development · FE-01–FE-15 / FM-01 / FM-02 remain planned · no release approval</span></footer>
     </main>
   </div>
 }
@@ -830,7 +831,7 @@ function UnsupportedGroup({ title, description, entries }: { title: string; desc
 
 function ProjectList({ projects, vscodeAvailable, onOpen }: { projects: ProjectRecord[]; vscodeAvailable: boolean; onOpen: (path: string, command: 'open_project_folder' | 'open_project_in_vscode') => void }) {
   return <div className="project-list">{projects.map((project) => <article className="project-row" key={`${project.path}-${project.createdAt}`}>
-    <div className="project-type-mark" aria-hidden="true">{project.recipeId === 'FE-02' ? 'N' : project.recipeId === 'FE-06' ? 'U' : project.recipeId === 'FE-07' ? 'A' : ['FE-03', 'FE-05', 'FE-09', 'FE-11'].includes(project.recipeId) ? 'V' : 'R'}</div><div className="project-row-main"><strong>{project.name}</strong><code>{project.path}</code><div className="project-row-meta"><span>{project.recipeId}</span><span>·</span><span>{new Date(project.createdAt).toLocaleString()}</span></div></div>
+    <div className="project-type-mark" aria-hidden="true">{project.recipeId === 'FE-02' ? 'N' : project.recipeId === 'FE-06' ? 'U' : project.recipeId === 'FE-07' ? 'A' : ['FE-03', 'FE-05', 'FE-09', 'FE-11', 'FE-13', 'FE-15'].includes(project.recipeId) ? 'V' : 'R'}</div><div className="project-row-main"><strong>{project.name}</strong><code>{project.path}</code><div className="project-row-meta"><span>{project.recipeId}</span><span>·</span><span>{new Date(project.createdAt).toLocaleString()}</span></div></div>
     <div className="project-row-status"><StatusPill tone={project.status === 'completed' ? 'good' : 'warn'}>{project.status === 'completed' ? 'Checks passed' : 'Cleanup attention'}</StatusPill><div className="project-row-actions"><button className="button small-button secondary-button" onClick={() => onOpen(project.path, 'open_project_folder')}>Open folder</button>{vscodeAvailable && <button className="button small-button quiet-button" onClick={() => onOpen(project.path, 'open_project_in_vscode')}>VS Code</button>}</div></div>
   </article>)}</div>
 }

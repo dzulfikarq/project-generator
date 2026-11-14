@@ -8,9 +8,10 @@ import { createPlan } from '../src/plan.js'
 import { resolveSelection } from '../src/resolver.js'
 import { normalizeWindowsParent, resolveOutputPath } from '../src/paths.js'
 import { GeneratorError } from '../src/errors.js'
-import { supportsNodeForAngular, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForVite, supportsNodeForVue, supportsNpm } from '../src/toolchain.js'
+import { supportsNodeForAngular, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue, supportsNpm } from '../src/toolchain.js'
 import { FORMA_COMMIT_SHA, isFormaCommit } from '../src/forma-catalog.js'
 import { runDoctor } from '../src/doctor.js'
+import { ADAPTERS, PACKAGE_MANAGERS } from '../src/catalog.js'
 
 const reactConfig = {
   schemaVersion: 1,
@@ -73,7 +74,7 @@ const vueTailwindConfig = {
   styling: { adapterId: 'styling.tailwind' },
 }
 
-test('accepts exact FE-01 through FE-11 combinations without filesystem access', () => {
+test('accepts exact FE-01 through FE-15 combinations without filesystem access', () => {
   assert.equal(resolveSelection(parseSelection(reactConfig)).recipe.id, 'FE-01')
   assert.equal(resolveSelection(parseSelection(nextConfig)).recipe.id, 'FE-02')
   assert.equal(resolveSelection(parseSelection(vueConfig)).recipe.id, 'FE-03')
@@ -132,6 +133,34 @@ test('accepts exact FE-01 through FE-11 combinations without filesystem access',
     assert.ok(stylePlan.expectedWrites.includes(styleFile))
     assert.match(stylePlan.steps.find((step) => step.id === 'configure')?.readableSummary ?? '', id === 'FE-08' || id === 'FE-09' ? /Dart Sass 1\.108\.2/ : /Tailwind CSS 4\.3\.5.*official Vite plugin/)
   }
+
+  for (const [manager, frontend, id, lockfile, configFile] of [
+    ['yarn', 'frontend.react-vite', 'FE-12', 'yarn.lock', '.yarnrc.yml'],
+    ['yarn', 'frontend.vue-vite', 'FE-13', 'yarn.lock', '.yarnrc.yml'],
+    ['pnpm', 'frontend.react-vite', 'FE-14', 'pnpm-lock.yaml', 'pnpm-workspace.yaml'],
+    ['pnpm', 'frontend.vue-vite', 'FE-15', 'pnpm-lock.yaml', 'pnpm-workspace.yaml'],
+  ] as const) {
+    const selection = parseSelection({
+      ...reactConfig,
+      project: { ...reactConfig.project, name: `${manager}-${frontend.includes('vue') ? 'vue' : 'react'}` },
+      frontend: { adapterId: frontend, language: 'ts', manager },
+    })
+    const recipe = resolveSelection(selection).recipe
+    const plan = createPlan(selection)
+    assert.equal(recipe.id, id)
+    assert.equal(recipe.status, 'planned')
+    assert.equal(recipe.manager, manager)
+    assert.equal(plan.recipeStatus, 'planned')
+    assert.equal(plan.executionAvailable, false)
+    assert.ok(plan.expectedWrites.includes(lockfile))
+    assert.ok(plan.expectedWrites.includes(configFile))
+    assert.match(plan.steps.find((step) => step.id === 'install')?.readableSummary ?? '', new RegExp(`${manager}.*${lockfile}`))
+  }
+  assert.deepEqual(PACKAGE_MANAGERS.map(({ id, version }) => [id, version]), [
+    ['npm', '>=10.0.0'], ['yarn', '4.18.1'], ['pnpm', '11.28.11'],
+  ])
+  assert.ok(ADAPTERS.find(({ id }) => id === 'frontend.react-vite')?.packageManagers.includes('pnpm'))
+  assert.ok(ADAPTERS.find(({ id }) => id === 'frontend.vue-vite')?.packageManagers.includes('yarn'))
 })
 
 test('resolves only pinned Forma template/framework pairs without network access during planning', () => {
@@ -194,9 +223,15 @@ test('blocks incompatible stacks and contradictory choices with structured error
   assert.throws(() => resolveSelection(contradictory), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
   const unsupportedManager = parseSelection({
     ...reactConfig,
-    frontend: { ...reactConfig.frontend, manager: 'pnpm' },
+    frontend: { ...reactConfig.frontend, manager: 'bun' },
   })
   assert.throws(() => resolveSelection(unsupportedManager), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  assert.throws(() => resolveSelection(parseSelection({
+    ...reactConfig,
+    frontend: { ...reactConfig.frontend, manager: 'yarn' },
+    styling: undefined,
+    template: { adapterId: 'template.forma', templateId: 'staywise-host-dashboard', commitSha: FORMA_COMMIT_SHA },
+  })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
   assert.equal(resolveSelection(parseSelection(vueTailwindConfig)).recipe.id, 'FE-11')
   assert.throws(() => resolveSelection(parseSelection({ ...nextConfig, styling: { adapterId: 'styling.bootstrap' } })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
   assert.throws(() => resolveSelection(parseSelection({ ...reactBootstrapConfig, styling: { adapterId: 'styling.bootstrap', uiLibraryId: 'styling.tailwind' } })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE' && error.message.includes('Bootstrap and Tailwind'))
@@ -250,6 +285,9 @@ test('toolchain version checks follow pinned scaffold engine ranges', () => {
   assert.equal(supportsNodeForAngular('24.0.0'), true)
   assert.equal(supportsNpm('9.9.9'), false)
   assert.equal(supportsNpm('10.0.0'), true)
+  assert.equal(supportsNodeForPnpm('22.12.9'), false)
+  assert.equal(supportsNodeForPnpm('22.13.0'), true)
+  assert.equal(supportsNodeForPnpm('24.0.0'), true)
 })
 
 test('doctor applies framework-specific Nuxt and Angular Node requirements', { skip: process.platform !== 'win32' }, async () => {
@@ -261,6 +299,14 @@ test('doctor applies framework-specific Nuxt and Angular Node requirements', { s
       assert.equal(report.tools.find(({ id }) => id === 'node')?.available, supported(process.version))
       assert.equal(report.tools.find(({ id }) => id === 'target')?.available, true)
     }
+    const pnpm = parseSelection({
+      ...reactConfig,
+      project: { ...reactConfig.project, parentDirectory: parent, name: 'pnpm-react' },
+      frontend: { adapterId: 'frontend.react-vite', language: 'ts', manager: 'pnpm' },
+    })
+    const pnpmReport = await runDoctor(pnpm)
+    assert.equal(pnpmReport.tools.find(({ id }) => id === 'node')?.available, supportsNodeForPnpm(process.version))
+    assert.equal(pnpmReport.tools.find(({ id }) => id === 'pnpm')?.version, '11.28.11')
   } finally {
     await rm(parent, { recursive: true, force: true })
   }

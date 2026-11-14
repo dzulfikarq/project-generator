@@ -1,8 +1,9 @@
 export type SupportState = 'cataloged' | 'planned' | 'experimental' | 'tested' | 'blocked' | 'retired'
 export type DocumentationMode = 'minimal' | 'standard' | 'full'
-export type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FM-01' | 'FM-02'
+export type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15' | 'FM-01' | 'FM-02'
 export type StylingId = 'styling.css' | 'styling.tailwind' | 'styling.bootstrap' | 'styling.scss'
 export type FrontendId = 'frontend.react-vite' | 'frontend.nextjs-app' | 'frontend.vue-vite' | 'frontend.nuxt' | 'frontend.angular'
+export type PackageManagerId = 'npm' | 'yarn' | 'pnpm'
 
 export interface ProjectSelectionV1 {
   schemaVersion: 1
@@ -60,6 +61,18 @@ export interface DependencyPin {
   scope?: 'dependencies' | 'devDependencies'
 }
 
+export interface PackageManagerManifestV1 {
+  id: PackageManagerId
+  version: string
+  lockfile: string
+  nodeLinker?: 'node-modules' | 'hoisted'
+  configFile?: string
+  packageName?: string
+  integrity?: string
+  binPath?: string
+  nodeVersionRange?: string
+}
+
 export interface RecipeManifestV1 {
   schemaVersion: 1
   id: RecipeId
@@ -67,7 +80,7 @@ export interface RecipeManifestV1 {
   platform: 'windows'
   frontend: FrontendId
   language: 'ts'
-  manager: 'npm'
+  manager: PackageManagerId
   styling?: StylingId
   scaffold: ScaffoldPin
   scaffoldArgs: readonly string[]
@@ -135,7 +148,7 @@ export interface GeneratorErrorShape {
 }
 
 export interface ToolStatus {
-  id: 'node' | 'npm' | 'target'
+  id: 'node' | 'npm' | 'yarn' | 'pnpm' | 'target'
   available: boolean
   version?: string
   path?: string

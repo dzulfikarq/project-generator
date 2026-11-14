@@ -1,5 +1,6 @@
 import { inspectTarget } from './paths.js'
-import { resolveNpmTool, supportsNpm, supportsNodeForAngular, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForVite, supportsNodeForVue } from './toolchain.js'
+import { packageManager } from './catalog.js'
+import { resolveNpmTool, supportsNpm, supportsNodeForAngular, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue } from './toolchain.js'
 import type { DoctorReport, ProjectSelectionV1, ToolStatus } from './types.js'
 import { resolveSelection } from './resolver.js'
 
@@ -7,16 +8,17 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
   const resolved = resolveSelection(selection)
   const recipe = resolved.recipe
   const nodeVersion = process.version.replace(/^v/, '')
-  const nodeSupported = recipe.frontend === 'frontend.vue-vite'
+  const frameworkNodeSupported = recipe.frontend === 'frontend.vue-vite'
     ? supportsNodeForVue(nodeVersion)
     : recipe.frontend === 'frontend.nuxt' ? supportsNodeForNuxt(nodeVersion)
       : recipe.frontend === 'frontend.angular' ? supportsNodeForAngular(nodeVersion)
         : recipe.frontend === 'frontend.nextjs-app' ? supportsNodeForNext(nodeVersion) : supportsNodeForVite(nodeVersion)
+  const nodeSupported = frameworkNodeSupported && (recipe.manager !== 'pnpm' || supportsNodeForPnpm(nodeVersion))
   const node: ToolStatus = {
     id: 'node',
     available: nodeSupported,
     version: nodeVersion,
-    message: nodeSupported ? 'Node.js version satisfies pinned scaffold requirements.' : `Node.js ${process.version} is outside this recipe's supported range.`,
+    message: nodeSupported ? 'Node.js version satisfies pinned scaffold and package-manager requirements.' : `Node.js ${process.version} is outside this recipe's supported range.`,
   }
 
   const npmTool = await resolveNpmTool()
@@ -30,6 +32,16 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
     available: false,
     message: 'Trusted npm CLI was not found beside the active Node runtime.',
   }
+
+  const selectedManager = recipe.manager === 'npm' ? undefined : packageManager(recipe.manager)
+  const managerTool: ToolStatus | undefined = selectedManager ? {
+    id: selectedManager.id,
+    available: npm.available && (selectedManager.id !== 'pnpm' || supportsNodeForPnpm(nodeVersion)),
+    version: selectedManager.version,
+    message: npm.available
+      ? `Pinned ${selectedManager.id} is staged from the npm registry after consent; version and integrity are verified before use.`
+      : `npm 10 or newer is required to stage pinned ${selectedManager.id}.`,
+  } : undefined
 
   let target: DoctorReport['target']
   try {
@@ -45,7 +57,7 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
   }
 
   const windows = process.platform === 'win32'
-  const tools: ToolStatus[] = [node, npm, {
+  const tools: ToolStatus[] = [node, npm, ...(managerTool ? [managerTool] : []), {
     id: 'target',
     available: target.available && windows,
     message: windows ? target.message : 'Generation is supported on Windows only in Phase 01.',
@@ -53,7 +65,7 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
   return {
     schemaVersion: 1,
     platform: `${process.platform}-${process.arch}`,
-    ready: windows && node.available && npm.available && target.available,
+    ready: windows && node.available && npm.available && (!managerTool || managerTool.available) && target.available,
     tools,
     target,
   }

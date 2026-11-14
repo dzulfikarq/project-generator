@@ -1,4 +1,4 @@
-import type { AdapterManifestV1, RecipeManifestV1 } from './types.js'
+import type { AdapterManifestV1, PackageManagerId, PackageManagerManifestV1, RecipeManifestV1 } from './types.js'
 import { FORMA_COMMIT_SHA, FORMA_INTEGRATIONS, FORMA_TEMPLATES } from './forma-catalog.js'
 
 const nodeRequirement = {
@@ -15,6 +15,42 @@ const npmRequirement = {
   reason: 'Installs pinned scaffolds and generated project dependencies.',
 } as const
 
+export const PACKAGE_MANAGERS: readonly PackageManagerManifestV1[] = [
+  { id: 'npm', version: '>=10.0.0', lockfile: 'package-lock.json' },
+  {
+    id: 'yarn',
+    version: '4.18.1',
+    nodeLinker: 'node-modules',
+    configFile: '.yarnrc.yml',
+    packageName: '@yarnpkg/cli-dist',
+    integrity: 'sha512-EH+A4TxAtBWXKE0DGQxW9Bo9crXHLJ73mfxjTQJuv8XonNWWTpei8BQ5JjczHJNU9GROTycwMFn8iOvRIZXUcA==',
+    binPath: 'bin/yarn.js',
+    lockfile: 'yarn.lock',
+    nodeVersionRange: '>=18.12.0',
+  },
+  {
+    id: 'pnpm',
+    version: '11.28.11',
+    nodeLinker: 'hoisted',
+    configFile: 'pnpm-workspace.yaml',
+    packageName: 'pnpm',
+    integrity: 'sha512-dAGE0Q+B9dWxZb6IVg7numJAbEE0iWq8J6WAEJ7sL0fB5B2RJRyUTCyrq8scIkYXmeu3LeLsYlryAwsONsc1ow==',
+    binPath: 'bin/pnpm.mjs',
+    lockfile: 'pnpm-lock.yaml',
+    nodeVersionRange: '>=22.13.0',
+  },
+]
+
+export function packageManager(id: PackageManagerId): PackageManagerManifestV1 {
+  return PACKAGE_MANAGERS.find((manager) => manager.id === id)!
+}
+
+export function packageManagerConfiguration(id: PackageManagerId): { path: string; content: string } | undefined {
+  const manager = packageManager(id)
+  if (!manager.nodeLinker || !manager.configFile) return undefined
+  return { path: manager.configFile, content: `nodeLinker: ${manager.nodeLinker}\n` }
+}
+
 export const ADAPTERS: readonly AdapterManifestV1[] = [
   {
     schemaVersion: 1,
@@ -24,10 +60,10 @@ export const ADAPTERS: readonly AdapterManifestV1[] = [
     displayName: 'React + Vite',
     supportState: 'planned',
     supportedOS: ['windows'],
-    versionConstraints: { node: '>=20.19.0 or >=22.12.0', npm: '>=10.0.0', 'create-vite': '9.3.4', vite: '^8.3.6' },
-    packageManagers: ['npm'],
+    versionConstraints: { node: '>=20.19.0 or >=22.12.0', npm: '>=10.0.0', yarn: '4.18.1', pnpm: '11.28.11 (Node >=22.13.0)', 'create-vite': '9.3.4', vite: '^8.3.6' },
+    packageManagers: ['npm', 'yarn', 'pnpm'],
     prerequisites: [nodeRequirement, npmRequirement],
-    capabilities: ['typescript', 'plain-css', 'npm-lockfile', 'build', 'lint', 'http-smoke'],
+    capabilities: ['typescript', 'plain-css', 'npm-lockfile', 'yarn-lockfile', 'pnpm-lockfile', 'build', 'lint', 'http-smoke'],
     compatibleWith: ['styling.css', 'styling.bootstrap', 'styling.scss', 'styling.tailwind', 'template.forma'],
     incompatibleWith: ['database.*', 'backend.*'],
     recipeEvidenceIds: [],
@@ -56,10 +92,10 @@ export const ADAPTERS: readonly AdapterManifestV1[] = [
     displayName: 'Vue 3 + Vite',
     supportState: 'planned',
     supportedOS: ['windows'],
-    versionConstraints: { node: '>=22.18.0 or >=24.12.0', npm: '>=10.0.0', 'create-vue': '3.24.0', vite: '^8.2.2' },
-    packageManagers: ['npm'],
+    versionConstraints: { node: '>=22.18.0 or >=24.12.0', npm: '>=10.0.0', yarn: '4.18.1', pnpm: '11.28.11 (Node >=22.13.0)', 'create-vue': '3.24.0', vite: '^8.2.2' },
+    packageManagers: ['npm', 'yarn', 'pnpm'],
     prerequisites: [{ ...nodeRequirement, versionRange: '>=22.18.0 or >=24.12.0' }, npmRequirement],
-    capabilities: ['vue-3', 'vite', 'typescript', 'npm-lockfile', 'build', 'lint', 'typecheck', 'http-smoke'],
+    capabilities: ['vue-3', 'vite', 'typescript', 'npm-lockfile', 'yarn-lockfile', 'pnpm-lockfile', 'build', 'lint', 'typecheck', 'http-smoke'],
     compatibleWith: ['styling.css', 'styling.bootstrap', 'styling.scss', 'styling.tailwind'],
     incompatibleWith: ['template.forma', 'database.*', 'backend.*'],
     recipeEvidenceIds: [],
@@ -105,7 +141,7 @@ export const ADAPTERS: readonly AdapterManifestV1[] = [
     supportState: 'planned',
     supportedOS: ['windows'],
     versionConstraints: {},
-    packageManagers: ['npm'],
+    packageManagers: ['npm', 'yarn', 'pnpm'],
     prerequisites: [],
     capabilities: ['plain-css'],
     compatibleWith: ['frontend.react-vite', 'frontend.vue-vite', 'frontend.nuxt'],
@@ -443,12 +479,93 @@ export const RECIPES: readonly RecipeManifestV1[] = [
     limitations: ['No separate backend or database.', 'Uses the official Tailwind CSS v4 Vite plugin; source files are auto-detected and no legacy config file is generated.', 'Browser automation is not included; smoke check verifies an HTTP-served page.'],
     evidenceIds: [],
   },
+  {
+    schemaVersion: 1,
+    id: 'FE-12',
+    status: 'planned',
+    platform: 'windows',
+    frontend: 'frontend.react-vite',
+    language: 'ts',
+    manager: 'yarn',
+    styling: 'styling.css',
+    scaffold: {
+      packageName: 'create-vite',
+      version: '9.3.4',
+      integrity: 'sha512-L02vtfSVndf0I65g0axXCjrFbhyjmN5K7szeaLRd0mMx0duW2BpzNvps5q4zHHCWexOrWrPgAx17hRz88I3bHw==',
+      binPath: 'index.js',
+    },
+    scaffoldArgs: ['--template', 'react-ts', '--no-interactive', '--eslint'],
+    checks: ['dependency-install', 'package-manager-integrity', 'lockfile-integrity', 'lint', 'typecheck', 'build', 'http-smoke'],
+    limitations: ['Uses pinned Yarn 4.18.1 with a project-local node-modules linker setting.', 'No separate backend or database.', 'Browser automation is not included; smoke check verifies an HTTP-served page.'],
+    evidenceIds: [],
+  },
+  {
+    schemaVersion: 1,
+    id: 'FE-13',
+    status: 'planned',
+    platform: 'windows',
+    frontend: 'frontend.vue-vite',
+    language: 'ts',
+    manager: 'yarn',
+    styling: 'styling.css',
+    scaffold: {
+      packageName: 'create-vue',
+      version: '3.24.0',
+      integrity: 'sha512-QuVvwZ213B8ZC5u3rshPRg8Q2y6jK0zlxhujTx2AL1Cv3437Yn8GhpVipZTRQam27210uP8Xic5gxh5Sl08skw==',
+      binPath: 'bundle.js',
+    },
+    scaffoldArgs: ['--typescript', '--eslint'],
+    checks: ['dependency-install', 'package-manager-integrity', 'lockfile-integrity', 'lint', 'typecheck', 'build', 'http-smoke'],
+    limitations: ['Uses pinned Yarn 4.18.1 with a project-local node-modules linker setting.', 'No separate backend or database.', 'Browser automation is not included; smoke check verifies an HTTP-served page.'],
+    evidenceIds: [],
+  },
+  {
+    schemaVersion: 1,
+    id: 'FE-14',
+    status: 'planned',
+    platform: 'windows',
+    frontend: 'frontend.react-vite',
+    language: 'ts',
+    manager: 'pnpm',
+    styling: 'styling.css',
+    scaffold: {
+      packageName: 'create-vite',
+      version: '9.3.4',
+      integrity: 'sha512-L02vtfSVndf0I65g0axXCjrFbhyjmN5K7szeaLRd0mMx0duW2BpzNvps5q4zHHCWexOrWrPgAx17hRz88I3bHw==',
+      binPath: 'index.js',
+    },
+    scaffoldArgs: ['--template', 'react-ts', '--no-interactive', '--eslint'],
+    checks: ['dependency-install', 'package-manager-integrity', 'lockfile-integrity', 'lint', 'typecheck', 'build', 'http-smoke'],
+    limitations: ['Uses pinned pnpm 11.28.11 with a project-local hoisted node_modules linker setting; pnpm isolated layout fails Vite 8.3.8 module-import resolution on the verified Node runtime.', 'pnpm 11 requires Node.js 22.13 or newer.', 'No separate backend or database.', 'Browser automation is not included; smoke check verifies an HTTP-served page.'],
+    evidenceIds: [],
+  },
+  {
+    schemaVersion: 1,
+    id: 'FE-15',
+    status: 'planned',
+    platform: 'windows',
+    frontend: 'frontend.vue-vite',
+    language: 'ts',
+    manager: 'pnpm',
+    styling: 'styling.css',
+    scaffold: {
+      packageName: 'create-vue',
+      version: '3.24.0',
+      integrity: 'sha512-QuVvwZ213B8ZC5u3rshPRg8Q2y6jK0zlxhujTx2AL1Cv3437Yn8GhpVipZTRQam27210uP8Xic5gxh5Sl08skw==',
+      binPath: 'bundle.js',
+    },
+    scaffoldArgs: ['--typescript', '--eslint'],
+    checks: ['dependency-install', 'package-manager-integrity', 'lockfile-integrity', 'lint', 'typecheck', 'build', 'http-smoke'],
+    limitations: ['Uses pinned pnpm 11.28.11 with a project-local hoisted node_modules linker setting; pnpm isolated layout fails Vite 8.3.8 module-import resolution on the verified Node runtime.', 'pnpm 11 requires Node.js 22.13 or newer.', 'No separate backend or database.', 'Browser automation is not included; smoke check verifies an HTTP-served page.'],
+    evidenceIds: [],
+  },
 ] as const
 
 export function catalog() {
   return {
     schemaVersion: 1,
     adapters: ADAPTERS,
+    packageManagers: PACKAGE_MANAGERS,
     recipes: RECIPES,
     forma: {
       repository: 'Private GitHub repository; fetched through configured Git credentials.',

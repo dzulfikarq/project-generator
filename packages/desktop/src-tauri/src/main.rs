@@ -107,6 +107,14 @@ enum DesktopRecipeId {
     Fe10,
     #[serde(rename = "FE-11")]
     Fe11,
+    #[serde(rename = "FE-12")]
+    Fe12,
+    #[serde(rename = "FE-13")]
+    Fe13,
+    #[serde(rename = "FE-14")]
+    Fe14,
+    #[serde(rename = "FE-15")]
+    Fe15,
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -129,18 +137,22 @@ impl DesktopDocumentationV1 {
 
 impl DesktopSelectionV1 {
     fn to_core_json(&self, forma_commit_sha: &str) -> Value {
-        let (frontend, styling) = match self.recipe_id {
-            DesktopRecipeId::Fe01 => ("frontend.react-vite", "styling.css"),
-            DesktopRecipeId::Fe02 => ("frontend.nextjs-app", "styling.tailwind"),
-            DesktopRecipeId::Fe03 => ("frontend.vue-vite", "styling.css"),
-            DesktopRecipeId::Fe04 => ("frontend.react-vite", "styling.bootstrap"),
-            DesktopRecipeId::Fe05 => ("frontend.vue-vite", "styling.bootstrap"),
-            DesktopRecipeId::Fe06 => ("frontend.nuxt", "styling.css"),
-            DesktopRecipeId::Fe07 => ("frontend.angular", "styling.scss"),
-            DesktopRecipeId::Fe08 => ("frontend.react-vite", "styling.scss"),
-            DesktopRecipeId::Fe09 => ("frontend.vue-vite", "styling.scss"),
-            DesktopRecipeId::Fe10 => ("frontend.react-vite", "styling.tailwind"),
-            DesktopRecipeId::Fe11 => ("frontend.vue-vite", "styling.tailwind"),
+        let (frontend, styling, manager) = match self.recipe_id {
+            DesktopRecipeId::Fe01 => ("frontend.react-vite", "styling.css", "npm"),
+            DesktopRecipeId::Fe02 => ("frontend.nextjs-app", "styling.tailwind", "npm"),
+            DesktopRecipeId::Fe03 => ("frontend.vue-vite", "styling.css", "npm"),
+            DesktopRecipeId::Fe04 => ("frontend.react-vite", "styling.bootstrap", "npm"),
+            DesktopRecipeId::Fe05 => ("frontend.vue-vite", "styling.bootstrap", "npm"),
+            DesktopRecipeId::Fe06 => ("frontend.nuxt", "styling.css", "npm"),
+            DesktopRecipeId::Fe07 => ("frontend.angular", "styling.scss", "npm"),
+            DesktopRecipeId::Fe08 => ("frontend.react-vite", "styling.scss", "npm"),
+            DesktopRecipeId::Fe09 => ("frontend.vue-vite", "styling.scss", "npm"),
+            DesktopRecipeId::Fe10 => ("frontend.react-vite", "styling.tailwind", "npm"),
+            DesktopRecipeId::Fe11 => ("frontend.vue-vite", "styling.tailwind", "npm"),
+            DesktopRecipeId::Fe12 => ("frontend.react-vite", "styling.css", "yarn"),
+            DesktopRecipeId::Fe13 => ("frontend.vue-vite", "styling.css", "yarn"),
+            DesktopRecipeId::Fe14 => ("frontend.react-vite", "styling.css", "pnpm"),
+            DesktopRecipeId::Fe15 => ("frontend.vue-vite", "styling.css", "pnpm"),
         };
         let mut selection = json!({
             "schemaVersion": 1,
@@ -149,7 +161,7 @@ impl DesktopSelectionV1 {
                 "parentDirectory": self.parent_directory,
                 "type": "frontend"
             },
-            "frontend": { "adapterId": frontend, "language": "ts", "manager": "npm" },
+            "frontend": { "adapterId": frontend, "language": "ts", "manager": manager },
             "documentation": self.documentation.as_str(),
             "git": { "initialize": false, "initialCommit": false }
         });
@@ -1344,31 +1356,79 @@ mod tests {
         assert!(config.get("styling").is_none());
         assert!(config.get("command").is_none());
 
-        for (recipe_id, frontend, styling) in [
-            (DesktopRecipeId::Fe03, "frontend.vue-vite", "styling.css"),
+        for (recipe_id, frontend, styling, manager) in [
+            (
+                DesktopRecipeId::Fe03,
+                "frontend.vue-vite",
+                "styling.css",
+                "npm",
+            ),
             (
                 DesktopRecipeId::Fe04,
                 "frontend.react-vite",
                 "styling.bootstrap",
+                "npm",
             ),
             (
                 DesktopRecipeId::Fe05,
                 "frontend.vue-vite",
                 "styling.bootstrap",
+                "npm",
             ),
-            (DesktopRecipeId::Fe06, "frontend.nuxt", "styling.css"),
-            (DesktopRecipeId::Fe07, "frontend.angular", "styling.scss"),
-            (DesktopRecipeId::Fe08, "frontend.react-vite", "styling.scss"),
-            (DesktopRecipeId::Fe09, "frontend.vue-vite", "styling.scss"),
+            (DesktopRecipeId::Fe06, "frontend.nuxt", "styling.css", "npm"),
+            (
+                DesktopRecipeId::Fe07,
+                "frontend.angular",
+                "styling.scss",
+                "npm",
+            ),
+            (
+                DesktopRecipeId::Fe08,
+                "frontend.react-vite",
+                "styling.scss",
+                "npm",
+            ),
+            (
+                DesktopRecipeId::Fe09,
+                "frontend.vue-vite",
+                "styling.scss",
+                "npm",
+            ),
             (
                 DesktopRecipeId::Fe10,
                 "frontend.react-vite",
                 "styling.tailwind",
+                "npm",
             ),
             (
                 DesktopRecipeId::Fe11,
                 "frontend.vue-vite",
                 "styling.tailwind",
+                "npm",
+            ),
+            (
+                DesktopRecipeId::Fe12,
+                "frontend.react-vite",
+                "styling.css",
+                "yarn",
+            ),
+            (
+                DesktopRecipeId::Fe13,
+                "frontend.vue-vite",
+                "styling.css",
+                "yarn",
+            ),
+            (
+                DesktopRecipeId::Fe14,
+                "frontend.react-vite",
+                "styling.css",
+                "pnpm",
+            ),
+            (
+                DesktopRecipeId::Fe15,
+                "frontend.vue-vite",
+                "styling.css",
+                "pnpm",
             ),
         ] {
             let generated = DesktopSelectionV1 {
@@ -1382,7 +1442,7 @@ mod tests {
             .to_core_json("");
             assert_eq!(generated["frontend"]["adapterId"], frontend);
             assert_eq!(generated["styling"]["adapterId"], styling);
-            assert_eq!(generated["frontend"]["manager"], "npm");
+            assert_eq!(generated["frontend"]["manager"], manager);
         }
 
         let standalone = DesktopSelectionV1 {

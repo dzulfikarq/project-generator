@@ -17,13 +17,15 @@ test('catalog emits local versioned JSON without network', () => {
     ok: boolean
     data: {
       adapters: { id: string; compatibleWith: string[]; incompatibleWith: string[] }[]
+      packageManagers: { id: string; version: string; lockfile: string }[]
       recipes: { id: string; status: string; scaffold: { packageName: string; version: string; integrity: string; source?: { commitSha: string } }; dependencies?: { packageName: string; version: string; integrity: string; scope?: string }[] }[]
     }
   }
   assert.equal(envelope.ok, true)
   assert.deepEqual(envelope.data.recipes.map(({ id, status }) => [id, status]), [
-    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'], ['FE-06', 'planned'], ['FE-07', 'planned'], ['FE-08', 'planned'], ['FE-09', 'planned'], ['FE-10', 'planned'], ['FE-11', 'planned'],
+    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'], ['FE-06', 'planned'], ['FE-07', 'planned'], ['FE-08', 'planned'], ['FE-09', 'planned'], ['FE-10', 'planned'], ['FE-11', 'planned'], ['FE-12', 'planned'], ['FE-13', 'planned'], ['FE-14', 'planned'], ['FE-15', 'planned'],
   ])
+  assert.deepEqual(envelope.data.packageManagers.map(({ id, version }) => [id, version]), [['npm', '>=10.0.0'], ['yarn', '4.18.1'], ['pnpm', '11.28.11']])
   const vue = envelope.data.recipes.find(({ id }) => id === 'FE-03')!
   assert.equal(vue.scaffold.packageName, 'create-vue')
   assert.equal(vue.scaffold.version, '3.24.0')
@@ -131,27 +133,31 @@ test('plan reads config but does not create a missing destination', async () => 
   }
 })
 
-test('CLI plans FE-03 through FE-11 read-only and preserves planned status', async () => {
+test('CLI plans FE-03 through FE-15 read-only and preserves planned status', async () => {
   const parent = await mkdtemp(resolve(tmpdir(), 'pg-phase04a-plan-'))
   const cases = [
-    ['FE-03', 'frontend.vue-vite', 'styling.css'],
-    ['FE-04', 'frontend.react-vite', 'styling.bootstrap'],
-    ['FE-05', 'frontend.vue-vite', 'styling.bootstrap'],
-    ['FE-06', 'frontend.nuxt', 'styling.css'],
-    ['FE-07', 'frontend.angular', 'styling.scss'],
-    ['FE-08', 'frontend.react-vite', 'styling.scss'],
-    ['FE-09', 'frontend.vue-vite', 'styling.scss'],
-    ['FE-10', 'frontend.react-vite', 'styling.tailwind'],
-    ['FE-11', 'frontend.vue-vite', 'styling.tailwind'],
+    ['FE-03', 'frontend.vue-vite', 'styling.css', 'npm'],
+    ['FE-04', 'frontend.react-vite', 'styling.bootstrap', 'npm'],
+    ['FE-05', 'frontend.vue-vite', 'styling.bootstrap', 'npm'],
+    ['FE-06', 'frontend.nuxt', 'styling.css', 'npm'],
+    ['FE-07', 'frontend.angular', 'styling.scss', 'npm'],
+    ['FE-08', 'frontend.react-vite', 'styling.scss', 'npm'],
+    ['FE-09', 'frontend.vue-vite', 'styling.scss', 'npm'],
+    ['FE-10', 'frontend.react-vite', 'styling.tailwind', 'npm'],
+    ['FE-11', 'frontend.vue-vite', 'styling.tailwind', 'npm'],
+    ['FE-12', 'frontend.react-vite', 'styling.css', 'yarn'],
+    ['FE-13', 'frontend.vue-vite', 'styling.css', 'yarn'],
+    ['FE-14', 'frontend.react-vite', 'styling.css', 'pnpm'],
+    ['FE-15', 'frontend.vue-vite', 'styling.css', 'pnpm'],
   ] as const
   try {
-    for (const [id, frontend, styling] of cases) {
+    for (const [id, frontend, styling, manager] of cases) {
       const configPath = resolve(parent, `${id}.json`)
       const targetName = `target-${id.toLowerCase()}`
       await writeFile(configPath, JSON.stringify({
         schemaVersion: 1,
         project: { name: targetName, type: 'frontend', parentDirectory: parent },
-        frontend: { adapterId: frontend, language: 'ts', manager: 'npm' },
+        frontend: { adapterId: frontend, language: 'ts', manager },
         styling: { adapterId: styling },
         documentation: 'minimal',
         git: { initialize: false, initialCommit: false },
@@ -170,6 +176,14 @@ test('CLI plans FE-03 through FE-11 read-only and preserves planned status', asy
       if (id === 'FE-07') assert.ok(plan.expectedWrites.includes('<pinned Angular CLI workspace files>'))
       if (id === 'FE-08' || id === 'FE-09') assert.ok(plan.expectedWrites.includes('src/project-generator.scss'))
       if (id === 'FE-10' || id === 'FE-11') assert.ok(plan.expectedWrites.includes('src/project-generator-tailwind.css'))
+      if (manager === 'yarn') {
+        assert.ok(plan.expectedWrites.includes('yarn.lock'))
+        assert.ok(plan.expectedWrites.includes('.yarnrc.yml'))
+      }
+      if (manager === 'pnpm') {
+        assert.ok(plan.expectedWrites.includes('pnpm-lock.yaml'))
+        assert.ok(plan.expectedWrites.includes('pnpm-workspace.yaml'))
+      }
       await assert.rejects(access(resolve(parent, targetName)))
     }
   } finally {

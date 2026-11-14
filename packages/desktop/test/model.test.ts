@@ -47,12 +47,20 @@ test('recipe selection requires exact framework, styling, and manager catalog ma
       { id: 'FE-09', frontend: 'vue', styling: 'scss', manager: 'npm' },
       { id: 'FE-10', frontend: 'react', styling: 'tailwind', manager: 'npm' },
       { id: 'FE-11', frontend: 'vue', styling: 'tailwind', manager: 'npm' },
+      { id: 'FE-12', frontend: 'react', styling: 'css', manager: 'yarn' },
+      { id: 'FE-13', frontend: 'vue', styling: 'css', manager: 'yarn' },
+      { id: 'FE-14', frontend: 'react', styling: 'css', manager: 'pnpm' },
+      { id: 'FE-15', frontend: 'vue', styling: 'css', manager: 'pnpm' },
     ],
   } as Catalog
   assert.equal(findRecipe(catalog, 'react', 'css', 'npm')?.id, 'FE-01')
   assert.equal(findRecipe(catalog, 'react', 'tailwind', 'npm')?.id, 'FE-10')
-  assert.equal(findRecipe(catalog, 'react', 'css', 'yarn'), undefined)
+  assert.equal(findRecipe(catalog, 'react', 'css', 'yarn')?.id, 'FE-12')
+  assert.equal(findRecipe(catalog, 'react', 'css', 'pnpm')?.id, 'FE-14')
+  assert.equal(findRecipe(catalog, 'vue', 'css', 'yarn')?.id, 'FE-13')
+  assert.equal(findRecipe(catalog, 'vue', 'css', 'pnpm')?.id, 'FE-15')
   assert.equal(findFrameworkRecipe(catalog, 'react', 'npm')?.id, 'FE-01')
+  assert.equal(findFrameworkRecipe(catalog, 'react', 'yarn'), undefined)
   assert.equal(findRecipe(catalog, 'react', 'bootstrap', 'npm')?.id, 'FE-04')
   assert.equal(findRecipe(catalog, 'vue', 'css', 'npm')?.id, 'FE-03')
   assert.equal(findRecipe(catalog, 'vue', 'bootstrap', 'npm')?.id, 'FE-05')
