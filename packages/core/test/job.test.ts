@@ -35,6 +35,31 @@ test('production generation blocks planned recipes before destination writes', a
   }
 })
 
+test('production generation blocks planned BE-02 before staging or destination writes', async () => {
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-planned-go-'))
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'planned-go-api', type: 'backend', parentDirectory: parent },
+    backend: { adapterId: 'backend.go-net-http', manager: 'go-modules', modulePath: 'example.com/planned-go-api' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  })
+  const events: JobEventV1[] = []
+  let logFile = ''
+  try {
+    const result = await generateProject(selection, { onEvent: (event) => events.push(event) })
+    logFile = result.logFile ?? ''
+    assert.equal(result.status, 'failed')
+    assert.equal(result.error?.code, 'GEN_RECIPE_UNTESTED')
+    assert.ok(events.some((event) => event.code === 'GEN_RECIPE_UNTESTED'))
+    await assert.rejects(access(win32.join(parent, 'planned-go-api')))
+    assert.deepEqual(await readdir(parent), [])
+  } finally {
+    await rm(parent, { recursive: true, force: true })
+    if (logFile) await rm(dirname(logFile), { recursive: true, force: true })
+  }
+})
+
 test('production generation blocks planned frontend recipes before destination writes', async () => {
   const parent = await mkdtemp(win32.join(tmpdir(), 'pg-phase04b-planned-'))
   const cases = [

@@ -49,8 +49,8 @@ export function parseSelection(value: unknown): ProjectSelectionV1 {
     if (frontend.language !== undefined && !['ts', 'js'].includes(frontend.language as string)) throw configError('frontend.language must be "ts" or "js".')
   }
 
-  const backend = optionalObject(root.backend, 'backend', ['adapterId', 'manager'], ['adapterId'])
-  if (backend) noUnknownStrings(backend, 'backend', ['adapterId'], ['manager'])
+  const backend = optionalObject(root.backend, 'backend', ['adapterId', 'manager', 'modulePath'], ['adapterId'])
+  if (backend) noUnknownStrings(backend, 'backend', ['adapterId'], ['manager', 'modulePath'])
 
   const database = optionalObject(root.database, 'database', ['adapterId', 'accessAdapterId', 'mode'], ['adapterId', 'mode'])
   if (database) {
@@ -89,6 +89,7 @@ export function parseSelection(value: unknown): ProjectSelectionV1 {
     ...(backend === undefined ? {} : { backend: {
       adapterId: backend.adapterId as string,
       ...(backend.manager === undefined ? {} : { manager: backend.manager as string }),
+      ...(backend.modulePath === undefined ? {} : { modulePath: backend.modulePath as string }),
     } }),
     ...(database === undefined ? {} : { database: {
       adapterId: database.adapterId as string,

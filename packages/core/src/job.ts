@@ -8,12 +8,14 @@ import { GeneratorError, asGeneratorError } from './errors.js'
 import { ALLOW_PLANNED_RECIPE_GENERATION } from './build-policy.js'
 import { packageManager, packageManagerConfiguration } from './catalog.js'
 import { writeBackendStarter } from './backend-starter.js'
+import { writeGoBackendStarter } from './go-backend-starter.js'
+import { writeGoProjectDocs, writeGoProjectManifest } from './go-project-docs.js'
 import { runDoctor } from './doctor.js'
 import { createPlan } from './plan.js'
 import { writeProjectDocs, writeProjectManifest } from './project-docs.js'
-import { runNodeProcess, startNodeProcess, type ProcessResult, type SafeProcessOptions } from './runner.js'
+import { runNodeProcess, runSafeProcess, startNodeProcess, startSafeProcess, type ProcessResult, type SafeProcessOptions } from './runner.js'
 import { bindOwnedStageProjectIdentity, createOwnedStage, cleanupOwnedStage, cleanupStageSupportFiles, markOwnedStageGenerating, mutateOwnedStage, moveDirectoryNoReplace, verifyOwnedStageProjectIdentity, type OwnedStage } from './staging.js'
-import { resolveNpmTool, supportsNpm } from './toolchain.js'
+import { resolveGoTool, resolveNpmTool, supportsGo, supportsNpm, type GoTool, type NpmTool } from './toolchain.js'
 import { assertGenerationAllowed } from './native-supervisor.js'
 import { resolveSelection } from './resolver.js'
 import { installFormaTemplate, type FormaInstallEvidence } from './forma.js'
@@ -105,13 +107,9 @@ function userError(code: string, stage: StageId, message: string, nextAction: st
 }
 
 function preflightError(report: DoctorReport): GeneratorError {
-  const node = report.tools.find((tool) => tool.id === 'node')
-  const npm = report.tools.find((tool) => tool.id === 'npm')
-  if (!node?.available) {
-    return userError('GEN_TOOL_UNSUPPORTED', 'preflight', 'Active Node.js version does not satisfy this recipe and selected package manager.', 'Install a supported Node.js version, restart the CLI, and rerun doctor.')
-  }
-  if (!npm?.available) {
-    return userError('GEN_TOOL_MISSING', 'preflight', 'Trusted npm CLI is missing or unsupported beside active Node.js.', 'Install Node.js with npm 10 or newer and rerun doctor.')
+  const go = report.tools.find((tool) => tool.id === 'go')
+  if (go && !go.available) {
+    return userError(go.version ? 'GEN_TOOL_UNSUPPORTED' : 'GEN_TOOL_MISSING', 'preflight', go.message, 'Install a supported Go 1.22+ SDK, add its bin directory to PATH, and rerun Doctor.')
   }
   if (!report.target.available) {
     const exists = report.target.message.includes('already exists')
@@ -119,6 +117,15 @@ function preflightError(report: DoctorReport): GeneratorError {
   }
   if (!report.platform.startsWith('win32-')) {
     return userError('GEN_PLATFORM_UNSUPPORTED', 'preflight', 'Phase 01 generation is supported on Windows only.', 'Run generation on Windows.')
+  }
+  if (go) return userError('GEN_TOOL_MISSING', 'preflight', 'Go toolchain preflight did not pass.', 'Review Doctor output and install a supported Go SDK.')
+  const node = report.tools.find((tool) => tool.id === 'node')
+  const npm = report.tools.find((tool) => tool.id === 'npm')
+  if (!node?.available) {
+    return userError('GEN_TOOL_UNSUPPORTED', 'preflight', 'Active Node.js version does not satisfy this recipe and selected package manager.', 'Install a supported Node.js version, restart the CLI, and rerun doctor.')
+  }
+  if (!npm?.available) {
+    return userError('GEN_TOOL_MISSING', 'preflight', 'Trusted npm CLI is missing or unsupported beside active Node.js.', 'Install Node.js with npm 10 or newer and rerun doctor.')
   }
   return userError('GEN_TOOL_MISSING', 'preflight', 'Required toolchain preflight did not pass.', 'Review doctor output and retry.')
 }
@@ -141,11 +148,13 @@ function throwIfCancelled(signal: AbortSignal | undefined, stage: StageId): void
   if (signal?.aborted) throw userError('GEN_CANCELLED', stage, 'Generation was cancelled.', 'Retry from the beginning at a new destination.')
 }
 
-async function prepareDirectories(stage: OwnedStage): Promise<{ tools: string; home: string; temp: string; cache: string; userConfig: string; globalConfig: string }> {
+async function prepareDirectories(stage: OwnedStage): Promise<{ tools: string; home: string; temp: string; cache: string; goCache: string; goModCache: string; userConfig: string; globalConfig: string }> {
   const tools = win32.join(stage.path, '.tools')
   const home = win32.join(stage.path, '.home')
   const temp = win32.join(stage.path, '.tmp')
   const cache = win32.join(stage.path, '.npm-cache')
+  const goCache = win32.join(stage.path, '.go-cache')
+  const goModCache = win32.join(stage.path, '.go-mod-cache')
   const userConfig = win32.join(stage.path, '.npmrc-user')
   const globalConfig = win32.join(stage.path, '.npmrc-global')
   await mutateOwnedStage(stage, [
@@ -154,11 +163,13 @@ async function prepareDirectories(stage: OwnedStage): Promise<{ tools: string; h
     '.home/AppData/Local',
     '.tmp',
     '.npm-cache',
+    '.go-cache',
+    '.go-mod-cache',
   ], [
     { path: '.npmrc-user', content: 'registry=https://registry.npmjs.org/\n' },
     { path: '.npmrc-global', content: 'registry=https://registry.npmjs.org/\n' },
   ])
-  return { tools, home, temp, cache, userConfig, globalConfig }
+  return { tools, home, temp, cache, goCache, goModCache, userConfig, globalConfig }
 }
 
 function npmArguments(userConfig: string, globalConfig: string, cache: string, commandArgs: readonly string[]): string[] {
@@ -217,6 +228,41 @@ async function runNpm(
     npmArguments(dirs.userConfig, dirs.globalConfig, dirs.cache, commandArgs),
     signal,
   ))
+  log.process(label, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
+  return result
+}
+
+async function runGo(
+  args: readonly string[],
+  cwd: string,
+  stage: OwnedStage,
+  go: GoTool,
+  dirs: { home: string; temp: string; goCache: string; goModCache: string },
+  log: JobLog,
+  label: string,
+  signal?: AbortSignal,
+  timeoutMs = 10 * 60 * 1000,
+): Promise<ProcessResult> {
+  const result = await runSafeProcess({
+    executablePath: go.executablePath,
+    allowedExecutableRoot: go.directory,
+    cwd,
+    allowedCwdRoot: stage.path,
+    args,
+    homeDirectory: dirs.home,
+    tempDirectory: dirs.temp,
+    extraPath: [go.directory],
+    environment: {
+      GOTOOLCHAIN: 'local',
+      GOPROXY: 'off',
+      GOSUMDB: 'off',
+      GOCACHE: dirs.goCache,
+      GOMODCACHE: dirs.goModCache,
+      GOTMPDIR: dirs.temp,
+    },
+    ...(signal ? { signal } : {}),
+    timeoutMs,
+  })
   log.process(label, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
   return result
 }
@@ -424,11 +470,13 @@ async function verifyDependencyPins(projectPath: string, pins: NonNullable<Recip
 }
 
 async function verifyProjectLockfile(projectPath: string, manager: PackageManagerManifestV1): Promise<string> {
+  if (!manager.lockfile) throw new Error(`No lockfile is configured for ${manager.id}.`)
   try {
     const entries = await readdir(projectPath)
     const present = entries.filter((entry) => ['package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lock', 'bun.lockb'].includes(entry))
     if (present.length !== 1 || present[0] !== manager.lockfile) throw new Error('Project must contain only the selected package-manager lockfile.')
-    const lock = await readFile(win32.join(projectPath, manager.lockfile), 'utf8')
+    const lockfile = manager.lockfile
+    const lock = await readFile(win32.join(projectPath, lockfile), 'utf8')
     if (manager.id === 'yarn' && (!lock.includes('__metadata:') || !/^\s+checksum:\s+\S+/m.test(lock))) throw new Error('Yarn lockfile lacks modern metadata or package checksums.')
     if (manager.id === 'pnpm' && (!/^lockfileVersion:/m.test(lock) || !/integrity:\s*['"]?sha512-/m.test(lock))) throw new Error('pnpm lockfile lacks version metadata or package integrity entries.')
     if (manager.id === 'npm') {
@@ -643,6 +691,68 @@ async function servedBackendSmoke(
   return outcome
 }
 
+async function servedGoBackendSmoke(
+  projectPath: string,
+  stage: OwnedStage,
+  dirs: { home: string; temp: string; goCache: string; goModCache: string },
+  go: GoTool,
+  projectName: string,
+  signal: AbortSignal | undefined,
+  log: JobLog,
+): Promise<ValidationOutcome> {
+  const port = await freePort()
+  const binaryPath = win32.join(stage.path, '.tmp', 'go-api-smoke.exe')
+  const build = await runGo(['build', '-o', binaryPath, './cmd/server'], projectPath, stage, go, dirs, log, 'go-http-smoke-build', signal, 2 * 60 * 1000)
+  if (build.exitCode !== 0) throw mappedProcessError('validating', build)
+  const running = await startSafeProcess({
+    executablePath: binaryPath,
+    allowedExecutableRoot: stage.path,
+    cwd: projectPath,
+    allowedCwdRoot: stage.path,
+    args: [],
+    homeDirectory: dirs.home,
+    tempDirectory: dirs.temp,
+    extraPath: [go.directory],
+    environment: {
+      HOST: '127.0.0.1',
+      PORT: String(port),
+      GOTOOLCHAIN: 'local',
+      GOPROXY: 'off',
+      GOSUMDB: 'off',
+      GOCACHE: dirs.goCache,
+      GOMODCACHE: dirs.goModCache,
+      GOTMPDIR: dirs.temp,
+    },
+    ...(signal ? { signal } : {}),
+  })
+  let outcome: ValidationOutcome | undefined
+  try {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      throwIfCancelled(signal, 'validating')
+      try {
+        const health = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(800) })
+        const healthBody = await health.json() as { status?: string }
+        const info = await fetch(`http://127.0.0.1:${port}/api/info`, { signal: AbortSignal.timeout(800) })
+        const infoBody = await info.json() as { name?: string; version?: string }
+        if (health.status === 200 && healthBody.status === 'ok' && info.status === 200
+          && infoBody.name === `${projectName} API` && infoBody.version === '0.1.0') {
+          outcome = { id: 'http-smoke', status: 'pass', message: 'Built Go API returned valid JSON from /health and /api/info.', exitCode: 0 }
+          break
+        }
+      } catch {
+        // Keep probing until bounded smoke-test timeout; no response body is surfaced.
+      }
+      await new Promise((resolveWait) => setTimeout(resolveWait, 500))
+    }
+  } finally {
+    await running.stop()
+    const result = await running.result.catch(() => undefined)
+    if (result) log.process('go-http-smoke-server', result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
+  }
+  if (!outcome) throw userError('GEN_VALIDATE_FAILED', 'validating', 'Built Go API did not return valid JSON from /health and /api/info within 15 seconds.', 'Review the local redacted job log and retry.')
+  return outcome
+}
+
 async function verifyGeneratedStyling(projectPath: string, recipe: RecipeManifestV1): Promise<ValidationOutcome | undefined> {
   const viteScss = recipe.styling === 'styling.scss'
     && (recipe.frontend === 'frontend.react-vite' || recipe.frontend === 'frontend.vue-vite')
@@ -721,15 +831,19 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
   let currentStage: StageId = 'preflight'
   const validations: ValidationOutcome[] = []
   const resolved = resolveSelection(selection)
+  selection = resolved.selection
+  const isGo = resolved.recipe.id === 'BE-02'
   const isForma = Boolean(selection.template)
   const recipeOwnerId = resolved.recipe.backend ?? resolved.recipe.frontend ?? 'core'
   const eventOwner = (id: StageId): string => stageOwner(id, recipeOwnerId, resolved.recipe.manager, isForma)
   const stageStart = (id: StageId): void => { currentStage = id; emit({ type: 'stage-started', stageId: id, stageOwner: eventOwner(id), stageStatus: 'running', message: `${id} started.` }) }
   const stageFinish = (id: StageId, status: 'passed' | 'failed' | 'skipped', message = `${id} completed.`): void => { emit({ type: 'stage-finished', stageId: id, stageOwner: eventOwner(id), stageStatus: status, message }) }
   let formaEvidence: FormaInstallEvidence | undefined
+  let npmTool: NpmTool | undefined
+  let goTool: GoTool | undefined
 
   emit({ type: 'job-started', stageOwner: 'core', status: 'running', message: `Generation job ${jobId} started.` })
-  emit({ type: 'warning', stageOwner: 'core', code: 'GEN_LIFECYCLE_SCRIPTS', message: `${resolved.recipe.manager} install can execute third-party lifecycle scripts; execution is not sandboxed.` })
+  if (!isGo) emit({ type: 'warning', stageOwner: 'core', code: 'GEN_LIFECYCLE_SCRIPTS', message: `${resolved.recipe.manager} install can execute third-party lifecycle scripts; execution is not sandboxed.` })
   try {
     stageStart('preflight')
     throwIfCancelled(options.signal, currentStage)
@@ -740,8 +854,16 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     throwIfCancelled(options.signal, currentStage)
     const doctor = await runDoctor(selection)
     if (!doctor.ready) throw preflightError(doctor)
-    const npmTool = await resolveNpmTool()
-    if (!npmTool || !supportsNpm(npmTool.version)) throw userError('GEN_TOOL_MISSING', 'preflight', 'Trusted npm CLI is missing or unsupported.', 'Install Node.js with npm 10 or newer and rerun doctor.')
+    if (isGo) {
+      const executable = await resolveGoTool()
+      const version = doctor.tools.find((tool) => tool.id === 'go')?.version
+      if (!executable || !version) throw userError('GEN_TOOL_MISSING', 'preflight', 'Go SDK could not be resolved after Doctor verification.', 'Install Go 1.22 or newer, add its bin directory to PATH, and rerun Doctor.')
+      if (!supportsGo(version)) throw userError('GEN_TOOL_UNSUPPORTED', 'preflight', `Go ${version} is below the required Go 1.22 minimum.`, 'Install Go 1.22 or newer and rerun Doctor.')
+      goTool = { ...executable, version }
+    } else {
+      npmTool = await resolveNpmTool()
+      if (!npmTool || !supportsNpm(npmTool.version)) throw userError('GEN_TOOL_MISSING', 'preflight', 'Trusted npm CLI is missing or unsupported.', 'Install Node.js with npm 10 or newer and rerun doctor.')
+    }
     stageFinish('preflight', 'passed')
 
     stageStart('staging')
@@ -758,10 +880,12 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     let starterFiles: string[] = []
     if (selection.template) {
       formaEvidence = await installFormaTemplate(stage, selection.template, resolved.recipe.frontend!, selection.project.name, dirs, log, options.signal)
+    } else if (isGo) {
+      starterFiles = await writeGoBackendStarter(stage, selection.project.name, selection.backend!.modulePath!)
     } else if (resolved.recipe.projectType === 'backend') {
       starterFiles = await writeBackendStarter(stage, selection.project.name, resolved.recipe.dependencies ?? [])
     } else {
-      ({ managerCliPath } = await executeScaffold(stage, resolved, npmTool.cliPath, dirs, log, options.signal))
+      ({ managerCliPath } = await executeScaffold(stage, resolved, npmTool!.cliPath, dirs, log, options.signal))
       if (resolved.recipe.manager !== 'npm') {
         const integrity: ValidationOutcome = { id: 'package-manager-integrity', status: 'pass', message: `Pinned ${resolved.recipe.manager} ${packageManager(resolved.recipe.manager).version} package version and npm integrity verified.`, exitCode: 0 }
         validations.push(integrity)
@@ -770,8 +894,8 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     }
     const projectPath = stage.childPath
     await bindOwnedStageProjectIdentity(stage, selection.project.name)
-    await verifyOwnedStageProjectIdentity(stage, selection.project.name)
-    const identityOutcome: ValidationOutcome = { id: 'scaffold-identity', status: 'pass', message: 'Generated package identity matches the requested name.' }
+    await verifyOwnedStageProjectIdentity(stage, selection.project.name, isGo ? selection.backend?.modulePath : undefined)
+    const identityOutcome: ValidationOutcome = { id: 'scaffold-identity', status: 'pass', message: isGo ? 'Generated module and project identity match the requested configuration.' : 'Generated package identity matches the requested name.' }
     validations.push(identityOutcome)
     emit({ type: 'validation', stageId: 'scaffolding', stageOwner: eventOwner('scaffolding'), stageStatus: 'passed', message: identityOutcome.message })
     stageFinish('scaffolding', 'passed')
@@ -785,50 +909,81 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       if (error instanceof GeneratorError) throw error
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
-    const generatedFiles = [...starterFiles, ...await configureRecipeDependencies(stage, resolved)]
+    const generatedFiles = [...starterFiles, ...(isGo ? [] : await configureRecipeDependencies(stage, resolved))]
     const managerConfig = packageManagerConfiguration(resolved.recipe.manager)
     if (managerConfig) {
       const projectPrefix = `${win32.basename(projectPath)}/`
       const written = await mutateOwnedStage(stage, [], [{ ...managerConfig, path: `${projectPrefix}${managerConfig.path}` }])
       generatedFiles.push(...written.map((path) => path.slice(projectPrefix.length)))
     }
-    generatedFiles.push(...await writeProjectDocs(stage, resolved, process.version.replace(/^v/, ''), npmTool, formaEvidence))
+    if (isGo) generatedFiles.push(...await writeGoProjectDocs(stage, resolved, goTool!.version))
+    else generatedFiles.push(...await writeProjectDocs(stage, resolved, process.version.replace(/^v/, ''), npmTool!, formaEvidence))
     if (formaEvidence) generatedFiles.push('FORMA-INSTALL.md', 'INSTALL.md', 'forma.install.json', 'forma-install-report.json')
     stageFinish('configuring', 'passed')
 
     stageStart('installing')
     throwIfCancelled(options.signal, currentStage)
-    // ponytail: clean Angular 21 scaffold crashes npm 10.9.8 Arborist; remove when ordinary install passes on pinned toolchain.
-    const legacyPeerHandling = resolved.recipe.styling === 'styling.bootstrap' || resolved.recipe.frontend === 'frontend.angular'
-    const manager = packageManager(resolved.recipe.manager)
-    const install = manager.id === 'npm'
-      ? await runNpm(['install', ...(legacyPeerHandling ? ['--legacy-peer-deps'] : []), '--package-lock=true'], projectPath, stage, npmTool.cliPath, npmRootFromCli(npmTool.cliPath), dirs, log, 'project-dependency-install', options.signal)
-      : managerCliPath
-        ? await runPinnedPackageManager(manager, managerCliPath, projectPath, stage, dirs, log, options.signal)
-        : (() => { throw userError('GEN_PACKAGE_MANAGER_INTEGRITY', 'installing', `Pinned ${manager.id} executable was not staged.`, 'Retry with the verified catalog package-manager pin.') })()
-    validations.push(checkOutcome('dependency-install', install))
-    if (install.exitCode !== 0) throw mappedProcessError('installing', install)
-    await verifyDependencyPins(projectPath, resolved.recipe.dependencies ?? [])
-    if (resolved.recipe.dependencies?.length) {
-      const integrity: ValidationOutcome = { id: 'dependency-integrity', status: 'pass', message: 'Pinned project dependency versions and npm integrity match the reviewed catalog.', exitCode: 0 }
-      validations.push(integrity)
-      emitValidation(emit, integrity, recipeOwnerId)
+    if (isGo) {
+      stageFinish('installing', 'skipped', 'No dependency installation required; Go standard library only.')
+    } else {
+      // ponytail: clean Angular 21 scaffold crashes npm 10.9.8 Arborist; remove when ordinary install passes on pinned toolchain.
+      const legacyPeerHandling = resolved.recipe.styling === 'styling.bootstrap' || resolved.recipe.frontend === 'frontend.angular'
+      const manager = packageManager(resolved.recipe.manager)
+      const install = manager.id === 'npm'
+        ? await runNpm(['install', ...(legacyPeerHandling ? ['--legacy-peer-deps'] : []), '--package-lock=true'], projectPath, stage, npmTool!.cliPath, npmRootFromCli(npmTool!.cliPath), dirs, log, 'project-dependency-install', options.signal)
+        : managerCliPath
+          ? await runPinnedPackageManager(manager, managerCliPath, projectPath, stage, dirs, log, options.signal)
+          : (() => { throw userError('GEN_PACKAGE_MANAGER_INTEGRITY', 'installing', `Pinned ${manager.id} executable was not staged.`, 'Retry with the verified catalog package-manager pin.') })()
+      validations.push(checkOutcome('dependency-install', install))
+      if (install.exitCode !== 0) throw mappedProcessError('installing', install)
+      await verifyDependencyPins(projectPath, resolved.recipe.dependencies ?? [])
+      if (resolved.recipe.dependencies?.length) {
+        const integrity: ValidationOutcome = { id: 'dependency-integrity', status: 'pass', message: 'Pinned project dependency versions and npm integrity match the reviewed catalog.', exitCode: 0 }
+        validations.push(integrity)
+        emitValidation(emit, integrity, recipeOwnerId)
+      }
+      const lockHash = await verifyProjectLockfile(projectPath, manager)
+      const lockIntegrity: ValidationOutcome = {
+        id: 'lockfile-integrity',
+        status: 'pass',
+        message: `Exactly one ${manager.lockfile} is present with ${manager.id} integrity metadata (SHA-256 ${lockHash}).`,
+        exitCode: 0,
+      }
+      validations.push(lockIntegrity)
+      emitValidation(emit, lockIntegrity, resolved.recipe.manager)
+      emit({ type: 'validation', stageId: 'installing', stageOwner: resolved.recipe.manager, stageStatus: 'passed', message: `${resolved.recipe.manager} dependency install passed after lifecycle-script consent.` })
+      stageFinish('installing', 'passed')
     }
-    const lockHash = await verifyProjectLockfile(projectPath, manager)
-    const lockIntegrity: ValidationOutcome = {
-      id: 'lockfile-integrity',
-      status: 'pass',
-      message: `Exactly one ${manager.lockfile} is present with ${manager.id} integrity metadata (SHA-256 ${lockHash}).`,
-      exitCode: 0,
-    }
-    validations.push(lockIntegrity)
-    emitValidation(emit, lockIntegrity, resolved.recipe.manager)
-    emit({ type: 'validation', stageId: 'installing', stageOwner: resolved.recipe.manager, stageStatus: 'passed', message: `${resolved.recipe.manager} dependency install passed after lifecycle-script consent.` })
-    stageFinish('installing', 'passed')
 
     stageStart('validating')
     throwIfCancelled(options.signal, currentStage)
-    const checks: { id: string; path: string; args: string[] }[] = resolved.recipe.projectType === 'backend'
+    if (isGo) {
+      const moduleResult = await runGo(['mod', 'edit', '-json'], projectPath, stage, goTool!, dirs, log, 'go-module-validation', options.signal)
+      if (moduleResult.exitCode !== 0) throw mappedProcessError('validating', moduleResult)
+      let module: { Module?: { Path?: string }; Go?: string }
+      try { module = JSON.parse(moduleResult.stdout) as typeof module } catch { throw userError('GEN_VALIDATE_FAILED', 'validating', 'Go Modules metadata could not be parsed.', 'Review the generated go.mod and retry.') }
+      if (!module.Module || module.Module.Path !== selection.backend?.modulePath || module.Go !== '1.22.0') {
+        throw userError('GEN_VALIDATE_FAILED', 'validating', 'Go Modules metadata does not match the reviewed module path and Go minimum.', 'Review the generated go.mod and retry.')
+      }
+      try {
+        await access(win32.join(projectPath, 'go.sum'))
+        throw userError('GEN_VALIDATE_FAILED', 'validating', 'Unexpected go.sum was created for a standard-library-only project.', 'Review the generated module files and retry.')
+      } catch (error) {
+        if (error instanceof GeneratorError) throw error
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
+      const moduleOutcome: ValidationOutcome = { id: 'go-module', status: 'pass', message: 'go.mod parsed with the requested module path; no external dependencies or go.sum.', exitCode: 0 }
+      validations.push(moduleOutcome)
+      emitValidation(emit, moduleOutcome, recipeOwnerId)
+    }
+    const checks: { id: string; path?: string; args: string[] }[] = isGo
+      ? [
+        { id: 'go-fmt', args: ['fmt', './...'] },
+        { id: 'go-vet', args: ['vet', './...'] },
+        { id: 'go-test', args: ['test', './...'] },
+        { id: 'go-build', args: ['build', './...'] },
+      ]
+      : resolved.recipe.projectType === 'backend'
       ? [
         { id: 'typecheck', path: win32.join(projectPath, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['--project', 'tsconfig.json', '--noEmit'] },
         { id: 'unit-tests', path: win32.join(projectPath, 'node_modules', 'tsx', 'dist', 'cli.mjs'), args: ['--test', 'test/backend.test.ts'] },
@@ -870,7 +1025,9 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       ]
     for (const check of checks) {
       throwIfCancelled(options.signal, currentStage)
-      const result = await runAppScript(check.path, check.args, projectPath, stage, dirs, options.signal, log, check.id)
+      const result = isGo
+        ? await runGo(check.args, projectPath, stage, goTool!, dirs, log, check.id, options.signal)
+        : await runAppScript(check.path!, check.args, projectPath, stage, dirs, options.signal, log, check.id)
       const outcome = checkOutcome(check.id, result)
       validations.push(outcome)
       emitValidation(emit, outcome, recipeOwnerId)
@@ -887,7 +1044,9 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       emitValidation(emit, lint, recipeOwnerId)
     }
     throwIfCancelled(options.signal, currentStage)
-    const smoke = resolved.recipe.projectType === 'backend'
+    const smoke = isGo
+      ? await servedGoBackendSmoke(projectPath, stage, dirs, goTool!, selection.project.name, options.signal, log)
+      : resolved.recipe.projectType === 'backend'
       ? await servedBackendSmoke(projectPath, stage, dirs, options.signal, log)
       : await servedPageSmoke(projectPath, stage, dirs, resolved.recipe.frontend!, options.signal, log)
     validations.push(smoke)
@@ -895,7 +1054,8 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     const allPassed = validations.every((item) => item.status === 'pass'
       || (selection.template !== undefined && item.id === 'lint' && item.status === 'skipped'))
     if (!allPassed) throw userError('GEN_VALIDATE_FAILED', 'validating', 'One or more required checks did not pass.', 'Review the local redacted job log and retry.')
-    await writeProjectManifest(stage, resolved, process.version.replace(/^v/, ''), npmTool, validations, generatedFiles, formaEvidence)
+    if (isGo) await writeGoProjectManifest(stage, resolved, goTool!.version, validations, generatedFiles)
+    else await writeProjectManifest(stage, resolved, process.version.replace(/^v/, ''), npmTool!, validations, generatedFiles, formaEvidence)
     stageFinish('validating', 'passed')
 
     stageStart('finalizing')

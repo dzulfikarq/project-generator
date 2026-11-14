@@ -5,8 +5,10 @@ import { GeneratorError } from './errors.js'
 import { readSupervisorResponse, sendSupervisorRequest, spawnSupervisor } from './native-supervisor.js'
 
 export interface SafeProcessOptions {
-  scriptPath: string
-  allowedScriptRoot: string
+  scriptPath?: string
+  allowedScriptRoot?: string
+  executablePath?: string
+  allowedExecutableRoot?: string
   cwd: string
   allowedCwdRoot: string
   args: readonly string[]
@@ -97,9 +99,15 @@ const allowedEnvironmentOverrides = new Set([
   'YARN_ENABLE_TELEMETRY',
   'pnpm_config_dangerously_allow_all_builds',
   'pnpm_config_registry',
+  'GOTOOLCHAIN',
+  'GOPROXY',
+  'GOSUMDB',
+  'GOCACHE',
+  'GOMODCACHE',
+  'GOTMPDIR',
 ])
 
-export async function startNodeProcess(options: SafeProcessOptions): Promise<RunningProcess> {
+export async function startSafeProcess(options: SafeProcessOptions): Promise<RunningProcess> {
   if (process.platform !== 'win32') throw new GeneratorError({ code: 'GEN_NATIVE_SUPERVISOR_UNAVAILABLE', stage: 'process', message: 'Windows native supervisor is required for generation.', nextAction: 'Build and run Project Generator on supported Windows.', targetModified: false })
   if (options.signal?.aborted) throw new GeneratorError({ code: 'GEN_CANCELLED', stage: 'process', message: 'Generation was cancelled.', nextAction: 'Retry from the beginning.', targetModified: false })
   if (options.args.some((arg) => typeof arg !== 'string' || arg.includes('\0')) || options.args.join('').length > 28_000) {
@@ -108,8 +116,14 @@ export async function startNodeProcess(options: SafeProcessOptions): Promise<Run
   if (Object.entries(options.environment ?? {}).some(([key, value]) => !allowedEnvironmentOverrides.has(key) || value.includes('\0'))) {
     throw new GeneratorError({ code: 'GEN_RUNNER_BLOCKED', stage: 'process', message: 'Refused unreviewed process environment overrides.', nextAction: 'Use the pinned package-manager adapter and retry.', targetModified: false })
   }
+  const scriptMode = options.scriptPath !== undefined && options.allowedScriptRoot !== undefined
+  const executableMode = options.executablePath !== undefined && options.allowedExecutableRoot !== undefined
+  if (scriptMode === executableMode || (options.scriptPath !== undefined) !== (options.allowedScriptRoot !== undefined)
+    || (options.executablePath !== undefined) !== (options.allowedExecutableRoot !== undefined)) {
+    throw new GeneratorError({ code: 'GEN_RUNNER_BLOCKED', stage: 'process', message: 'Refused an incomplete or ambiguous process executable.', nextAction: 'Use a reviewed executable and its allowed installation directory.', targetModified: false })
+  }
   const [scriptPath, cwd, extraPath] = await Promise.all([
-    checkedFile(options.scriptPath, options.allowedScriptRoot),
+    checkedFile(scriptMode ? options.scriptPath! : options.executablePath!, scriptMode ? options.allowedScriptRoot! : options.allowedExecutableRoot!),
     checkedDirectory(options.cwd, options.allowedCwdRoot),
     Promise.all((options.extraPath ?? []).map((directory) => checkedDirectory(directory, directory))),
   ])
@@ -122,8 +136,8 @@ export async function startNodeProcess(options: SafeProcessOptions): Promise<Run
   }
   child.once('spawn', () => {
     sendSupervisorRequest(child, {
-      executable: process.execPath,
-      args: [scriptPath, ...options.args],
+      executable: executableMode ? scriptPath : process.execPath,
+      args: scriptMode ? [scriptPath, ...options.args] : [...options.args],
       cwd,
       env: Object.fromEntries(Object.entries(processEnvironment(options.homeDirectory, options.tempDirectory, cwd, extraPath, options.environment)).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
       ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
@@ -176,8 +190,12 @@ export async function startNodeProcess(options: SafeProcessOptions): Promise<Run
   return { result, stop }
 }
 
-export async function runNodeProcess(options: SafeProcessOptions): Promise<ProcessResult> {
-  const running = await startNodeProcess(options)
+export function startNodeProcess(options: SafeProcessOptions): Promise<RunningProcess> {
+  return startSafeProcess(options)
+}
+
+export async function runSafeProcess(options: SafeProcessOptions): Promise<ProcessResult> {
+  const running = await startSafeProcess(options)
   let timeout: NodeJS.Timeout | undefined
   let abortListener: (() => void) | undefined
   let failure: GeneratorError | undefined
@@ -216,4 +234,8 @@ export async function runNodeProcess(options: SafeProcessOptions): Promise<Proce
     if (timeout) clearTimeout(timeout)
     if (abortListener) options.signal?.removeEventListener('abort', abortListener)
   }
+}
+
+export function runNodeProcess(options: SafeProcessOptions): Promise<ProcessResult> {
+  return runSafeProcess(options)
 }

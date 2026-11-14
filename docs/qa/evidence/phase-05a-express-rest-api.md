@@ -52,4 +52,4 @@ Command: `node scripts/phase-05a-native-e2e.mjs` against Windows WebView2 DevToo
 
 These are local developer-host results, not independent acceptance. Lifecycle scripts remain unsandboxed. Cross-account ACL denial, clean-machine install, full accessibility review, installer build/install, database integration, and security/release review remain open. No recipe status changed; BE-01 remains `planned` and blocked in normal/release generation.
 
-**Recommendation:** GO for independent BE-01 review/acceptance only; NO-GO for promotion or release. For Phase 05B, evaluate a separate Go standard-library `net/http` + Go Modules recipe before expanding into database or fullstack work.
+**Recommendation:** GO for independent BE-01 review/acceptance only; NO-GO for promotion or release. The Phase 05B Go standard-library evaluation is recorded in [DEC-026](../../decisions/DEC-026-phase-05b-go-net-http.md) and [Phase 05B evidence](phase-05b-go-net-http.md). Recommend Phase 05C evaluate standalone Laravel and FastAPI recipes before database/fullstack work.

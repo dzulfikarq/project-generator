@@ -11,6 +11,7 @@ import {
   loadPreferences,
   retainCompatibleStyling,
   savePreferences,
+  validateGoModulePath,
   validateParentDirectory,
   validateProjectName,
   type AppPreferences,
@@ -21,15 +22,16 @@ import {
 
 type Page = 'home' | 'create' | 'frameworks' | 'templates' | 'projects' | 'environment' | 'settings' | 'generation' | 'result'
 type WizardStep = 'details' | 'stack' | 'design' | 'docs' | 'review'
-type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15' | 'BE-01'
+type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15' | 'BE-01' | 'BE-02'
 function isRecipeId(value: string): value is RecipeId {
-  return ['FE-01', 'FE-02', 'FE-03', 'FE-04', 'FE-05', 'FE-06', 'FE-07', 'FE-08', 'FE-09', 'FE-10', 'FE-11', 'FE-12', 'FE-13', 'FE-14', 'FE-15', 'BE-01'].includes(value)
+  return ['FE-01', 'FE-02', 'FE-03', 'FE-04', 'FE-05', 'FE-06', 'FE-07', 'FE-08', 'FE-09', 'FE-10', 'FE-11', 'FE-12', 'FE-13', 'FE-14', 'FE-15', 'BE-01', 'BE-02'].includes(value)
 }
 type Documentation = 'minimal' | 'standard' | 'full'
 type Selection = {
   projectName: string
   parentDirectory: string
   recipeId: RecipeId
+  modulePath?: string
   documentation: Documentation
   templateId?: string
   templateVariantId?: string
@@ -165,6 +167,8 @@ function App() {
   const [projectName, setProjectName] = useState('my-project')
   const [parentDirectory, setParentDirectory] = useState('')
   const [projectType, setProjectType] = useState<'frontend' | 'backend'>('frontend')
+  const [backendId, setBackendId] = useState('backend.express')
+  const [modulePath, setModulePath] = useState('example.com/my-project')
   const [frontendId, setFrontendId] = useState('frontend.react-vite')
   const [stylingId, setStylingId] = useState('styling.css')
   const [managerId, setManagerId] = useState('npm')
@@ -195,10 +199,10 @@ function App() {
   const activeProjectRef = useRef<{ name: string; path: string; recipeId: string } | null>(null)
 
   const recipe = useMemo(() => projectType === 'backend'
-    ? catalog?.recipes.find((item) => item.id === 'BE-01' && item.backend === 'backend.express' && managerId === 'npm')
+    ? catalog?.recipes.find((item) => item.id.startsWith('BE-') && item.backend === backendId && item.manager === managerId)
     : templateId
       ? findFrameworkRecipe(catalog, frontendId, managerId)
-      : findRecipe(catalog, frontendId, stylingId, managerId), [catalog, frontendId, stylingId, managerId, templateId, projectType])
+      : findRecipe(catalog, frontendId, stylingId, managerId), [catalog, frontendId, stylingId, managerId, templateId, projectType, backendId])
   const frontendAdapters = catalog?.adapters.filter((adapter) => adapter.kind === 'frontend') ?? []
   const stylingAdapters = catalog?.adapters.filter((adapter) => adapter.kind === 'styling') ?? []
   const backendAdapters = catalog?.adapters.filter((adapter) => adapter.kind === 'backend') ?? []
@@ -211,6 +215,7 @@ function App() {
   const activeTemplate = catalog?.forma.templates.find((template) => template.id === templateId)
   const selectedVariant = activeTemplate?.variants.find((variant) => variant.id === templateVariantId)
   const nameError = validateProjectName(projectName)
+  const modulePathError = selectedBackend?.id === 'backend.go-net-http' ? validateGoModulePath(modulePath) : null
   const parentError = validateParentDirectory(parentDirectory)
   const parentFieldError = parentDirectory ? parentError : null
   const settingsDirectoryError = directorySetting ? validateParentDirectory(directorySetting) : null
@@ -223,10 +228,11 @@ function App() {
       projectName,
       parentDirectory,
       recipeId: recipe.id,
+      ...(recipe.id === 'BE-02' ? { modulePath } : {}),
       documentation,
       ...(templateId ? { templateId, ...(templateVariantId ? { templateVariantId } : {}) } : {}),
     }
-  }, [recipe, projectName, parentDirectory, documentation, templateId, templateVariantId])
+  }, [recipe, projectName, parentDirectory, documentation, templateId, templateVariantId, modulePath])
   const currentStepIndex = WIZARD_STEPS.findIndex((item) => item.id === step)
   const canUsePlanned = Boolean(runtime?.internalDevelopmentMode)
   const canGenerate = canStartGeneration({
@@ -235,7 +241,7 @@ function App() {
     hasSelection: Boolean(selection),
     planAvailable: Boolean(plan),
     doctorReady: Boolean(doctor?.ready),
-    lifecycleConsent: consent,
+    lifecycleConsent: consent || !Boolean(plan?.executesDependencyLifecycleScripts),
     executionAvailable: Boolean(plan?.executionAvailable),
     internalDevelopmentMode: canUsePlanned,
     allowPlanned,
@@ -285,8 +291,10 @@ function App() {
       ?? catalog?.recipes.find((item) => item.id === 'FE-02' && (!template || template.testedFrameworks.includes(item.frontend ?? '')))
       ?? catalog?.recipes.find((item) => item.id === 'FE-01')
     setProjectName('my-project')
+    setModulePath('example.com/my-project')
     setParentDirectory(preferences.defaultParentDirectory)
     setProjectType('frontend')
+    setBackendId('backend.express')
     setFrontendId(defaultRecipe?.frontend ?? 'frontend.react-vite')
     setStylingId(defaultRecipe?.styling ?? 'styling.css')
     setManagerId(defaultRecipe?.manager ?? 'npm')
@@ -323,6 +331,7 @@ function App() {
       projectName,
       parentDirectory,
       recipeId: recipe.id,
+      ...(recipe.id === 'BE-02' ? { modulePath } : {}),
       documentation,
       ...(templateId ? { templateId, ...(templateVariantId ? { templateVariantId } : {}) } : {}),
     }
@@ -330,7 +339,7 @@ function App() {
 
   async function loadReview() {
     const currentSelection = buildSelection()
-    if (!currentSelection || nameError || parentError || templateError) return
+    if (!currentSelection || nameError || parentError || templateError || modulePathError) return
     setBusy(true)
     setCommandError(null)
     setPlan(null)
@@ -488,8 +497,8 @@ function App() {
 
   function createSelectionError(): string | null {
     if (!recipe) return 'Choose a project type and a compatible catalog recipe.'
-    if (!nameError && !parentError && !templateError) return null
-    return nameError ?? parentError ?? templateError
+    if (!nameError && !parentError && !templateError && !modulePathError) return null
+    return nameError ?? parentError ?? templateError ?? modulePathError
   }
 
   const currentProject = activeProjectRef.current
@@ -590,7 +599,7 @@ function App() {
               <div className="section-title-row"><div><p className="eyebrow">01 · PROJECT</p><h2 id="details-title">Where should we create it?</h2></div><StatusPill>Required</StatusPill></div>
               <p className="section-intro">We create one new folder inside your destination. Existing projects are never modified.</p>
               <div className="field-grid">
-                <div className="field"><label className="field-label" htmlFor="project-name">Project name</label><input id="project-name" className="text-input" disabled={busy} value={projectName} maxLength={100} autoComplete="off" aria-invalid={Boolean(nameError)} aria-describedby={nameError ? 'project-name-error' : 'project-name-help'} onChange={(event) => { setProjectName(event.target.value); invalidateReview() }} />{nameError ? <p id="project-name-error" className="field-error">{nameError}</p> : <p id="project-name-help" className="field-help">Lowercase name, suitable for npm.</p>}</div>
+                <div className="field"><label className="field-label" htmlFor="project-name">Project name</label><input id="project-name" className="text-input" disabled={busy} value={projectName} maxLength={100} autoComplete="off" aria-invalid={Boolean(nameError)} aria-describedby={nameError ? 'project-name-error' : 'project-name-help'} onChange={(event) => { const next = event.target.value; setProjectName(next); setModulePath((current) => current === `example.com/${projectName}` ? `example.com/${next}` : current); invalidateReview() }} />{nameError ? <p id="project-name-error" className="field-error">{nameError}</p> : <p id="project-name-help" className="field-help">Lowercase name for the new project folder.</p>}</div>
                 <div className="field"><label className="field-label" htmlFor="project-parent">Parent folder</label><input id="project-parent" className="text-input mono-input" disabled={busy} value={parentDirectory} maxLength={220} placeholder="C:\Users\you\Projects" autoComplete="off" aria-invalid={Boolean(parentFieldError)} aria-describedby={parentFieldError ? 'project-parent-error' : 'project-parent-help'} onChange={(event) => { setParentDirectory(event.target.value); invalidateReview() }} />{parentFieldError ? <p id="project-parent-error" className="field-error">{parentFieldError}</p> : <p id="project-parent-help" className="field-help">Existing local Windows folder. Network paths are blocked.</p>}</div>
               </div>
               <div className="step-safety-note"><strong>New folders only</strong><span>Planning does not write to your destination. Existing projects are never changed.</span></div>
@@ -606,7 +615,7 @@ function App() {
                   setProjectType(type)
                   setTemplateId('')
                   setTemplateVariantId('')
-                  if (type === 'backend') { setManagerId('npm'); setStylingId('') }
+                  if (type === 'backend') { setManagerId(backendId === 'backend.go-net-http' ? 'go-modules' : 'npm'); setStylingId('') }
                   else { setManagerId('npm'); setStylingId('styling.css') }
                   invalidateReview()
                 }}><span className="radio-dot" aria-hidden="true" /><span><strong>{type === 'frontend' ? 'Frontend' : 'Backend'}</strong><small>{type === 'frontend' ? 'Browser application recipes' : 'Standalone API recipes'}</small></span></button>)}
@@ -636,25 +645,29 @@ function App() {
               </> : <>
                 <fieldset className="choice-fieldset"><legend>Backend framework</legend><div className="choice-grid">
                   {backendAdapters.map((adapter) => {
-                    const adapterRecipe = catalog?.recipes.find((item) => item.id === 'BE-01' && item.backend === adapter.id)
+                    const adapterRecipe = catalog?.recipes.find((item) => item.id.startsWith('BE-') && item.backend === adapter.id)
                     return <button type="button" key={adapter.id} className={`select-card ${recipe?.backend === adapter.id ? 'chosen' : ''}`} disabled={!adapterRecipe || busy} onClick={() => {
-                      setManagerId('npm')
+                      setBackendId(adapter.id)
+                      setManagerId(adapter.packageManagers[0] ?? 'npm')
                       invalidateReview()
                     }} aria-pressed={recipe?.backend === adapter.id}>
-                      <span className="select-card-top"><span className="framework-monogram">E</span><StatusPill tone="warn">{adapterRecipe?.status ?? 'Catalog only'}</StatusPill></span>
-                      <strong>{adapter.displayName}</strong><small>{adapterRecipe ? `${adapterRecipe.id} · TypeScript · npm` : 'No backend recipe is cataloged.'}</small>
+                      <span className="select-card-top"><span className="framework-monogram">{adapter.id === 'backend.go-net-http' ? 'G' : 'E'}</span><StatusPill tone="warn">{adapterRecipe?.status ?? 'Catalog only'}</StatusPill></span>
+                      <strong>{adapter.displayName}</strong><small>{adapterRecipe ? `${adapterRecipe.id} · ${adapter.id === 'backend.go-net-http' ? 'Go · Go Modules' : 'TypeScript · npm'}` : 'No backend recipe is cataloged.'}</small>
                     </button>
                   })}
                 </div></fieldset>
-                <div className="unsupported-grid"><UnsupportedGroup title="Database" description="BE-01 is database-free. Database adapters are not implemented." entries={databaseAdapters.map((adapter) => adapter.displayName)} /><UnsupportedGroup title="Full-stack / mobile" description="Frontend-backend composition and mobile generation are outside this phase." entries={[]} /></div>
+                <div className="unsupported-grid"><UnsupportedGroup title="Database" description="BE-01 and BE-02 are database-free. Database adapters are not implemented." entries={databaseAdapters.map((adapter) => adapter.displayName)} /><UnsupportedGroup title="Full-stack / mobile" description="Frontend-backend composition and mobile generation are outside this phase." entries={[]} /></div>
               </>}
               <div className="wizard-actions"><button className="button secondary-button" disabled={busy} onClick={() => setStep('details')}>Back</button><button className="button primary-button" disabled={projectType === 'frontend' ? !selectedFrontend || busy : !selectedBackend || busy} onClick={() => setStep('design')}>Choose tools <span aria-hidden="true">→</span></button></div>
             </section>}
 
             {step === 'design' && <section className="wizard-card" aria-labelledby="design-title">
               <div className="section-title-row"><div><p className="eyebrow">03 · TOOLING</p><h2 id="design-title">{projectType === 'backend' ? 'Backend tools' : 'Styling and starting template'}</h2></div><StatusPill>Catalog-backed</StatusPill></div>
-              <p className="section-intro">{projectType === 'backend' ? 'BE-01 uses TypeScript and npm. No styling, database, or frontend is added.' : 'Only combinations with an existing recipe can be selected. Framework changes never silently replace your styling choice.'}</p>
-              {projectType === 'backend' ? <div className="template-style-note"><strong>Express · TypeScript · npm</strong><span>Node.js backend, standalone REST API. npm is the required and only package manager for BE-01.</span></div> : <>
+              <p className="section-intro">{projectType === 'backend' ? 'Backend recipes use their native dependency manager. No styling, database, or frontend is added.' : 'Only combinations with an existing recipe can be selected. Framework changes never silently replace your styling choice.'}</p>
+              {projectType === 'backend' ? selectedBackend?.id === 'backend.go-net-http' ? <>
+                <div className="template-style-note"><strong>Go · Standard Library net/http · Go Modules</strong><span>Go 1.22+ standalone REST API. No third-party dependencies, go.sum, npm, or automatic server startup.</span></div>
+                <div className="field"><label className="field-label" htmlFor="go-module-path">Go module path</label><input id="go-module-path" className="text-input mono-input" disabled={busy} value={modulePath} maxLength={512} autoComplete="off" aria-invalid={Boolean(modulePathError)} aria-describedby={modulePathError ? 'go-module-path-error' : 'go-module-path-help'} onChange={(event) => { setModulePath(event.target.value); invalidateReview() }} />{modulePathError ? <p id="go-module-path-error" className="field-error">{modulePathError}</p> : <p id="go-module-path-help" className="field-help">Used in go.mod and internal package imports.</p>}</div>
+              </> : <div className="template-style-note"><strong>Express · TypeScript · npm</strong><span>Node.js standalone REST API. npm is required for BE-01.</span></div> : <>
               {!templateId ? <fieldset className="choice-fieldset"><legend>Styling</legend><div className="compact-choice-grid">
                  {stylingAdapters.filter((adapter) => !['styling.scss', 'styling.tailwind'].includes(adapter.id) || adapter.compatibleWith.includes(frontendId)).map((adapter) => {
                   const compatible = adapter.compatibleWith.includes(frontendId)
@@ -703,7 +716,7 @@ function App() {
                 <p className="form-note">Forma compatibility is metadata from a pinned external snapshot, not Project Generator support. Private source fetch uses your configured Git credentials only after generation starts.</p>
               </fieldset>
               </>}
-              <div className="wizard-actions"><button className="button secondary-button" disabled={busy} onClick={() => setStep('stack')}>Back</button><button className="button primary-button" disabled={!recipe || Boolean(templateError) || busy} onClick={() => setStep('docs')}>Documentation <span aria-hidden="true">→</span></button></div>
+              <div className="wizard-actions"><button className="button secondary-button" disabled={busy} onClick={() => setStep('stack')}>Back</button><button className="button primary-button" disabled={!recipe || Boolean(templateError || modulePathError) || busy} onClick={() => setStep('docs')}>Documentation <span aria-hidden="true">→</span></button></div>
             </section>}
 
             {step === 'docs' && <section className="wizard-card" aria-labelledby="docs-title">
@@ -727,7 +740,7 @@ function App() {
               {busy && <div className="inline-loading" role="status"><span className="spinner" /> Resolving read-only plan and checking prerequisites…</div>}
               {!busy && !plan && <div className="review-empty"><p>{commandError ? 'Review could not be completed.' : 'Resolve the configuration to load current plan and environment checks.'}</p><button className="button secondary-button" disabled={!selection} onClick={() => void loadReview()}>Resolve plan and run checks</button></div>}
               {plan && <>
-                <div className="stack-summary"><div><small>PROJECT</small><strong>{projectName}</strong><code>{plan.targetPath}</code></div><div><small>STACK</small><strong>{projectType === 'backend' ? `${selectedBackend?.displayName ?? 'Express'} REST API` : `${selectedFrontend?.displayName ?? frontendId} + ${activeTemplate ? 'Forma-managed styling' : stylingAdapters.find((adapter) => adapter.id === stylingId)?.displayName ?? stylingId}`}</strong><span>{plan.recipeId} · TypeScript · {managerId} · {documentation} docs</span></div>{activeTemplate && <div><small>FORMA TEMPLATE</small><strong>{activeTemplate.name}</strong><span>{selectedVariant?.name ?? activeTemplate.variants.find((variant) => variant.default)?.name ?? 'Default'} variant · planned integration</span></div>}</div>
+                <div className="stack-summary"><div><small>PROJECT</small><strong>{projectName}</strong><code>{plan.targetPath}</code></div><div><small>STACK</small><strong>{projectType === 'backend' ? `${selectedBackend?.displayName ?? 'Express'} REST API` : `${selectedFrontend?.displayName ?? frontendId} + ${activeTemplate ? 'Forma-managed styling' : stylingAdapters.find((adapter) => adapter.id === stylingId)?.displayName ?? stylingId}`}</strong><span>{plan.recipeId} · {plan.recipeId === 'BE-02' ? 'Go' : 'TypeScript'} · {managerId} · {documentation} docs</span>{plan.recipeId === 'BE-02' && <code>Module: {modulePath}</code>}</div>{activeTemplate && <div><small>FORMA TEMPLATE</small><strong>{activeTemplate.name}</strong><span>{selectedVariant?.name ?? activeTemplate.variants.find((variant) => variant.default)?.name ?? 'Default'} variant · planned integration</span></div>}</div>
 
                 <div className="review-section"><div className="review-section-heading"><div><span className="review-icon" aria-hidden="true">✓</span><h3>Environment checks</h3></div><StatusPill tone={doctor?.ready ? 'good' : 'bad'}>{doctor?.ready ? 'READY' : 'BLOCKED'}</StatusPill></div>
                   {doctor?.tools.filter((tool) => tool.id !== 'target').map((tool) => <div className="doctor-row" key={tool.id}><span className={tool.available ? 'check-state ok' : 'check-state missing'} aria-hidden="true">{tool.available ? '✓' : '!'}</span><div><strong>{tool.id}{tool.version ? ` · ${tool.version}` : ''}</strong><small>{tool.message}</small></div><span className={tool.available ? 'doctor-status ok' : 'doctor-status missing'}>{tool.available ? 'Ready' : 'Required'}</span></div>)}
@@ -745,13 +758,13 @@ function App() {
                 </div>
 
                 {plan.warnings.length > 0 && <div className="risk-box"><strong>Risks and limitations</strong><ul>{plan.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div>}
-                <div className="consent-box"><p className="eyebrow">YOUR APPROVAL REQUIRED</p><strong>Dependency lifecycle scripts run without a sandbox.</strong><p>{managerId} installation can execute third-party scripts with your Windows user permissions. Process supervision does not sandbox those scripts. Network access and generated validation commands are listed above.</p>
+                {plan.executesDependencyLifecycleScripts ? <div className="consent-box"><p className="eyebrow">YOUR APPROVAL REQUIRED</p><strong>Dependency lifecycle scripts run without a sandbox.</strong><p>{managerId} installation can execute third-party scripts with your Windows user permissions. Process supervision does not sandbox those scripts. Network access and generated validation commands are listed above.</p>
                   <label className="check-line"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>I understand and consent to lifecycle scripts running unsandboxed for this generation.</span></label>
-                </div>
+                </div> : <div className="template-style-note"><strong>No dependency lifecycle scripts.</strong><span>Go Modules contains no external dependencies for this recipe. Generation runs Go checks locally with network access disabled.</span></div>}
                 {canUsePlanned && !plan.executionAvailable && <label className="internal-consent"><input type="checkbox" checked={allowPlanned} onChange={(event) => setAllowPlanned(event.target.checked)} /><span><strong>Internal evidence run only:</strong> allow this planned recipe. Recipe remains unavailable in normal builds and is not promoted.</span></label>}
                 {!plan.executionAvailable && !canUsePlanned && <div className="blocked-callout"><strong>Generation unavailable in normal builds.</strong><span>This recipe remains planned pending independent acceptance and review.</span></div>}
                 <div className="wizard-actions"><button className="button secondary-button" disabled={busy} onClick={() => { setConsent(false); setStep('docs') }}>Back to setup</button><button className="button primary-button" disabled={!canGenerate} onClick={() => void startGeneration()}>{busy ? 'Starting…' : 'Create project'} <span aria-hidden="true">→</span></button></div>
-                {!consent && <p className="footer-hint">Generation stays blocked until you affirm the lifecycle-script consent above.</p>}
+                {plan.executesDependencyLifecycleScripts && !consent && <p className="footer-hint">Generation stays blocked until you affirm the lifecycle-script consent above.</p>}
               </>}
             </section>}
           </div>
@@ -769,7 +782,7 @@ function App() {
             <button className="button secondary-button" disabled={!adapterRecipe || busy} onClick={() => startWizardForFramework(adapter.id)}>{adapterRecipe ? 'Configure project' : 'Unavailable'}</button>
           </article>
         })}</div>
-          <p className="catalog-pin">FE-01 through FE-15 and BE-01 remain planned. Normal generation remains blocked pending independent acceptance.</p>
+           <p className="catalog-pin">FE-01 through FE-15 and BE-01–BE-02 remain planned. Normal generation remains blocked pending independent acceptance.</p>
       </section>}
 
       {page === 'templates' && <section className="page-content" aria-labelledby="templates-title">
@@ -806,7 +819,7 @@ function App() {
       {page === 'environment' && <section className="page-content environment-page" aria-labelledby="environment-title">
         <div className="page-heading"><div><p className="eyebrow">LOCAL TOOLCHAIN</p><h1 id="environment-title">Environment Doctor</h1><p className="lead">Check the app runtime here. Node, npm, and destination checks need a selected project and run during review.</p></div><button className="button secondary-button" disabled={runtimeBusy} onClick={() => void refreshRuntime()}>{runtimeBusy ? 'Checking…' : 'Refresh runtime'}</button></div>
         <section className="environment-card"><div className="environment-card-icon" aria-hidden="true">⌘</div><div className="environment-card-main"><div className="environment-title-row"><div><p className="eyebrow">APPLICATION ENGINE</p><h2>{runtime?.available ? 'Ready to plan' : runtime ? 'Needs attention' : 'Checking runtime'}</h2></div><StatusPill tone={runtime?.available ? 'good' : runtime ? 'bad' : 'neutral'}>{runtime?.available ? 'Available' : runtime ? 'Unavailable' : 'Checking'}</StatusPill></div><p>{runtime?.message ?? 'Reading the configured runtime status…'}</p><dl className="environment-facts"><div><dt>Runtime mode</dt><dd>{runtime?.mode === 'bundled' ? 'Bundled Node.js' : 'System Node.js'}</dd></div><div><dt>Node.js</dt><dd>{runtime?.version ?? 'Not detected'}</dd></div><div><dt>Visual Studio Code</dt><dd>{vscodeAvailable ? 'Detected' : 'Not detected'}</dd></div></dl></div></section>
-         <section className="doctor-next-card"><div><h2>Project-specific checks</h2><p>Choose framework, package manager, and destination to run the native Doctor. It checks Node.js, npm bootstrap, pinned manager compatibility, and target-folder safety without installing anything.</p></div><button className="button primary-button" disabled={!catalog} onClick={() => startWizard()}>Choose a project <span aria-hidden="true">→</span></button></section>
+          <section className="doctor-next-card"><div><h2>Project-specific checks</h2><p>Choose a framework, native package manager, and destination to run Doctor. It checks the selected runtime and target-folder safety without installing tools.</p></div><button className="button primary-button" disabled={!catalog} onClick={() => startWizard()}>Choose a project <span aria-hidden="true">→</span></button></section>
         <section className="recovery-strip"><div><strong>Interrupted generation?</strong><p>Inspect recovery journal read-only. No recovery action is applied.</p></div><button className="button secondary-button" disabled={busy} onClick={() => void inspectRecovery()}>Inspect recovery</button></section>
         {recovery !== null && <RecoveryDetails value={recovery} />}
       </section>}
@@ -850,7 +863,7 @@ function App() {
         {recovery !== null && <RecoveryDetails value={recovery} />}
       </section>}
 
-      <footer className="app-footer"><span>FormaForge · Project Generator</span><span>Local development · FE-01–FE-15 / BE-01 / FM-01 / FM-02 remain planned · no release approval</span></footer>
+      <footer className="app-footer"><span>FormaForge · Project Generator</span><span>Local development · FE-01–FE-15 / BE-01–BE-02 / FM-01 / FM-02 remain planned · no release approval</span></footer>
     </main>
   </div>
 }
@@ -865,7 +878,7 @@ function UnsupportedGroup({ title, description, entries }: { title: string; desc
 
 function ProjectList({ projects, vscodeAvailable, onOpen }: { projects: ProjectRecord[]; vscodeAvailable: boolean; onOpen: (path: string, command: 'open_project_folder' | 'open_project_in_vscode') => void }) {
   return <div className="project-list">{projects.map((project) => <article className="project-row" key={`${project.path}-${project.createdAt}`}>
-    <div className="project-type-mark" aria-hidden="true">{project.recipeId === 'FE-02' ? 'N' : project.recipeId === 'FE-06' ? 'U' : project.recipeId === 'FE-07' ? 'A' : ['FE-03', 'FE-05', 'FE-09', 'FE-11', 'FE-13', 'FE-15'].includes(project.recipeId) ? 'V' : 'R'}</div><div className="project-row-main"><strong>{project.name}</strong><code>{project.path}</code><div className="project-row-meta"><span>{project.recipeId}</span><span>·</span><span>{new Date(project.createdAt).toLocaleString()}</span></div></div>
+    <div className="project-type-mark" aria-hidden="true">{project.recipeId === 'BE-02' ? 'G' : project.recipeId === 'FE-02' ? 'N' : project.recipeId === 'FE-06' ? 'U' : project.recipeId === 'FE-07' ? 'A' : ['FE-03', 'FE-05', 'FE-09', 'FE-11', 'FE-13', 'FE-15'].includes(project.recipeId) ? 'V' : 'R'}</div><div className="project-row-main"><strong>{project.name}</strong><code>{project.path}</code><div className="project-row-meta"><span>{project.recipeId}</span><span>·</span><span>{new Date(project.createdAt).toLocaleString()}</span></div></div>
     <div className="project-row-status"><StatusPill tone={project.status === 'completed' ? 'good' : 'warn'}>{project.status === 'completed' ? 'Checks passed' : 'Cleanup attention'}</StatusPill><div className="project-row-actions"><button className="button small-button secondary-button" onClick={() => onOpen(project.path, 'open_project_folder')}>Open folder</button>{vscodeAvailable && <button className="button small-button quiet-button" onClick={() => onOpen(project.path, 'open_project_in_vscode')}>VS Code</button>}</div></div>
   </article>)}</div>
 }

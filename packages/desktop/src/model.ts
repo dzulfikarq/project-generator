@@ -55,7 +55,7 @@ export type Template = {
 export type Catalog = {
   schemaVersion: number
   adapters: Adapter[]
-  packageManagers: { id: string; version: string; lockfile: string; nodeLinker?: string }[]
+  packageManagers: { id: string; version: string; lockfile?: string; nodeLinker?: string }[]
   recipes: Recipe[]
   forma: {
     commitSha: string
@@ -78,6 +78,17 @@ export function validateProjectName(name: string): string | null {
   }
   if (name.endsWith('.') || reservedWindowsName.test(name)) {
     return 'This name is reserved or invalid on Windows.'
+  }
+  return null
+}
+
+export function validateGoModulePath(value: string): string | null {
+  const parts = value.split('/')
+  const validParts = parts.length >= 2 && (parts[0]!.includes('.') || parts[0] === 'localhost')
+    && parts.every((part) => /^[a-z0-9][a-z0-9._~-]*$/.test(part) && !part.endsWith('.') && !part.includes('..'))
+  const major = parts.at(-1)!.match(/^v(\d+)$/)
+  if (!value || value.length > 512 || value !== value.toLowerCase() || !validParts || (major && Number(major[1]) < 2)) {
+    return 'Use a lowercase Go module path, such as github.com/user/project or example.com/project.'
   }
   return null
 }

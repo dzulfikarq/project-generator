@@ -8,7 +8,8 @@ import { createPlan } from '../src/plan.js'
 import { resolveSelection } from '../src/resolver.js'
 import { normalizeWindowsParent, resolveOutputPath } from '../src/paths.js'
 import { GeneratorError } from '../src/errors.js'
-import { supportsNodeForAngular, supportsNodeForBackend, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue, supportsNpm } from '../src/toolchain.js'
+import { supportsGo, supportsNodeForAngular, supportsNodeForBackend, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue, supportsNpm } from '../src/toolchain.js'
+import { defaultGoModulePath, isValidGoModulePath } from '../src/go-module.js'
 import { FORMA_COMMIT_SHA, isFormaCommit } from '../src/forma-catalog.js'
 import { runDoctor } from '../src/doctor.js'
 import { ADAPTERS, PACKAGE_MANAGERS } from '../src/catalog.js'
@@ -157,7 +158,7 @@ test('accepts exact FE-01 through FE-15 combinations without filesystem access',
     assert.match(plan.steps.find((step) => step.id === 'install')?.readableSummary ?? '', new RegExp(`${manager}.*${lockfile}`))
   }
   assert.deepEqual(PACKAGE_MANAGERS.map(({ id, version }) => [id, version]), [
-    ['npm', '>=10.0.0'], ['yarn', '4.18.1'], ['pnpm', '11.28.11'],
+    ['npm', '>=10.0.0'], ['yarn', '4.18.1'], ['pnpm', '11.28.11'], ['go-modules', 'Go 1.22+'],
   ])
   assert.ok(ADAPTERS.find(({ id }) => id === 'frontend.react-vite')?.packageManagers.includes('pnpm'))
   assert.ok(ADAPTERS.find(({ id }) => id === 'frontend.vue-vite')?.packageManagers.includes('yarn'))
@@ -212,6 +213,53 @@ test('BE-01 resolves standalone Express and pins every direct dependency', () =>
       && error.code === 'GEN_INCOMPATIBLE'
       && error.nextAction === 'Choose an explicitly cataloged recipe and remove unsupported choices.')
   }
+})
+
+test('BE-02 resolves standalone Go net/http with Go Modules and validates module paths', () => {
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'sample-api', type: 'backend', parentDirectory: 'E:\\Projects' },
+    backend: { adapterId: 'backend.go-net-http', manager: 'go-modules', modulePath: 'github.com/example/sample-api' },
+    documentation: 'standard',
+    git: { initialize: false, initialCommit: false },
+  })
+  const resolved = resolveSelection(selection)
+  const plan = createPlan(selection)
+  assert.equal(resolved.recipe.id, 'BE-02')
+  assert.equal(resolved.recipe.status, 'planned')
+  assert.equal(resolved.recipe.language, 'go')
+  assert.equal(resolved.recipe.manager, 'go-modules')
+  assert.deepEqual(resolved.recipe.dependencies, undefined)
+  assert.equal(resolved.selection.backend?.modulePath, 'github.com/example/sample-api')
+  assert.equal(plan.executionAvailable, false)
+  assert.equal(plan.executesDependencyLifecycleScripts, false)
+  assert.deepEqual(plan.networkAccess, [])
+  assert.ok(plan.expectedWrites.includes('go.mod'))
+  assert.ok(plan.expectedWrites.includes('internal/server/server_test.go'))
+  assert.ok(!plan.expectedWrites.includes('go.sum'))
+  assert.match(plan.steps.find((step) => step.id === 'validate')?.readableSummary ?? '', /go fmt.*go vet.*go test.*go build/s)
+  assert.match(plan.steps.find((step) => step.id === 'install')?.readableSummary ?? '', /no download, go\.sum, or install script/)
+
+  assert.equal(defaultGoModulePath('sample-api'), 'example.com/sample-api')
+  assert.equal(isValidGoModulePath('github.com/example/sample-api'), true)
+  assert.equal(isValidGoModulePath('example.com/sample-api/v2'), true)
+  assert.equal(supportsGo('1.22.0'), true)
+  assert.equal(supportsGo('1.21.13'), false)
+  assert.equal(supportsGo('go1.26.7'), false)
+  for (const modulePath of ['bad path/name', 'github.com/../escape', 'github.com/name/v1', 'Example.com/project', 'github.com/name\\project', 'single-segment']) {
+    assert.throws(() => createPlan(parseSelection({
+      ...selection,
+      backend: { ...selection.backend!, modulePath },
+    })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_CONFIG_INVALID')
+  }
+  assert.throws(() => createPlan(parseSelection({
+    ...selection,
+    backend: { adapterId: 'backend.go-net-http', manager: 'npm', modulePath: 'github.com/example/sample-api' },
+  })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  assert.throws(() => createPlan(parseSelection({
+    ...selection,
+    frontend: { adapterId: 'frontend.react-vite', language: 'ts', manager: 'npm' },
+  })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
 })
 
 test('resolves only pinned Forma template/framework pairs without network access during planning', () => {

@@ -40,6 +40,7 @@ const configs = [
   ['FE-14', 'frontend.react-vite', 'styling.css', undefined, 'pnpm'],
   ['FE-15', 'frontend.vue-vite', 'styling.css', undefined, 'pnpm'],
   ['BE-01', 'backend.express', undefined, undefined, 'npm'],
+  ['BE-02', 'backend.go-net-http', undefined, undefined, 'go-modules'],
   ['FM-01', 'frontend.react-vite', undefined, 'focus-planner'],
   ['FM-02', 'frontend.nextjs-app', undefined, 'staywise-host-dashboard'],
 ]
@@ -49,6 +50,13 @@ function selection(id, frontend, styling, templateId, manager = 'npm') {
     schemaVersion: 1,
     project: { name: 'planned-be-01', parentDirectory: root, type: 'backend' },
     backend: { adapterId: 'backend.express', manager: 'npm' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  }
+  if (id === 'BE-02') return {
+    schemaVersion: 1,
+    project: { name: 'planned-be-02', parentDirectory: root, type: 'backend' },
+    backend: { adapterId: 'backend.go-net-http', manager: 'go-modules', modulePath: 'example.com/planned-be-02' },
     documentation: 'minimal',
     git: { initialize: false, initialCommit: false },
   }
@@ -94,6 +102,7 @@ try {
   assert.deepEqual(catalog.data.recipes.map(({ id, status }) => [id, status]), [
     ...configs.filter(([id]) => id.startsWith('FE-')).map(([id]) => [id, 'planned']),
     ['BE-01', 'planned'],
+    ['BE-02', 'planned'],
   ])
   assert.deepEqual(catalog.data.forma.integrations.map(({ recipeId, status }) => [recipeId, status]), [['FM-01', 'planned'], ['FM-02', 'planned']])
 
@@ -109,6 +118,16 @@ try {
   assert.equal(backendPlan.status, 0, backendPlan.stdout)
   assert.equal(JSON.parse(backendPlan.stdout).data.recipeId, 'BE-01')
   assert.equal(JSON.parse(backendPlan.stdout).data.executionAvailable, false)
+
+  const goConfigPath = join(root, 'BE-02.json')
+  const goPlan = invoke(['plan', '--config', goConfigPath, '--json'])
+  assert.equal(goPlan.status, 0, goPlan.stdout)
+  const goPlanData = JSON.parse(goPlan.stdout).data
+  assert.equal(goPlanData.recipeId, 'BE-02')
+  assert.equal(goPlanData.executionAvailable, false)
+  assert.deepEqual(goPlanData.networkAccess, [])
+  assert.ok(goPlanData.expectedWrites.includes('go.mod'))
+  assert.ok(!goPlanData.expectedWrites.includes('go.sum'))
 
   const doctorResult = invoke(['doctor', '--config', configPaths[0], '--json'])
   assert.equal(doctorResult.status, 0, doctorResult.stdout)
@@ -131,7 +150,7 @@ try {
     assert.ok(output.some((event) => event.code === 'GEN_RECIPE_UNTESTED'), `${id}: ${result.stdout}`)
     assert.equal(output.some((event) => event.type === 'stage-started' && ['staging', 'scaffolding', 'installing'].includes(event.stageId)), false, `${id} entered execution stage`)
     await assert.rejects(access(join(root, `planned-${id.toLowerCase()}`)))
-    if (id.startsWith('FE-')) {
+    if (id.startsWith('FE-') || id === 'BE-02') {
       const override = invoke(['generate', '--config', configPaths[index], '--jsonl', '--development-allow-planned'])
       assert.equal(override.status, 3, `${id} release override: ${override.stderr}\n${override.stdout}`)
       assert.ok(events(override.stdout).some((event) => event.code === 'GEN_RECIPE_UNTESTED'), `${id} release override was not blocked: ${override.stdout}`)
@@ -167,7 +186,7 @@ try {
   assert.equal(directResult.error?.code, 'GEN_RECIPE_UNTESTED')
 
   assert.deepEqual((await readdir(root)).sort(), configPaths.map((path) => path.split(/[\\/]/).at(-1)).sort())
-  console.log(`Packaged ${mode} CLI policy smoke passed: catalog/plan/doctor read-only; release override rejected; FE-01–FE-15, BE-01, and FM-01/FM-02 blocked before staging.`)
+  console.log(`Packaged ${mode} CLI policy smoke passed: catalog/plan/doctor read-only; release override rejected; FE-01–FE-15, BE-01–BE-02, and FM-01/FM-02 blocked before staging.`)
 } finally {
   await rm(root, { recursive: true, force: true })
 }

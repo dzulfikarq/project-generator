@@ -1,7 +1,8 @@
 import { win32 } from 'node:path'
-import { incompatibleError } from './errors.js'
+import { configError, incompatibleError } from './errors.js'
 import { RECIPES } from './catalog.js'
 import { FORMA_COMMIT_SHA, formaTemplate, isFormaCommit } from './forma-catalog.js'
+import { defaultGoModulePath, isValidGoModulePath } from './go-module.js'
 import { resolveOutputPath } from './paths.js'
 import type { ProjectSelectionV1, RecipeManifestV1, ResolvedSelection } from './types.js'
 
@@ -9,12 +10,24 @@ export function resolveSelection(selection: ProjectSelectionV1): ResolvedSelecti
   const { project } = selection
   const outputPath = resolveOutputPath(project.parentDirectory, project.name)
   if (project.type === 'backend') {
-    const manager = selection.backend?.manager ?? 'npm'
-    if (!selection.backend || selection.backend.adapterId !== 'backend.express' || manager !== 'npm'
+    const adapterId = selection.backend?.adapterId
+    const isGo = adapterId === 'backend.go-net-http'
+    const manager = selection.backend?.manager ?? (isGo ? 'go-modules' : 'npm')
+    const recipeId = isGo ? 'BE-02' : 'BE-01'
+    if (!selection.backend || !['backend.express', 'backend.go-net-http'].includes(adapterId ?? '') || manager !== (isGo ? 'go-modules' : 'npm')
       || selection.frontend || selection.database || selection.styling || selection.template) {
-      throw incompatibleError('BE-01 supports standalone Express + TypeScript + npm only; frontend, database, and fullstack choices are unavailable.')
+      throw incompatibleError('Backend recipes support only standalone Express + npm or Go net/http + Go Modules; frontend, database, and fullstack choices are unavailable.')
     }
-    const recipe = RECIPES.find((candidate) => candidate.id === 'BE-01')
+    if (isGo) {
+      const modulePath = selection.backend.modulePath ?? defaultGoModulePath(project.name)
+      if (!isValidGoModulePath(modulePath)) throw configError('backend.modulePath must be a valid lowercase Go module path such as github.com/user/project or example.com/project.')
+      const normalized = { ...selection, backend: { ...selection.backend, modulePath } }
+      const recipe = RECIPES.find((candidate) => candidate.id === recipeId)
+      if (!recipe) throw incompatibleError('Selection does not match a cataloged backend recipe.')
+      return { selection: Object.freeze(normalized), recipe, outputPath: win32.normalize(outputPath) }
+    }
+    if (selection.backend.modulePath !== undefined) throw incompatibleError('backend.modulePath is supported only by the Go recipe.')
+    const recipe = RECIPES.find((candidate) => candidate.id === recipeId)
     if (!recipe) throw incompatibleError('Selection does not match a cataloged backend recipe.')
     return { selection: Object.freeze(selection), recipe, outputPath: win32.normalize(outputPath) }
   }

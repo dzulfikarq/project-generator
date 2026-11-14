@@ -216,8 +216,9 @@ export async function writeProjectManifest(
   const manager = packageManager(resolved.recipe.manager)
   const entries = await readdir(projectPath)
   const presentLocks = entries.filter((entry) => lockfiles.includes(entry))
-  if (presentLocks.length !== 1 || presentLocks[0] !== manager.lockfile) throw new Error(`Expected exactly one ${resolved.recipe.manager} lockfile, ${manager.lockfile}.`)
-  const lockBytes = await readFile(win32.join(projectPath, manager.lockfile))
+  if (!manager.lockfile || presentLocks.length !== 1 || presentLocks[0] !== manager.lockfile) throw new Error(`Expected exactly one ${resolved.recipe.manager} lockfile, ${manager.lockfile}.`)
+  const lockfile = manager.lockfile
+  const lockBytes = await readFile(win32.join(projectPath, lockfile))
   const lockHash = createHash('sha256').update(lockBytes).digest('hex')
   const manifest = {
     schemaVersion: 1,

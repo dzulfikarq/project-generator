@@ -52,10 +52,11 @@ fn error(code: &str, message: &str, next_action: &str) -> DesktopErrorV1 {
 
 fn authorize_generation(
     lifecycle_consent: bool,
+    requires_lifecycle_consent: bool,
     allow_planned: bool,
     internal_development_mode: bool,
 ) -> CommandResult<()> {
-    if !lifecycle_consent {
+    if requires_lifecycle_consent && !lifecycle_consent {
         return Err(error(
             "DESKTOP_CONSENT_REQUIRED",
             "Generation was not started because lifecycle-script consent is required.",
@@ -81,6 +82,7 @@ struct DesktopSelectionV1 {
     documentation: DesktopDocumentationV1,
     template_id: Option<String>,
     template_variant_id: Option<String>,
+    module_path: Option<String>,
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -117,6 +119,8 @@ enum DesktopRecipeId {
     Fe15,
     #[serde(rename = "BE-01")]
     Be01,
+    #[serde(rename = "BE-02")]
+    Be02,
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -152,6 +156,24 @@ impl DesktopSelectionV1 {
                 "git": { "initialize": false, "initialCommit": false }
             });
         }
+        if matches!(self.recipe_id, DesktopRecipeId::Be02) {
+            let mut backend =
+                json!({ "adapterId": "backend.go-net-http", "manager": "go-modules" });
+            if let Some(module_path) = self.module_path.as_ref() {
+                backend["modulePath"] = json!(module_path);
+            }
+            return json!({
+                "schemaVersion": 1,
+                "project": {
+                    "name": self.project_name,
+                    "parentDirectory": self.parent_directory,
+                    "type": "backend"
+                },
+                "backend": backend,
+                "documentation": self.documentation.as_str(),
+                "git": { "initialize": false, "initialCommit": false }
+            });
+        }
         let (frontend, styling, manager) = match self.recipe_id {
             DesktopRecipeId::Fe01 => ("frontend.react-vite", "styling.css", "npm"),
             DesktopRecipeId::Fe02 => ("frontend.nextjs-app", "styling.tailwind", "npm"),
@@ -168,7 +190,9 @@ impl DesktopSelectionV1 {
             DesktopRecipeId::Fe13 => ("frontend.vue-vite", "styling.css", "yarn"),
             DesktopRecipeId::Fe14 => ("frontend.react-vite", "styling.css", "pnpm"),
             DesktopRecipeId::Fe15 => ("frontend.vue-vite", "styling.css", "pnpm"),
-            DesktopRecipeId::Be01 => unreachable!("BE-01 selection returned above"),
+            DesktopRecipeId::Be01 | DesktopRecipeId::Be02 => {
+                unreachable!("backend selection returned above")
+            }
         };
         let mut selection = json!({
             "schemaVersion": 1,
@@ -233,6 +257,18 @@ impl DesktopSelectionV1 {
                 "DESKTOP_SELECTION_INVALID",
                 "Forma variant requires a selected Forma template.",
                 "Choose a template before choosing its variant.",
+            ));
+        }
+        if self
+            .module_path
+            .as_ref()
+            .is_some_and(|value| value.trim().is_empty() || value.len() > 512)
+            || (!matches!(self.recipe_id, DesktopRecipeId::Be02) && self.module_path.is_some())
+        {
+            return Err(error(
+                "GEN_CONFIG_INVALID",
+                "Go module path is invalid or belongs to a non-Go recipe.",
+                "Enter a valid Go module path or remove it for the selected recipe.",
             ));
         }
         if matches!(self.recipe_id, DesktopRecipeId::Be01)
@@ -960,7 +996,12 @@ async fn start_generation(
     allow_planned: bool,
     on_event: Channel<DesktopEventV1>,
 ) -> CommandResult<String> {
-    authorize_generation(lifecycle_consent, allow_planned, INTERNAL_DEVELOPMENT_MODE)?;
+    authorize_generation(
+        lifecycle_consent,
+        !matches!(selection.recipe_id, DesktopRecipeId::Be02),
+        allow_planned,
+        INTERNAL_DEVELOPMENT_MODE,
+    )?;
     selection.validate()?;
     if selection.template_id.is_some() {
         let git = find_git().ok_or_else(|| {
@@ -1369,6 +1410,7 @@ mod tests {
             documentation: DesktopDocumentationV1::Minimal,
             template_id: Some("focus-planner".into()),
             template_variant_id: Some("coral".into()),
+            module_path: None,
         };
         let config = selection.to_core_json("5cf3c4e5b7b0bc454a653f58d12237c56f2548e2");
         assert_eq!(config["frontend"]["adapterId"], "frontend.react-vite");
@@ -1463,6 +1505,7 @@ mod tests {
                 documentation: DesktopDocumentationV1::Minimal,
                 template_id: None,
                 template_variant_id: None,
+                module_path: None,
             }
             .to_core_json("");
             assert_eq!(generated["frontend"]["adapterId"], frontend);
@@ -1477,6 +1520,7 @@ mod tests {
             documentation: DesktopDocumentationV1::Standard,
             template_id: None,
             template_variant_id: None,
+            module_path: None,
         }
         .to_core_json("");
         assert_eq!(backend["project"]["type"], "backend");
@@ -1485,6 +1529,23 @@ mod tests {
         assert!(backend.get("frontend").is_none());
         assert!(backend.get("styling").is_none());
 
+        let go_backend = DesktopSelectionV1 {
+            project_name: "demo-api".into(),
+            parent_directory: "C:\\Projects".into(),
+            recipe_id: DesktopRecipeId::Be02,
+            documentation: DesktopDocumentationV1::Standard,
+            template_id: None,
+            template_variant_id: None,
+            module_path: Some("github.com/example/demo-api".into()),
+        }
+        .to_core_json("");
+        assert_eq!(go_backend["backend"]["adapterId"], "backend.go-net-http");
+        assert_eq!(go_backend["backend"]["manager"], "go-modules");
+        assert_eq!(
+            go_backend["backend"]["modulePath"],
+            "github.com/example/demo-api"
+        );
+
         let standalone = DesktopSelectionV1 {
             project_name: "demo".into(),
             parent_directory: "C:\\Projects".into(),
@@ -1492,6 +1553,7 @@ mod tests {
             documentation: DesktopDocumentationV1::Standard,
             template_id: None,
             template_variant_id: None,
+            module_path: None,
         }
         .to_core_json("");
         assert_eq!(standalone["styling"]["adapterId"], "styling.css");
@@ -1524,6 +1586,7 @@ mod tests {
             documentation: DesktopDocumentationV1::Full,
             template_id: None,
             template_variant_id: Some("coral".into()),
+            module_path: None,
         };
         assert_eq!(
             selection.validate().unwrap_err().code,
@@ -1593,22 +1656,27 @@ mod tests {
     #[test]
     fn generation_requires_explicit_consent_and_release_build_cannot_override_planned() {
         assert_eq!(
-            authorize_generation(false, false, true).unwrap_err().code,
+            authorize_generation(false, true, false, true)
+                .unwrap_err()
+                .code,
             "DESKTOP_CONSENT_REQUIRED"
         );
         assert_eq!(
-            authorize_generation(true, true, false).unwrap_err().code,
+            authorize_generation(true, true, true, false)
+                .unwrap_err()
+                .code,
             "DESKTOP_INTERNAL_MODE_REQUIRED"
         );
-        assert!(authorize_generation(true, false, false).is_ok());
-        assert!(authorize_generation(true, true, true).is_ok());
+        assert!(authorize_generation(true, true, false, false).is_ok());
+        assert!(authorize_generation(true, true, true, true).is_ok());
+        assert!(authorize_generation(false, false, true, true).is_ok());
     }
 
     #[test]
     fn compiled_build_profile_controls_planned_recipe_override() {
         assert_eq!(INTERNAL_DEVELOPMENT_MODE, cfg!(debug_assertions));
         assert_eq!(
-            authorize_generation(true, true, INTERNAL_DEVELOPMENT_MODE).is_ok(),
+            authorize_generation(true, true, true, INTERNAL_DEVELOPMENT_MODE).is_ok(),
             cfg!(debug_assertions)
         );
     }

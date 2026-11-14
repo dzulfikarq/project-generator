@@ -6,6 +6,15 @@ export interface NpmTool {
   version: string
 }
 
+export interface GoExecutable {
+  executablePath: string
+  directory: string
+}
+
+export interface GoTool extends GoExecutable {
+  version: string
+}
+
 function versionParts(version: string): [number, number, number] | undefined {
   const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version.trim())
   if (!match) return undefined
@@ -51,6 +60,32 @@ export function supportsNodeForAngular(version: string): boolean {
 
 export function supportsNpm(version: string): boolean {
   return atLeast(version, [10, 0, 0])
+}
+
+export function supportsGo(version: string): boolean {
+  return atLeast(version, [1, 22, 0])
+}
+
+export async function resolveGoTool(): Promise<GoExecutable | undefined> {
+  const candidates = [
+    ...(process.env.GOROOT ? [resolve(process.env.GOROOT, 'bin')] : []),
+    ...(process.env.PATH ?? '').split(win32.delimiter).filter(Boolean).map((directory) => directory.replace(/^"(.*)"$/, '$1')),
+  ]
+  for (const directory of candidates) {
+    const executable = resolve(directory, 'go.exe')
+    try {
+      const [rootEntry, realDirectory, entry, realExecutable] = await Promise.all([
+        lstat(directory), realpath(directory), lstat(executable), realpath(executable),
+      ])
+      const relativePath = win32.relative(realDirectory, realExecutable)
+      if (!rootEntry.isDirectory() || rootEntry.isSymbolicLink() || !entry.isFile() || entry.isSymbolicLink()
+        || relativePath.startsWith('..') || win32.isAbsolute(relativePath)) continue
+      return { executablePath: realExecutable, directory: realDirectory }
+    } catch {
+      // Ignore absent or inaccessible PATH entries.
+    }
+  }
+  return undefined
 }
 
 export function supportsNodeForPnpm(version: string): boolean {

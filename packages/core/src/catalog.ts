@@ -15,6 +15,13 @@ const npmRequirement = {
   reason: 'Installs pinned scaffolds and generated project dependencies.',
 } as const
 
+const goRequirement = {
+  executableId: 'go',
+  versionRange: '>=1.22.0',
+  optional: false,
+  reason: 'Go Modules and method-aware standard-library HTTP routing.',
+} as const
+
 export const PACKAGE_MANAGERS: readonly PackageManagerManifestV1[] = [
   { id: 'npm', version: '>=10.0.0', lockfile: 'package-lock.json' },
   {
@@ -39,6 +46,7 @@ export const PACKAGE_MANAGERS: readonly PackageManagerManifestV1[] = [
     lockfile: 'pnpm-lock.yaml',
     nodeVersionRange: '>=22.13.0',
   },
+  { id: 'go-modules', version: 'Go 1.22+', },
 ]
 
 export function packageManager(id: PackageManagerId): PackageManagerManifestV1 {
@@ -224,6 +232,22 @@ export const ADAPTERS: readonly AdapterManifestV1[] = [
     packageManagers: ['npm'],
     prerequisites: [{ ...nodeRequirement, versionRange: '>=22.13.0' }, npmRequirement],
     capabilities: ['nodejs', 'typescript', 'rest-api', 'json-middleware', 'health-check', 'unit-tests', 'http-smoke'],
+    compatibleWith: [],
+    incompatibleWith: ['frontend.*', 'database.*', 'fullstack.*'],
+    recipeEvidenceIds: [],
+  },
+  {
+    schemaVersion: 1,
+    id: 'backend.go-net-http',
+    adapterVersion: '0.1.0',
+    kind: 'backend',
+    displayName: 'Go · net/http',
+    supportState: 'planned',
+    supportedOS: ['windows'],
+    versionConstraints: { go: '>=1.22.0', routing: 'net/http method patterns (Go 1.22+)' },
+    packageManagers: ['go-modules'],
+    prerequisites: [goRequirement],
+    capabilities: ['go', 'standard-library-http', 'go-modules', 'rest-api', 'health-check', 'unit-tests', 'http-smoke', 'graceful-shutdown'],
     compatibleWith: [],
     incompatibleWith: ['frontend.*', 'database.*', 'fullstack.*'],
     recipeEvidenceIds: [],
@@ -593,6 +617,19 @@ export const RECIPES: readonly RecipeManifestV1[] = [
     ],
     checks: ['dependency-install', 'dependency-integrity', 'lockfile-integrity', 'typecheck', 'unit-tests', 'build', 'http-smoke', 'graceful-shutdown'],
     limitations: ['Standalone Express REST API; no frontend, database, ORM, authentication, or deployment configuration.', 'Local reviewed TypeScript starter; no third-party scaffold CLI is executed.'],
+    evidenceIds: [],
+  },
+  {
+    schemaVersion: 1,
+    id: 'BE-02',
+    status: 'planned',
+    platform: 'windows',
+    projectType: 'backend',
+    backend: 'backend.go-net-http',
+    language: 'go',
+    manager: 'go-modules',
+    checks: ['go-module', 'go-fmt', 'go-vet', 'go-test', 'go-build', 'http-smoke', 'graceful-shutdown'],
+    limitations: ['Standalone standard-library REST API; no frontend, database, ORM, authentication, or third-party dependency.', 'Go 1.22 or newer required; module path is configurable.'],
     evidenceIds: [],
   },
 ] as const

@@ -197,10 +197,11 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for component boundaries, Windows stagi
 - FE-06 Nuxt + npm + CSS.
 - FE-07 Angular + npm + SCSS.
 - BE-01 proposed target: Express + npm + SQLite + Drizzle (verify selected driver). Phase 05A is narrower: standalone API with no database; it does not claim this tuple.
-- BE-02 NestJS + npm + PostgreSQL + Prisma.
-- BE-03 Go + Gin + PostgreSQL + pgx (Go Modules).
-- BE-04 Laravel + MySQL + Eloquent (Composer + npm for assets as relevant).
-- BE-05 FastAPI + PostgreSQL + SQLAlchemy (uv).
+- BE-02 Go standard-library `net/http` + Go Modules, standalone with no database or third-party dependencies (Phase 05B implementation; remains planned pending independent acceptance).
+- BE-03 NestJS + npm + PostgreSQL + Prisma.
+- BE-04 Go + Gin + PostgreSQL + pgx (Go Modules).
+- BE-05 Laravel + MySQL + Eloquent (Composer + npm for assets as relevant).
+- BE-06 FastAPI + PostgreSQL + SQLAlchemy (uv).
 - FS-01 Vue + Laravel + MySQL.
 - FS-02 React + Go Gin + PostgreSQL.
 - FS-03 Angular + NestJS + PostgreSQL.
@@ -209,6 +210,8 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for component boundaries, Windows stagi
 - FM-01 React + Vite + Forma; FM-02 Next.js App Router + Forma. Generator local development integration exists for the exact template/framework combinations in [Phase 02 evidence](qa/evidence/phase-02-forma-local-integration.md); all remain planned.
 
 Each recipe requires a specific integration test and may be disabled until that evidence exists. All DB recipes must declare what is provisioned vs configured only.
+
+**Recipe ID reconciliation (Phase 05B):** The earlier draft assigned BE-02 to NestJS. Scoped Phase 05B work assigns BE-02 to the standalone Go standard-library API; NestJS and subsequent backend candidates move down one ID as listed above. This corrects the planning registry to match the implemented catalog and does not imply support for any planned recipe.
 
 ## 10. Release gates
 

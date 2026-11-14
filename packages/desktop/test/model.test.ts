@@ -13,6 +13,7 @@ import {
   savePreferences,
   STORAGE_KEY,
   validateParentDirectory,
+  validateGoModulePath,
   validateProjectName,
   type Catalog,
 } from '../src/model.ts'
@@ -22,6 +23,15 @@ test('project validation matches npm-safe and Windows-reserved name boundaries',
   assert.match(validateProjectName('Uppercase') ?? '', /lowercase/)
   assert.match(validateProjectName('con') ?? '', /reserved/)
   assert.match(validateProjectName('name.') ?? '', /reserved/)
+})
+
+test('Go module paths accept valid import paths and reject invalid paths', () => {
+  for (const value of ['example.com/api', 'github.com/acme/api', 'example.com/api/v2']) {
+    assert.equal(validateGoModulePath(value), null, value)
+  }
+  for (const value of ['', 'single-segment', 'github.com/../escape', 'github.com/acme/v1', 'Example.com/api', 'github.com/acme\\api']) {
+    assert.match(validateGoModulePath(value) ?? '', /lowercase Go module path/, value)
+  }
 })
 
 test('parent path validation rejects relative, traversal, and overlong paths', () => {

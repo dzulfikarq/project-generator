@@ -624,13 +624,15 @@ test('stage creation rejects parent junction swaps without creating outside entr
   const displaced = win32.join(root, 'parent-real')
   const outside = win32.join(root, 'outside')
   const sentinel = win32.join(outside, 'keep.txt')
+  const journalRoot = win32.join(process.env.LOCALAPPDATA!, '.project-generator-transactions')
+  const jobId = randomUUID()
   await Promise.all([mkdir(parent), mkdir(outside)])
   await writeFile(sentinel, 'outside data')
   const stopRace = startJunctionSwap(parent, displaced, outside)
   let stage: OwnedStage | undefined
   try {
     try {
-      stage = await createOwnedStage(parent, win32.join(parent, 'race-project'), 'race-project', 'race-create')
+      stage = await createOwnedStage(parent, win32.join(parent, 'race-project'), 'race-project', jobId)
     } catch (error) {
       assert.ok(error instanceof GeneratorError, 'native create failure should be reported')
     }
@@ -642,6 +644,8 @@ test('stage creation rejects parent junction swaps without creating outside entr
     await stopRace()
     if (stage) await cleanupOwnedStage(stage).catch(() => undefined)
     await rm(root, { recursive: true, force: true })
+    await removeJournalForTest(journalRoot, jobId)
+    await assert.rejects(lstat(win32.join(journalRoot, `.transaction-${jobId}.jsonl`)), { code: 'ENOENT' })
   }
 })
 

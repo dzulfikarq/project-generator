@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Version | Draft 0.1, schema proposal 1 |
-| Date | 2026-11-11 |
-| Status | **Broader contract proposed; Phase 01/04A implement a bounded TypeScript CLI/core subset** |
+| Date | 2026-11-15 |
+| Status | **Broader contract proposed; Phase 01/04A–05B implement bounded CLI/core subsets** |
 | Applicable components | Generator Core CLI; bundled platform/framework/styling/database/template adapters |
 
 ## 1. Design principles
@@ -37,7 +37,7 @@ V1 does not execute unreviewed third-party adapters. New adapters are repository
 
 ## 3. Proposed TypeScript-facing contract (illustrative; not identical to Phase 01 code)
 
-Phase 01 implements FE-01/FE-02 selection; Phase 02 adds planned Forma FM-01/FM-02; Phase 04A–04B.3 add planned frontend recipes; Phase 05A adds planned standalone BE-01 Express + TypeScript + npm with no database. Broader interfaces below remain a target contract for future adapters and components. No integration is release-approved.
+Phase 01 implements FE-01/FE-02 selection; Phase 02 adds planned Forma FM-01/FM-02; Phase 04A–04B.3 add planned frontend recipes; Phase 05A adds planned standalone BE-01 Express + TypeScript + npm with no database; Phase 05B adds planned standalone BE-02 Go `net/http` + Go Modules with no external dependencies or database. Broader interfaces below remain a target contract for future adapters and components. No integration is release-approved.
 
 ```ts
 type SupportState =

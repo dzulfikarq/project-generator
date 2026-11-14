@@ -27,7 +27,7 @@ function stagingError(code: string, stage: string, message: string, nextAction: 
   return new GeneratorError({ code, stage, message, nextAction, targetModified })
 }
 
-function requestFor(stage: OwnedStage, projectName = win32.basename(stage.targetPath)): Record<string, string> {
+function requestFor(stage: OwnedStage, projectName = win32.basename(stage.targetPath), modulePath?: string): Record<string, string> {
   return {
     jobId: stage.jobId,
     transactionNonce: stage.transactionNonce,
@@ -35,6 +35,7 @@ function requestFor(stage: OwnedStage, projectName = win32.basename(stage.target
     stagePath: stage.path,
     parentPath: stage.parentPath,
     projectName,
+    ...(modulePath ? { modulePath } : {}),
     targetPath: stage.targetPath,
     sourcePath: stage.childPath,
   }
@@ -61,7 +62,7 @@ export function checkFsResult(result: SupervisorResult, operation: 'bind' | 'cre
     throw stagingError('GEN_STAGE_IDENTITY_UNCONFIRMED', 'scaffolding', 'Native project identity could not be bound or verified; staging was retained.', 'Do not clean staging or overwrite the destination; inspect the stage before retrying.')
   }
   if (operation === 'scaffold') {
-    if (code === 'scaffold_invalid') throw stagingError('GEN_SCAFFOLD_INVALID', 'scaffolding', 'Official scaffold output is missing or project identity is incorrect.', 'Review the generated package manifest and retry.')
+    if (code === 'scaffold_invalid') throw stagingError('GEN_SCAFFOLD_INVALID', 'scaffolding', 'Generated project manifest is missing or its identity does not match the reviewed selection.', 'Review the generated package manifest and retry.')
     throw stagingError('GEN_STAGE_IDENTITY_UNCONFIRMED', 'scaffolding', 'Native scaffold identity verification could not be confirmed; staging was retained.', 'Do not clean staging; inspect it before retrying.')
   }
   if (operation === 'write') {
@@ -150,9 +151,9 @@ export async function bindOwnedStageProjectIdentity(stage: OwnedStage, projectNa
   await nativeFs('--bind-stage-identity', requestFor(stage, projectName), 'bind')
 }
 
-export async function verifyOwnedStageProjectIdentity(stage: OwnedStage, projectName: string): Promise<void> {
+export async function verifyOwnedStageProjectIdentity(stage: OwnedStage, projectName: string, modulePath?: string): Promise<void> {
   if (!liveStages.has(stage)) throw stagingError('GEN_STAGING_LEFTOVER', 'scaffolding', 'Refused project identity verification without a live in-process staging record.', 'Inspect staging manually; do not clean an unverified path.')
-  await nativeFs('--verify-scaffold-identity', requestFor(stage, projectName), 'scaffold')
+  await nativeFs('--verify-scaffold-identity', requestFor(stage, projectName, modulePath), 'scaffold')
 }
 
 export async function mutateOwnedStage(stage: OwnedStage, directories: readonly string[], files: readonly OwnedStageFile[]): Promise<string[]> {

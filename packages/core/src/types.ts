@@ -1,10 +1,10 @@
 export type SupportState = 'cataloged' | 'planned' | 'experimental' | 'tested' | 'blocked' | 'retired'
 export type DocumentationMode = 'minimal' | 'standard' | 'full'
-export type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15' | 'BE-01' | 'FM-01' | 'FM-02'
+export type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15' | 'BE-01' | 'BE-02' | 'FM-01' | 'FM-02'
 export type StylingId = 'styling.css' | 'styling.tailwind' | 'styling.bootstrap' | 'styling.scss'
 export type FrontendId = 'frontend.react-vite' | 'frontend.nextjs-app' | 'frontend.vue-vite' | 'frontend.nuxt' | 'frontend.angular'
-export type BackendId = 'backend.express'
-export type PackageManagerId = 'npm' | 'yarn' | 'pnpm'
+export type BackendId = 'backend.express' | 'backend.go-net-http'
+export type PackageManagerId = 'npm' | 'yarn' | 'pnpm' | 'go-modules'
 
 export interface ProjectSelectionV1 {
   schemaVersion: 1
@@ -15,7 +15,7 @@ export interface ProjectSelectionV1 {
     type: 'frontend' | 'backend' | 'fullstack' | 'mobile'
   }
   frontend?: { adapterId: string; language?: 'ts' | 'js'; manager?: string }
-  backend?: { adapterId: string; manager?: string }
+  backend?: { adapterId: string; manager?: string; modulePath?: string }
   database?: { adapterId: string; accessAdapterId?: string; mode: 'none' | 'existing-service' | 'docker-compose' }
   styling?: { adapterId: string; uiLibraryId?: string }
   template?: { adapterId: 'template.forma'; templateId: string; commitSha: string; variantId?: string }
@@ -65,7 +65,7 @@ export interface DependencyPin {
 export interface PackageManagerManifestV1 {
   id: PackageManagerId
   version: string
-  lockfile: string
+  lockfile?: string
   nodeLinker?: 'node-modules' | 'hoisted'
   configFile?: string
   packageName?: string
@@ -82,7 +82,7 @@ export interface RecipeManifestV1 {
   projectType?: 'backend'
   frontend?: FrontendId
   backend?: BackendId
-  language: 'ts'
+  language: 'ts' | 'go'
   manager: PackageManagerId
   styling?: StylingId
   scaffold?: ScaffoldPin
@@ -151,7 +151,7 @@ export interface GeneratorErrorShape {
 }
 
 export interface ToolStatus {
-  id: 'node' | 'npm' | 'yarn' | 'pnpm' | 'target'
+  id: 'node' | 'npm' | 'yarn' | 'pnpm' | 'go' | 'target'
   available: boolean
   version?: string
   path?: string

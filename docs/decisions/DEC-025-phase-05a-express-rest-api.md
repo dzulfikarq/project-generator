@@ -22,4 +22,4 @@ Reviewed starter keeps scaffold execution smaller while retaining pinned depende
 
 ## Phase gate
 
-**GO for independent BE-01 review/acceptance only.** BE-01 promotion and public release remain **NO-GO** pending independent review and existing security/clean-machine gates. Recommend Phase 05B evaluate a separate Go standard-library `net/http` + Go Modules recipe before database/fullstack expansion.
+**GO for independent BE-01 review/acceptance only.** BE-01 promotion and public release remain **NO-GO** pending independent review and existing security/clean-machine gates. The Phase 05B evaluation recommendation was executed as [DEC-026](DEC-026-phase-05b-go-net-http.md); recommend Phase 05C evaluate standalone Laravel and FastAPI recipes before database/fullstack expansion.

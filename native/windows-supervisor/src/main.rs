@@ -119,6 +119,8 @@ mod windows {
         parent_path: String,
         job_id: String,
         project_name: Option<String>,
+        #[serde(default)]
+        module_path: Option<String>,
         target_path: Option<String>,
         journal_root_path: String,
         transaction_nonce: String,
@@ -2569,9 +2571,16 @@ mod windows {
             .project_identity
             .ok_or_else(|| fs_failure("stage_identity_unconfirmed", None))?;
         let project = open_verified_project(stage.stage_handle.raw(), project_name, expected)?;
+        let (manifest_name, go_module_path) = match request.module_path.as_deref() {
+            Some(module_path) if !module_path.is_empty() && module_path.len() <= 512 => {
+                ("go.mod", Some(module_path))
+            }
+            Some(_) => return Err(fs_failure("scaffold_invalid", None)),
+            None => ("package.json", None),
+        };
         let manifest = open_relative(
             project.raw(),
-            "package.json",
+            manifest_name,
             GENERIC_READ | FILE_READ_ATTRIBUTES,
             FILE_SHARE_READ,
             FILE_OPEN,
@@ -2609,10 +2618,21 @@ mod windows {
         if content.len() > MAX_SCAFFOLD_MANIFEST_BYTES {
             return Err(fs_failure("scaffold_invalid", None));
         }
-        let manifest: serde_json::Value =
-            serde_json::from_slice(&content).map_err(|_| fs_failure("scaffold_invalid", None))?;
-        if manifest.get("name").and_then(serde_json::Value::as_str) != Some(project_name) {
-            return Err(fs_failure("scaffold_invalid", None));
+        if let Some(module_path) = go_module_path {
+            let expected = format!("module {module_path}");
+            let first_line = content
+                .split(|byte| *byte == b'\n')
+                .next()
+                .unwrap_or_default();
+            if first_line.strip_suffix(b"\r").unwrap_or(first_line) != expected.as_bytes() {
+                return Err(fs_failure("scaffold_invalid", None));
+            }
+        } else {
+            let manifest: serde_json::Value = serde_json::from_slice(&content)
+                .map_err(|_| fs_failure("scaffold_invalid", None))?;
+            if manifest.get("name").and_then(serde_json::Value::as_str) != Some(project_name) {
+                return Err(fs_failure("scaffold_invalid", None));
+            }
         }
         Ok(())
     }
@@ -3500,6 +3520,7 @@ mod windows {
                 parent_path: record.parent_path.clone(),
                 job_id: record.job_id.clone(),
                 project_name: Some(record.project_name.clone()),
+                module_path: None,
                 target_path: Some(record.target_path.clone()),
                 journal_root_path: request.journal_root_path.clone(),
                 transaction_nonce: record.transaction_nonce.clone(),

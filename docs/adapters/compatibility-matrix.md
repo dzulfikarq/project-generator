@@ -2,12 +2,12 @@
 
 | Field | Value |
 |---|---|
-| Version | Draft 0.1 — 2026-11-14 |
-| Status | **FE-03–FE-15 and standalone BE-01 local native evidence recorded; FE-01–FE-15/BE-01/FM-01/FM-02 remain PLAN pending independent review; no recipe promoted or release-approved** |
+| Version | Draft 0.1 — 2026-11-15 |
+| Status | **FE-03–FE-15, standalone BE-01, and BE-02 local native evidence recorded; FE-01–FE-15/BE-01–BE-02/FM-01/FM-02 remain PLAN pending independent review; no recipe promoted or release-approved** |
 | Main platform | Windows 11 |
 | Source of truth | This matrix + machine-readable adapter manifests + QA results |
 
-> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-15, BE-01, and FM-01/FM-02 have local implementation/evidence only, not independent acceptance or release approval; every recipe remains unavailable in normal generation.
+> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-15, BE-01–BE-02, and FM-01/FM-02 have local implementation/evidence only, not independent acceptance or release approval; every recipe remains unavailable in normal generation.
 
 ## 1. Status and test gates
 
@@ -42,7 +42,7 @@ The catalog can mention `PLAN`, but normal generation is enabled only for `TEST`
 | BE-EXPRESS | Express | Node.js / npm | Reviewed minimal TS scaffold + official dependencies | None in bounded BE-01; database integrations remain separate proposed recipes | PLAN |
 | BE-NEST | NestJS | Node.js / npm | Nest CLI `new` (pinned) | Prisma/PostgreSQL or MySQL; Mongo requires separate verified driver | PLAN |
 | BE-FASTIFY | Fastify | Node.js / npm | Official starter or reviewed minimal TS scaffold | Drizzle or Prisma for compatible SQL | PLAN |
-| BE-GO | Go standard library | Go / Go Modules | `go mod init` + reviewed starter | `database/sql` + verified SQL driver | PLAN |
+| BE-GO | Go standard-library `net/http` (BE-02); Gin is separate candidate | Go >=1.22 / Go Modules | Reviewed standalone REST starter; no scaffold CLI | None in BE-02; database integrations remain separate proposed recipes | PLAN |
 | BE-GIN | Go + Gin | Go / Go Modules | `go mod init` + versioned starter | pgx/PostgreSQL, MySQL driver/GORM if specifically tested | PLAN |
 | BE-LARAVEL | Laravel | PHP / Composer; npm for frontend assets only | Composer/Laravel official scaffold | Eloquent + MySQL/PostgreSQL/SQLite | PLAN |
 | BE-FASTAPI | FastAPI | Python / uv | `uv init` + `uv add` + reviewed application skeleton | SQLAlchemy + SQLite/PostgreSQL/MySQL; Mongo only via separate verified adapter | PLAN |
@@ -79,7 +79,7 @@ These scaffolding references are directions, not proof that the exact generated 
 |---|---|---|---|
 | Node web/backend/Expo | **npm** | Yarn `4.18.1` (FE-12/13); pnpm `11.28.11` (FE-14/15); Bun not implemented | Only listed React/Vue Vite + Plain CSS recipes use Yarn/pnpm; declare exact manager pin/config, install invocation, and one relevant lockfile |
 | PHP/Laravel | Composer | N/A for PHP packages | Laravel may *also* have npm for frontend asset pipeline |
-| Go | Go Modules (`go`) | N/A in V1 | `go.mod`, `go.sum`; validate module path |
+| Go | Go Modules (`go`) | N/A in V1 | Go >=1.22 for BE-02. Validate module path; `go.sum` only when dependencies require it. BE-02 has no third-party modules and generates only `go.mod`. |
 | Python/FastAPI | uv | pip later if tested | `pyproject.toml` and uv lock; no npm substitute |
 | Flutter | pub | N/A | Dart SDK / Flutter checks |
 | Java | Maven | Gradle | Future only |
@@ -131,10 +131,11 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | FE-14 | Frontend | React + Vite | None | None | Plain CSS | pnpm `11.28.11` (`hoisted`) | Phase 04B.3 |
 | FE-15 | Frontend | Vue 3 + Vite | None | None | Plain CSS | pnpm `11.28.11` (`hoisted`) | Phase 04B.3 |
 | BE-01 | Backend | None | Express | None | N/A | npm | Phase 05A standalone API; DB excluded |
-| BE-02 | Backend | None | NestJS | PostgreSQL + Prisma | N/A | npm | V1 |
-| BE-03 | Backend | None | Go + Gin | PostgreSQL + pgx | N/A | go | V1 |
-| BE-04 | Backend | None | Laravel | MySQL + Eloquent | N/A | Composer (+ npm assets) | V1 |
-| BE-05 | Backend | None | FastAPI | PostgreSQL + SQLAlchemy | N/A | uv | V1 |
+| BE-02 | Backend | None | Go standard-library `net/http` | None | N/A | Go Modules | Phase 05B standalone API; no external modules |
+| BE-03 | Backend | None | NestJS | PostgreSQL + Prisma | N/A | npm | V1 |
+| BE-04 | Backend | None | Go + Gin | PostgreSQL + pgx | N/A | Go Modules | V1 |
+| BE-05 | Backend | None | Laravel | MySQL + Eloquent | N/A | Composer (+ npm assets) | V1 |
+| BE-06 | Backend | None | FastAPI | PostgreSQL + SQLAlchemy | N/A | uv | V1 |
 | FS-01 | Fullstack | Vue Vite | Laravel | MySQL + Eloquent | Bootstrap | npm + Composer | V1 |
 | FS-02 | Fullstack | React Vite | Go Gin | PostgreSQL + pgx | Tailwind | npm + go | V1 |
 | FS-03 | Fullstack | Angular | NestJS | PostgreSQL + Prisma | Angular Material | npm | V1 |

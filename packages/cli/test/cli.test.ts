@@ -17,15 +17,15 @@ test('catalog emits local versioned JSON without network', () => {
     ok: boolean
     data: {
       adapters: { id: string; compatibleWith: string[]; incompatibleWith: string[] }[]
-      packageManagers: { id: string; version: string; lockfile: string }[]
+      packageManagers: { id: string; version: string; lockfile?: string }[]
       recipes: { id: string; status: string; scaffold?: { packageName: string; version: string; integrity: string; source?: { commitSha: string } }; dependencies?: { packageName: string; version: string; integrity: string; scope?: string }[] }[]
     }
   }
   assert.equal(envelope.ok, true)
   assert.deepEqual(envelope.data.recipes.map(({ id, status }) => [id, status]), [
-    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'], ['FE-06', 'planned'], ['FE-07', 'planned'], ['FE-08', 'planned'], ['FE-09', 'planned'], ['FE-10', 'planned'], ['FE-11', 'planned'], ['FE-12', 'planned'], ['FE-13', 'planned'], ['FE-14', 'planned'], ['FE-15', 'planned'], ['BE-01', 'planned'],
+    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'], ['FE-06', 'planned'], ['FE-07', 'planned'], ['FE-08', 'planned'], ['FE-09', 'planned'], ['FE-10', 'planned'], ['FE-11', 'planned'], ['FE-12', 'planned'], ['FE-13', 'planned'], ['FE-14', 'planned'], ['FE-15', 'planned'], ['BE-01', 'planned'], ['BE-02', 'planned'],
   ])
-  assert.deepEqual(envelope.data.packageManagers.map(({ id, version }) => [id, version]), [['npm', '>=10.0.0'], ['yarn', '4.18.1'], ['pnpm', '11.28.11']])
+  assert.deepEqual(envelope.data.packageManagers.map(({ id, version }) => [id, version]), [['npm', '>=10.0.0'], ['yarn', '4.18.1'], ['pnpm', '11.28.11'], ['go-modules', 'Go 1.22+']])
   const vue = envelope.data.recipes.find(({ id }) => id === 'FE-03')!
   assert.equal(vue.scaffold!.packageName, 'create-vue')
   assert.equal(vue.scaffold!.version, '3.24.0')

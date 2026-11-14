@@ -1,6 +1,6 @@
 # Roadmap — Project Generator Desktop V1
 
-Status: **Phase 01 bounded acceptance, Phase 02 local Forma integration/evidence, Phase 03 internal UI implementation, Phase 04A–04B.3 frontend evidence, and Phase 05A standalone BE-01 CLI/native evidence present; broader acceptance remains partial, no recipe release-approved.** Date: 2026-11-14.
+Status: **Phase 01 bounded acceptance, Phase 02 local Forma integration/evidence, Phase 03 internal UI implementation, Phase 04A–04B.3 frontend evidence, Phase 05A BE-01 evidence, and Phase 05B BE-02 local CLI/native evidence present; broader acceptance remains partial, no recipe release-approved.** Date: 2026-11-15.
 
 ## Phase 0 — Specification and governance
 
@@ -46,9 +46,10 @@ Architecture specification: [`ARCHITECTURE.md`](ARCHITECTURE.md). UX specificati
 ## Phase 5 — Backend and DB breadth
 
 - **Phase 05A local acceptance passed for BE-01 standalone Express + TypeScript + npm, no database.** CLI and Tauri flows passed pinned dependency integrity, tests/typecheck/build/HTTP/shutdown checks, consent, result/history/open actions, cancellation, and collision controls. BE-01 remains `planned`; see [DEC-025](decisions/DEC-025-phase-05a-express-rest-api.md) and [Phase 05A evidence](qa/evidence/phase-05a-express-rest-api.md).
-- Remaining breadth: NestJS, Fastify, Go, Laravel, FastAPI adapters.
+- **Phase 05B bounded local CLI/native acceptance and final regressions complete for BE-02 standalone Go `net/http` + Go Modules.** BE-02 remains planned.
+- Remaining breadth: NestJS, Fastify, Go Gin, Laravel, FastAPI adapters. Phase 05B reconciles the draft IDs: NestJS is BE-03, Go Gin BE-04, Laravel BE-05, and FastAPI BE-06.
 - DB drivers: PostgreSQL, MySQL/MariaDB, SQLite, MongoDB, with verified ORM pairings and real service checks.
-- **Phase 05A gate: GO for independent BE-01 review/acceptance only; NO-GO for promotion/release.** Recommend Phase 05B evaluate a separate Go standard-library `net/http` + Go Modules recipe before database/fullstack expansion.
+- **Phase 05A/05B gate: GO for independent BE-01/BE-02 review; NO-GO for promotion/release.** Recommend Phase 05C evaluate standalone Laravel and FastAPI backend recipes; do not add database/fullstack scope without separate authorization and evidence.
 - Output: distinct backend-only recipes earning tested status; no DB readiness claims without available DB.
 
 ## Phase 6 — Fullstack composition
