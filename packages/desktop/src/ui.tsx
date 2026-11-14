@@ -9,6 +9,7 @@ import {
   findRecipe,
   formaMetadataCompatible,
   loadPreferences,
+  retainCompatibleStyling,
   savePreferences,
   validateParentDirectory,
   validateProjectName,
@@ -20,9 +21,9 @@ import {
 
 type Page = 'home' | 'create' | 'frameworks' | 'templates' | 'projects' | 'environment' | 'settings' | 'generation' | 'result'
 type WizardStep = 'details' | 'stack' | 'design' | 'docs' | 'review'
-type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07'
+type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11'
 function isRecipeId(value: string): value is RecipeId {
-  return ['FE-01', 'FE-02', 'FE-03', 'FE-04', 'FE-05', 'FE-06', 'FE-07'].includes(value)
+  return ['FE-01', 'FE-02', 'FE-03', 'FE-04', 'FE-05', 'FE-06', 'FE-07', 'FE-08', 'FE-09', 'FE-10', 'FE-11'].includes(value)
 }
 type Documentation = 'minimal' | 'standard' | 'full'
 type Selection = {
@@ -596,12 +597,13 @@ function App() {
               <p className="section-intro">Framework options come from the packaged adapter catalog. Planned means browse and plan only in normal builds.</p>
               <fieldset className="choice-fieldset"><legend>Frontend framework</legend><div className="choice-grid">
                 {frontendAdapters.map((adapter) => {
-                  const adapterRecipe = catalog?.recipes.find((item) => item.frontend === adapter.id && item.id.startsWith('FE-'))
+                   const adapterRecipe = catalog?.recipes.find((item) => item.frontend === adapter.id && item.id.startsWith('FE-'))
                   const enabled = Boolean(adapterRecipe)
                   return <button type="button" key={adapter.id} className={`select-card ${frontendId === adapter.id ? 'chosen' : ''}`} disabled={!enabled || busy} onClick={() => {
-                    if (!adapterRecipe) return
-                    setFrontendId(adapter.id)
-                    invalidateReview()
+                     if (!adapterRecipe) return
+                     setFrontendId(adapter.id)
+                     setStylingId(retainCompatibleStyling(catalog, adapter.id, stylingId, managerId))
+                     invalidateReview()
                   }} aria-pressed={frontendId === adapter.id}>
                     <span className="select-card-top"><span className="framework-monogram">{adapter.displayName.startsWith('Next') ? 'N' : adapter.displayName.startsWith('Nuxt') ? 'U' : adapter.displayName.startsWith('Angular') ? 'A' : adapter.displayName.startsWith('Vue') ? 'V' : 'R'}</span><StatusPill tone="warn">{adapterRecipe?.status ?? 'Catalog only'}</StatusPill></span>
                     <strong>{adapter.displayName}</strong><small>{adapterRecipe ? `${adapterRecipe.id} · TypeScript · ${adapterRecipe.manager}` : 'No desktop recipe maps to this adapter.'}</small>
@@ -621,7 +623,7 @@ function App() {
               <div className="section-title-row"><div><p className="eyebrow">03 · TOOLING</p><h2 id="design-title">Styling and starting template</h2></div><StatusPill>Catalog-backed</StatusPill></div>
               <p className="section-intro">Only combinations with an existing recipe can be selected. Framework changes never silently replace your styling choice.</p>
               {!templateId ? <fieldset className="choice-fieldset"><legend>Styling</legend><div className="compact-choice-grid">
-                {stylingAdapters.map((adapter) => {
+                 {stylingAdapters.filter((adapter) => !['styling.scss', 'styling.tailwind'].includes(adapter.id) || adapter.compatibleWith.includes(frontendId)).map((adapter) => {
                   const compatible = adapter.compatibleWith.includes(frontendId)
                   const matches = Boolean(catalog?.recipes.some((item) => item.frontend === frontendId && item.styling === adapter.id && item.manager === managerId && item.id.startsWith('FE-')))
                   const enabled = compatible && matches
@@ -732,7 +734,7 @@ function App() {
             <button className="button secondary-button" disabled={!adapterRecipe || busy} onClick={() => startWizardForFramework(adapter.id)}>{adapterRecipe ? 'Configure project' : 'Unavailable'}</button>
           </article>
         })}</div>
-        <p className="catalog-pin">FE-01 through FE-07 remain planned. Normal generation remains blocked pending independent acceptance.</p>
+         <p className="catalog-pin">FE-01 through FE-11 remain planned. Normal generation remains blocked pending independent acceptance.</p>
       </section>}
 
       {page === 'templates' && <section className="page-content" aria-labelledby="templates-title">
@@ -813,7 +815,7 @@ function App() {
         {recovery !== null && <RecoveryDetails value={recovery} />}
       </section>}
 
-      <footer className="app-footer"><span>FormaForge · Project Generator</span><span>Local development · FE-01–FE-07 / FM-01 / FM-02 remain planned · no release approval</span></footer>
+      <footer className="app-footer"><span>FormaForge · Project Generator</span><span>Local development · FE-01–FE-11 / FM-01 / FM-02 remain planned · no release approval</span></footer>
     </main>
   </div>
 }
@@ -828,7 +830,7 @@ function UnsupportedGroup({ title, description, entries }: { title: string; desc
 
 function ProjectList({ projects, vscodeAvailable, onOpen }: { projects: ProjectRecord[]; vscodeAvailable: boolean; onOpen: (path: string, command: 'open_project_folder' | 'open_project_in_vscode') => void }) {
   return <div className="project-list">{projects.map((project) => <article className="project-row" key={`${project.path}-${project.createdAt}`}>
-    <div className="project-type-mark" aria-hidden="true">{project.recipeId === 'FE-02' ? 'N' : project.recipeId === 'FE-06' ? 'U' : project.recipeId === 'FE-07' ? 'A' : ['FE-03', 'FE-05'].includes(project.recipeId) ? 'V' : 'R'}</div><div className="project-row-main"><strong>{project.name}</strong><code>{project.path}</code><div className="project-row-meta"><span>{project.recipeId}</span><span>·</span><span>{new Date(project.createdAt).toLocaleString()}</span></div></div>
+    <div className="project-type-mark" aria-hidden="true">{project.recipeId === 'FE-02' ? 'N' : project.recipeId === 'FE-06' ? 'U' : project.recipeId === 'FE-07' ? 'A' : ['FE-03', 'FE-05', 'FE-09', 'FE-11'].includes(project.recipeId) ? 'V' : 'R'}</div><div className="project-row-main"><strong>{project.name}</strong><code>{project.path}</code><div className="project-row-meta"><span>{project.recipeId}</span><span>·</span><span>{new Date(project.createdAt).toLocaleString()}</span></div></div>
     <div className="project-row-status"><StatusPill tone={project.status === 'completed' ? 'good' : 'warn'}>{project.status === 'completed' ? 'Checks passed' : 'Cleanup attention'}</StatusPill><div className="project-row-actions"><button className="button small-button secondary-button" onClick={() => onOpen(project.path, 'open_project_folder')}>Open folder</button>{vscodeAvailable && <button className="button small-button quiet-button" onClick={() => onOpen(project.path, 'open_project_in_vscode')}>VS Code</button>}</div></div>
   </article>)}</div>
 }

@@ -7,6 +7,10 @@ export function createPlan(selection: ProjectSelectionV1): GenerationPlan {
   const recipe = resolved.recipe
   const isForma = Boolean(resolved.selection.template)
   const bootstrap = recipe.styling === 'styling.bootstrap'
+  const viteScss = recipe.styling === 'styling.scss'
+    && (recipe.frontend === 'frontend.react-vite' || recipe.frontend === 'frontend.vue-vite')
+  const viteTailwind = recipe.styling === 'styling.tailwind'
+    && (recipe.frontend === 'frontend.react-vite' || recipe.frontend === 'frontend.vue-vite')
   const isNuxt = recipe.frontend === 'frontend.nuxt'
   const isAngular = recipe.frontend === 'frontend.angular'
   const pinnedDependencies = recipe.dependencies?.map(({ packageName, version }) => `${packageName}@${version}`).join(', ')
@@ -36,12 +40,17 @@ export function createPlan(selection: ProjectSelectionV1): GenerationPlan {
           ...(recipe.scaffold.source ? [`Download the immutable ${recipe.scaffold.source.repository} starter commit.`] : []),
           'Run reviewed scaffold code.',
         ], consentKind: 'network' },
-      { id: 'configure', ownerAdapterId: 'documentation', phase: 'configure', action: 'write-declared-files', readableSummary: `Configure ${bootstrap ? `pinned Bootstrap ${pinnedDependencies?.replace(/^bootstrap@/, '')} CSS only` : 'selected framework styling'}${pinnedDependencies && !bootstrap ? ` and pinned dependencies ${pinnedDependencies}` : ''} and write truthful ${resolved.selection.documentation} documentation.`, sideEffects: ['Write declared files under staged project.'] },
+      { id: 'configure', ownerAdapterId: 'documentation', phase: 'configure', action: 'write-declared-files', readableSummary: `Configure ${bootstrap ? `pinned Bootstrap ${pinnedDependencies?.replace(/^bootstrap@/, '')} CSS only` : viteScss ? `Dart Sass ${pinnedDependencies?.replace(/^sass@/, '')} with an imported SCSS starter` : viteTailwind ? `Tailwind CSS 4.3.5 with its official Vite plugin, automatic source detection, and utility-class starter` : 'selected framework styling'}${pinnedDependencies && !bootstrap && !viteScss && !viteTailwind ? ` and pinned dependencies ${pinnedDependencies}` : ''} and write truthful ${resolved.selection.documentation} documentation.`, sideEffects: ['Write declared files under staged project.'] },
       { id: 'install', ownerAdapterId: 'npm', phase: 'install', action: 'install-dependencies', readableSummary: `Install project dependencies with npm${bootstrap ? ' using legacy peer handling to omit unused Bootstrap Popper' : isAngular ? ' using legacy peer handling for the Angular 21 dependency tree' : ''} and write package-lock.json.`, sideEffects: ['Download project dependencies.', 'Run npm package lifecycle scripts.'], consentKind: 'network' },
       { id: 'validate', ownerAdapterId: recipe.frontend, phase: 'validate', action: 'run-check', readableSummary: validationSummary, sideEffects: ['Execute generated framework tools in staging.', 'Write reproducibility manifest with observed check outcomes.'] },
       { id: 'finalize', ownerAdapterId: 'core', phase: 'finalize', action: 'commit-no-replace', readableSummary: 'Move validated project to destination only if destination remains absent.', sideEffects: ['Create final destination with Windows fail-if-exists rename.'] },
     ],
-    expectedWrites: [scaffoldOutput, ...(bootstrap ? ['package.json', 'index.html', 'src/project-generator-bootstrap.css', '.npmrc'] : []), ...(isForma ? ['FORMA-INSTALL.md', 'forma.install.json', 'forma-install-report.json', 'INSTALL.md'] : []), ...expectedDocumentationFiles(resolved.selection.documentation), 'package-lock.json', '.project-generator/manifest.json'],
+    expectedWrites: [scaffoldOutput,
+      ...(bootstrap ? ['package.json', 'index.html', 'src/project-generator-bootstrap.css', '.npmrc'] : []),
+      ...(viteScss ? ['package.json', recipe.frontend === 'frontend.react-vite' ? 'src/main.tsx' : 'src/main.ts', recipe.frontend === 'frontend.react-vite' ? 'src/App.tsx' : 'src/App.vue', 'src/project-generator.scss'] : []),
+      ...(viteTailwind ? ['package.json', 'vite.config.ts', recipe.frontend === 'frontend.react-vite' ? 'src/main.tsx' : 'src/main.ts', recipe.frontend === 'frontend.react-vite' ? 'src/App.tsx' : 'src/App.vue', 'src/project-generator-tailwind.css'] : []),
+      ...(isForma ? ['FORMA-INSTALL.md', 'forma.install.json', 'forma-install-report.json', 'INSTALL.md'] : []),
+      ...expectedDocumentationFiles(resolved.selection.documentation), 'package-lock.json', '.project-generator/manifest.json'],
     networkAccess: [
       ...(isForma ? ['https://github.com (authenticated private Forma source; pinned commit)'] : []),
       ...(recipe.scaffold.source ? ['https://api.github.com', 'https://codeload.github.com'] : []),

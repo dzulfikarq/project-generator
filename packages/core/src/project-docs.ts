@@ -28,9 +28,11 @@ function recipeText(resolved: ResolvedSelection): { title: string; scaffold: str
     }
   }
   if (resolved.recipe.frontend === 'frontend.react-vite') {
-    const bootstrap = resolved.recipe.styling === 'styling.bootstrap'
+    const styleSuffix = resolved.recipe.styling === 'styling.bootstrap' ? ' + Bootstrap 5 CSS'
+      : resolved.recipe.styling === 'styling.scss' ? ' + SCSS'
+        : resolved.recipe.styling === 'styling.tailwind' ? ' + Tailwind CSS' : ''
     return {
-      title: `React + Vite + TypeScript${bootstrap ? ' + Bootstrap 5 CSS' : ''}`,
+      title: `React + Vite + TypeScript${styleSuffix}`,
       scaffold: 'create-vite 9.3.4 (`react-ts` template)',
       nodeRange: 'Node.js 20.19+ or 22.12+',
       devCommand: 'npm run dev',
@@ -56,9 +58,11 @@ function recipeText(resolved: ResolvedSelection): { title: string; scaffold: str
     }
   }
   if (resolved.recipe.frontend === 'frontend.vue-vite') {
-    const bootstrap = resolved.recipe.styling === 'styling.bootstrap'
+    const styleSuffix = resolved.recipe.styling === 'styling.bootstrap' ? ' + Bootstrap 5 CSS'
+      : resolved.recipe.styling === 'styling.scss' ? ' + SCSS'
+        : resolved.recipe.styling === 'styling.tailwind' ? ' + Tailwind CSS' : ''
     return {
-      title: `Vue 3 + Vite + TypeScript${bootstrap ? ' + Bootstrap 5 CSS' : ''}`,
+      title: `Vue 3 + Vite + TypeScript${styleSuffix}`,
       scaffold: 'create-vue 3.24.0 (`--typescript --eslint`)',
       nodeRange: 'Node.js 22.18+ or 24.12+',
       devCommand: 'npm run dev',
@@ -87,6 +91,13 @@ function generatedContent(resolved: ResolvedSelection, nodeVersion: string, npmV
   const bootstrapNote = resolved.recipe.styling === 'styling.bootstrap'
     ? '\nBootstrap is configured as CSS only. Project `.npmrc` disables automatic installation of its unused `@popperjs/core` peer; no Bootstrap JavaScript is configured.\n'
     : ''
+  const stylingNote = resolved.recipe.styling === 'styling.scss'
+    && (resolved.recipe.frontend === 'frontend.react-vite' || resolved.recipe.frontend === 'frontend.vue-vite')
+    ? 'Vite imports `src/project-generator.scss`; pinned `sass@1.108.2` compiles it during development and production builds.\n'
+    : resolved.recipe.styling === 'styling.tailwind'
+      && (resolved.recipe.frontend === 'frontend.react-vite' || resolved.recipe.frontend === 'frontend.vue-vite')
+      ? 'Tailwind CSS `4.3.5` uses the official `@tailwindcss/vite` plugin `4.3.5`. Tailwind v4 auto-detects source files; no legacy `tailwind.config.js` or content globs are generated.\n'
+      : ''
   const checks = forma
     ? `## Checks\n\n\`\`\`sh\nnpm run typecheck\nnpm run build\n\`\`\`\n\nThe Forma installer does not define a lint script; lint was not run. The generator HTTP smoke check is recorded in .project-generator/manifest.json.\n`
     : resolved.recipe.frontend === 'frontend.nuxt'
@@ -96,11 +107,11 @@ function generatedContent(resolved: ResolvedSelection, nodeVersion: string, npmV
     : resolved.recipe.frontend === 'frontend.vue-vite'
       ? `## Checks\n\n\`\`\`sh\nnpm run lint\nnpm run type-check\nnpm run build\n\`\`\`\n`
       : `## Checks\n\n\`\`\`sh\nnpm run lint\nnpm run build\n\`\`\`\n`
-  const readme = `# ${name}\n\n${origin}${details.title} project.\n${bootstrapNote}\n## Prerequisites\n\n- ${details.nodeRange}\n- npm 10 or newer\n\n## Run locally\n\n\`\`\`sh\nnpm install\n${details.devCommand}\n\`\`\`\n\n${checks}\nSee [docs/SETUP.md](docs/SETUP.md) for setup and verification details.\n\nThis is a frontend-only project. No separate backend, database, or deployment is included. npm installation may run dependency lifecycle scripts; dependencies are not sandboxed.\n`
+  const readme = `# ${name}\n\n${origin}${details.title} project.\n${bootstrapNote}${stylingNote}\n## Prerequisites\n\n- ${details.nodeRange}\n- npm 10 or newer\n\n## Run locally\n\n\`\`\`sh\nnpm install\n${details.devCommand}\n\`\`\`\n\n${checks}\nSee [docs/SETUP.md](docs/SETUP.md) for setup and verification details.\n\nThis is a frontend-only project. No separate backend, database, or deployment is included. npm installation may run dependency lifecycle scripts; dependencies are not sandboxed.\n`
   const setupChecks = forma || resolved.recipe.frontend === 'frontend.nuxt' ? 'npm run typecheck\nnpm run build'
     : resolved.recipe.frontend === 'frontend.angular' ? 'npm run build\nnpm test -- --watch=false'
       : resolved.recipe.frontend === 'frontend.vue-vite' ? 'npm run lint\nnpm run type-check\nnpm run build' : 'npm run lint\nnpm run build'
-  const setup = `# Setup\n\n## Toolchain\n\nGenerated with ${details.scaffold}, Node.js ${nodeVersion}, and npm ${npmVersion}.\n${forma ? `Forma source: private GitHub repository, commit ${forma.commitSha}. Template ${forma.id}@${forma.version}; portable SHA-256 ${forma.contentHash}; theme ${forma.variantName}.\n` : ''}${bootstrapNote}\n## Install and run\n\n\`\`\`sh\nnpm install\n${details.devCommand}\n\`\`\`\n\n## Validate\n\n\`\`\`sh\n${setupChecks}\n\`\`\`\n\nThe generator's HTTP smoke check verifies an HTML response from the local server. It does not launch a browser or verify visual rendering.\n`
+  const setup = `# Setup\n\n## Toolchain\n\nGenerated with ${details.scaffold}, Node.js ${nodeVersion}, and npm ${npmVersion}.\n${forma ? `Forma source: private GitHub repository, commit ${forma.commitSha}. Template ${forma.id}@${forma.version}; portable SHA-256 ${forma.contentHash}; theme ${forma.variantName}.\n` : ''}${bootstrapNote}${stylingNote}\n## Install and run\n\n\`\`\`sh\nnpm install\n${details.devCommand}\n\`\`\`\n\n## Validate\n\n\`\`\`sh\n${setupChecks}\n\`\`\`\n\nThe generator's HTTP smoke check verifies an HTML response from the local server. It does not launch a browser or verify visual rendering.\n`
   const files = new Map<string, string>([['README.md', readme], ['docs/SETUP.md', setup]])
   if (resolved.selection.documentation === 'minimal') return files
 

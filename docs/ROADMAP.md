@@ -1,6 +1,6 @@
 # Roadmap — Project Generator Desktop V1
 
-Status: **Phase 01 bounded acceptance, Phase 02 local Forma integration/evidence, Phase 03 internal UI implementation, Phase 04A local acceptance, and scoped Phase 04B Nuxt/Angular CLI/native desktop evidence present; broader UI acceptance remains partial, no recipe release-approved.** Date: 2026-11-14.
+Status: **Phase 01 bounded acceptance, Phase 02 local Forma integration/evidence, Phase 03 internal UI implementation, Phase 04A local acceptance, Phase 04B Nuxt/Angular acceptance, and Phase 04B.2 React/Vue styling CLI/native desktop acceptance present; broader UI acceptance remains partial, no recipe release-approved.** Date: 2026-11-14.
 
 ## Phase 0 — Specification and governance
 
@@ -36,8 +36,10 @@ Architecture specification: [`ARCHITECTURE.md`](ARCHITECTURE.md). UX specificati
 ## Phase 4 — Web/frontend breadth and styling
 
 - **Phase 04A local acceptance complete:** Vue 3 + Vite + TypeScript via integrity-pinned official `create-vue`; React/Vue Bootstrap 5 CSS pins; npm-only FE-03–FE-05; native desktop flows passed; incompatible combinations blocked. Local E2E does not promote recipes. See [DEC-021](decisions/DEC-021-phase-04a-vue-bootstrap.md) and [Phase 04A acceptance evidence](qa/evidence/phase-04a-native-desktop-acceptance.md).
-- **Phase 04B scope:** [DEC-022](decisions/DEC-022-phase-04b-nuxt-angular.md) authorizes only FE-06 Nuxt 4/CSS and FE-07 Angular 21/SCSS implementation plus local evidence gathering. Both remain `planned`; normal generation remains blocked. The expansion hold remains for other frameworks, components, styles, package managers, recipe promotion, and release.
+- **Phase 04B scope:** [DEC-022](decisions/DEC-022-phase-04b-nuxt-angular.md) authorizes only FE-06 Nuxt 4/CSS and FE-07 Angular 21/SCSS implementation plus local evidence gathering. Both remain `planned`; normal generation remains blocked. DEC-023 separately authorizes FE-08–FE-11 only; no other frameworks, component libraries, package managers, recipe promotion, or release are in scope.
 - Phase 04B CLI/native desktop verification, release-gate evidence, and limitations: [FE-06/FE-07 report](qa/evidence/phase-04b-nuxt-angular.md). Local runs do not establish independent acceptance or promote recipes.
+- **Phase 04B.2 local acceptance passed:** FE-08 React/Vite + SCSS, FE-09 Vue/Vite + SCSS, FE-10 React/Vite + Tailwind CSS 4, and FE-11 Vue/Vite + Tailwind CSS 4 passed bounded CLI/native checks with npm. All remain `planned`; see [DEC-023](decisions/DEC-023-phase-04b2-scss-tailwind.md) and [acceptance evidence](qa/evidence/phase-04b2-scss-tailwind.md).
+- **Phase 04B.3 recommendation: GO for independent recipe review/acceptance only.** Do not expand scope, promote FE-08–FE-11, or approve release without separate authorization and independent evidence. Existing clean-machine and security gates remain open.
 - Output: independently accepted recipes only; block invalid styling/manager choices.
 
 ## Phase 5 — Backend and DB breadth

@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Version | Draft 0.1 — 2026-11-14 |
-| Status | **FE-03–FE-07 local native acceptance recorded; FE-01–FE-07/FM-01/FM-02 remain PLAN pending independent review; no recipe promoted or release-approved** |
+| Status | **FE-03–FE-11 local native acceptance recorded; FE-01–FE-11/FM-01/FM-02 remain PLAN pending independent review; no recipe promoted or release-approved** |
 | Main platform | Windows 11 |
 | Source of truth | This matrix + machine-readable adapter manifests + QA results |
 
-> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-07 and FM-01/FM-02 have local implementation/evidence only, not independent acceptance or release approval; every recipe remains unavailable in normal generation.
+> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-11 and FM-01/FM-02 have local implementation/evidence only, not independent acceptance or release approval; every recipe remains unavailable in normal generation.
 
 ## 1. Status and test gates
 
@@ -24,9 +24,9 @@ The catalog can mention `PLAN`, but normal generation is enabled only for `TEST`
 
 | ID | Framework | Project target | JS manager default | Native scaffold / baseline | Typical styling | Forma | State |
 |---|---|---|---|---|---|---|---|
-| FW-REACT | React + Vite | V1 | npm | `create-vite` (React/TS) | Plain CSS, Bootstrap 5 CSS | Forma templates below | PLAN |
+| FW-REACT | React + Vite | V1 | npm | `create-vite` (React/TS) | Plain CSS, Bootstrap 5 CSS, SCSS, Tailwind CSS 4 | Forma templates below | PLAN |
 | FW-NEXT | Next.js App Router | V1 | npm | `create-next-app` | Tailwind | Forma templates below | PLAN |
-| FW-VUE | Vue 3 + Vite | V1 | npm | Official `create-vue` (TypeScript; Vite) | Plain CSS, Bootstrap 5 CSS | No | PLAN |
+| FW-VUE | Vue 3 + Vite | V1 | npm | Official `create-vue` (TypeScript; Vite) | Plain CSS, Bootstrap 5 CSS, SCSS, Tailwind CSS 4 | No | PLAN |
 | FW-NUXT | Nuxt 4 | V1 | npm | `create-nuxt@4.0.3` + immutable `nuxt/starter` commit; Nuxt `4.6.4` | Plain CSS (FE-06 only) | No | PLAN |
 | FW-ANGULAR | Angular 21 | V1 | npm | Local `@angular/cli@21.2.30 ng new`; Angular core `21.2.26` | SCSS (FE-07 only) | No | PLAN |
 | FW-SVELTE | SvelteKit | Later V1 candidate | npm | Svelte CLI | CSS, Tailwind, SCSS | No | CAT |
@@ -93,24 +93,25 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 
 | Framework | Plain CSS / Modules | Tailwind | Bootstrap | SCSS | Component library candidates |
 |---|---|---|---|---|---|
-| React + Vite | PLAN (FE-01) | BLK | PLAN (FE-04; CSS only) | FUT | shadcn/ui (COND), MUI (COND), Ant Design (COND) |
+| React + Vite | PLAN (FE-01) | PLAN (FE-10; Tailwind 4 / official Vite plugin) | PLAN (FE-04; CSS only) | PLAN (FE-08; Sass 1.108.2) | shadcn/ui (COND), MUI (COND), Ant Design (COND) |
 | Next.js | BLK | PLAN (FE-02) | BLK | FUT | shadcn/ui (COND), MUI (COND) |
-| Vue + Vite | PLAN (FE-03) | BLK | PLAN (FE-05; CSS only) | FUT | PrimeVue (COND), Vuetify (COND) |
+| Vue + Vite | PLAN (FE-03) | PLAN (FE-11; Tailwind 4 / official Vite plugin) | PLAN (FE-05; CSS only) | PLAN (FE-09; Sass 1.108.2) | PrimeVue (COND), Vuetify (COND) |
 | Nuxt 4 | PLAN (FE-06) | FUT | FUT | FUT | Nuxt UI (COND), PrimeVue (COND), Vuetify (COND) |
-| Angular 21 | FUT | FUT | FUT | PLAN (FE-07) | Angular Material (COND), PrimeNG (COND) |
+| Angular 21 | FUT | FUT | FUT | PLAN (FE-07 only; Phase 04B.2 does not change Angular) | Angular Material (COND), PrimeNG (COND) |
 | SvelteKit | FUT | FUT | FUT | FUT | Future only |
 | Expo / React Native | Native StyleSheet | NativeWind FUT | **BLK** (web CSS) | **BLK** (web SCSS) | React Native Paper FUT |
 | Flutter | **BLK** (web CSS) | **BLK** | **BLK** | **BLK** | Material/Cupertino FUT |
 
 - Bootstrap can be a separate styling option. Interactive Bootstrap JS must respect the framework lifecycle; `bootstrap.css` alone does not install behavior.
 - Phase 04A adds only FE-04/FE-05 Bootstrap CSS integration; Bootstrap JavaScript and Popper are excluded. Bootstrap + Tailwind is blocked, not combined or substituted.
-- SCSS is a CSS preprocessor, not a replacement for a component library. Combo choices must be intentionally tested.
+- Phase 04B.2 adds FE-08/FE-09 with official Dart Sass `sass@1.108.2`, and FE-10/FE-11 with Tailwind CSS `4.3.5` plus official `@tailwindcss/vite@4.3.5`. The plugin peer range accepts Vite `^5.2.0 || ^6 || ^7 || ^8`; pinned `create-vite@9.3.4` and `create-vue@3.24.0` templates declare Vite 8 ranges. Tailwind v4 auto-detects source files; no legacy config/content glob is generated.
+- SCSS is a CSS preprocessor, not a replacement for a component library. React/Vue Vite combinations only; Nuxt/Angular styling remains unchanged in this phase.
 - Recommended default = framework-native CSS or verified Tailwind recipe, not a blanket styling default for all languages.
 - `Forma` is separate from generic component libraries: template renderer requires a matching framework adapter, component schema and dependency manifest.
 
 ## 7. Cross-stack recipe registry (unit of release)
 
-**Every row below remains `PLAN`.** FE-01–FE-07 and FM-01/FM-02 have local implementations and development evidence; FE-06/FE-07 local verification scope and limits are recorded in [Phase 04B evidence](../qa/evidence/phase-04b-nuxt-angular.md). No recipe can be selected for normal generation until independent acceptance evidence is reviewed and status is explicitly promoted.
+**Every row below remains `PLAN`.** FE-01–FE-11 and FM-01/FM-02 have local implementations and development evidence; FE-06/FE-07 local verification scope and limits are recorded in [Phase 04B evidence](../qa/evidence/phase-04b-nuxt-angular.md), and FE-08–FE-11 in [Phase 04B.2 evidence](../qa/evidence/phase-04b2-scss-tailwind.md). No recipe can be selected for normal generation until independent acceptance evidence is reviewed and status is explicitly promoted.
 
 | Recipe ID | Type | Frontend | Backend | DB / data access | Styling | Manager(s) | Launch target |
 |---|---|---|---|---|---|---|---|
@@ -121,6 +122,10 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | FE-05 | Frontend | Vue 3 + Vite | None | None | Bootstrap 5 CSS | npm | Phase 04A |
 | FE-06 | Frontend | Nuxt 4 | None separate | None | CSS | npm | Phase 04B |
 | FE-07 | Frontend | Angular 21 | None | None | SCSS | npm | Phase 04B |
+| FE-08 | Frontend | React + Vite | None | None | SCSS (`sass@1.108.2`) | npm | Phase 04B.2 |
+| FE-09 | Frontend | Vue 3 + Vite | None | None | SCSS (`sass@1.108.2`) | npm | Phase 04B.2 |
+| FE-10 | Frontend | React + Vite | None | None | Tailwind CSS 4.3.5 (`@tailwindcss/vite@4.3.5`) | npm | Phase 04B.2 |
+| FE-11 | Frontend | Vue 3 + Vite | None | None | Tailwind CSS 4.3.5 (`@tailwindcss/vite@4.3.5`) | npm | Phase 04B.2 |
 | BE-01 | Backend | None | Express | SQLite + Drizzle | N/A | npm | First backend slice |
 | BE-02 | Backend | None | NestJS | PostgreSQL + Prisma | N/A | npm | V1 |
 | BE-03 | Backend | None | Go + Gin | PostgreSQL + pgx | N/A | go | V1 |

@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Date | 2026-11-13 |
-| State | Phase 01 CLI, Phase 02 local Forma integration, bounded DEC-017 recovery, Phase 02.6 runtime PoC, and Phase 03 internal UI MVP present; formal release review not complete |
+| State | Phase 01 CLI, Phase 02 local Forma integration, bounded DEC-017 recovery, Phase 02.6 runtime PoC, Phase 03 internal UI MVP, and Phase 04B.2 React/Vue styling implementation present; formal release review not complete |
 | Governance | See [`governance.md`](governance.md) |
 
 This project adopts EvoPilot's **decision accountability** pattern but uses standard English spelling (`decision`, `decisions`). A user-selected direction can be recorded as **Accepted Discovery** without implying implementation completion, test passage or formal release approval.
@@ -33,6 +33,7 @@ This project adopts EvoPilot's **decision accountability** pattern but uses stan
 | DEC-020 | Phase 03 desktop UI MVP scope | Proposed; implementation present | [DEC-020](DEC-020-phase3-desktop-ui-mvp.md), [Phase 03 evidence](../qa/evidence/phase-03-desktop-ui-mvp.md) | Review partial UI evidence; no recipe promotion or release approval |
 | DEC-021 | Phase 04A Vue and Bootstrap recipe expansion | Accepted Discovery; implementation/evidence present | [DEC-021](DEC-021-phase-04a-vue-bootstrap.md), [Phase 04A evidence](../qa/evidence/phase-04a-vue-bootstrap-expansion.md) | Keep FE-03–FE-05 planned; independent acceptance and review required; Forma remains React/Next only |
 | DEC-022 | Phase 04B Nuxt and Angular recipe expansion | User-authorized scoped implementation; review pending | [DEC-022](DEC-022-phase-04b-nuxt-angular.md), [Phase 04B evidence](../qa/evidence/phase-04b-nuxt-angular.md) | Keep FE-06/FE-07 planned; local evidence only; no Forma, recipe promotion, or release approval |
+| DEC-023 | Phase 04B.2 React/Vue Vite SCSS and Tailwind recipes | Implementation and bounded local acceptance complete; independent review pending | [DEC-023](DEC-023-phase-04b2-scss-tailwind.md), [Phase 04B.2 evidence](../qa/evidence/phase-04b2-scss-tailwind.md) | Phase 04B.3 GO for independent review only; keep FE-08–FE-11 planned; no scope expansion or release approval |
 
 ## Open items
 

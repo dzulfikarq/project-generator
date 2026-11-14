@@ -31,6 +31,10 @@ const configs = [
   ['FE-05', 'frontend.vue-vite', 'styling.bootstrap'],
   ['FE-06', 'frontend.nuxt', 'styling.css'],
   ['FE-07', 'frontend.angular', 'styling.scss'],
+  ['FE-08', 'frontend.react-vite', 'styling.scss'],
+  ['FE-09', 'frontend.vue-vite', 'styling.scss'],
+  ['FE-10', 'frontend.react-vite', 'styling.tailwind'],
+  ['FE-11', 'frontend.vue-vite', 'styling.tailwind'],
   ['FM-01', 'frontend.react-vite', undefined, 'focus-planner'],
   ['FM-02', 'frontend.nextjs-app', undefined, 'staywise-host-dashboard'],
 ]
@@ -106,7 +110,7 @@ try {
     assert.ok(output.some((event) => event.code === 'GEN_RECIPE_UNTESTED'), `${id}: ${result.stdout}`)
     assert.equal(output.some((event) => event.type === 'stage-started' && ['staging', 'scaffolding', 'installing'].includes(event.stageId)), false, `${id} entered execution stage`)
     await assert.rejects(access(join(root, `planned-${id.toLowerCase()}`)))
-    if (id === 'FE-06' || id === 'FE-07') {
+    if (id.startsWith('FE-')) {
       const override = invoke(['generate', '--config', configPaths[index], '--jsonl', '--development-allow-planned'])
       assert.equal(override.status, 3, `${id} release override: ${override.stderr}\n${override.stdout}`)
       assert.ok(events(override.stdout).some((event) => event.code === 'GEN_RECIPE_UNTESTED'), `${id} release override was not blocked: ${override.stdout}`)
@@ -133,7 +137,7 @@ try {
   assert.equal(directResult.error?.code, 'GEN_RECIPE_UNTESTED')
 
   assert.deepEqual((await readdir(root)).sort(), configPaths.map((path) => path.split(/[\\/]/).at(-1)).sort())
-  console.log(`Packaged ${mode} CLI policy smoke passed: catalog/plan/doctor read-only; release override rejected; FE-01–FE-07 and FM-01/FM-02 blocked before staging.`)
+  console.log(`Packaged ${mode} CLI policy smoke passed: catalog/plan/doctor read-only; release override rejected; FE-01–FE-11 and FM-01/FM-02 blocked before staging.`)
 } finally {
   await rm(root, { recursive: true, force: true })
 }

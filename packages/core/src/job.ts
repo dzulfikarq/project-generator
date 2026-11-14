@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { appendFileSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { access, lstat, readFile } from 'node:fs/promises'
+import { access, lstat, readFile, readdir } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, win32 } from 'node:path'
@@ -238,15 +238,36 @@ async function writeToolPackage(stage: OwnedStage, name: string, version: string
   }])
 }
 
+async function readScaffoldFile(stage: OwnedStage, path: string): Promise<string> {
+  try {
+    return await readFile(win32.join(stage.childPath, path), 'utf8')
+  } catch {
+    throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Pinned styling integration did not find an expected official scaffold file.', 'Review the local redacted job log and retry with the pinned official scaffold.')
+  }
+}
+
+function replaceScaffoldText(source: string, expected: string, replacement: string): string {
+  const first = source.indexOf(expected)
+  if (first < 0 || source.indexOf(expected, first + expected.length) >= 0) {
+    throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Pinned styling integration found an unexpected official scaffold layout.', 'Review the local redacted job log and retry with the pinned official scaffold.')
+  }
+  return `${source.slice(0, first)}${replacement}${source.slice(first + expected.length)}`
+}
+
 async function configureRecipeDependencies(stage: OwnedStage, resolved: ResolvedSelection): Promise<string[]> {
   const pins = resolved.recipe.dependencies ?? []
   if (pins.length === 0) return []
   const bootstrap = resolved.recipe.styling === 'styling.bootstrap'
   const frameworkPins = resolved.recipe.frontend === 'frontend.nuxt' || resolved.recipe.frontend === 'frontend.angular'
+  const viteScss = resolved.recipe.styling === 'styling.scss'
+    && (resolved.recipe.frontend === 'frontend.react-vite' || resolved.recipe.frontend === 'frontend.vue-vite')
+  const viteTailwind = resolved.recipe.styling === 'styling.tailwind'
+    && (resolved.recipe.frontend === 'frontend.react-vite' || resolved.recipe.frontend === 'frontend.vue-vite')
   const expectedPins = bootstrap ? ['bootstrap']
     : resolved.recipe.frontend === 'frontend.nuxt' ? ['nuxt', 'typescript', 'vue-tsc']
-      : resolved.recipe.frontend === 'frontend.angular' ? ['@angular/core', '@angular/cli'] : []
-  if ((!bootstrap && !frameworkPins) || pins.some((pin) => !expectedPins.includes(pin.packageName))) {
+      : resolved.recipe.frontend === 'frontend.angular' ? ['@angular/core', '@angular/cli']
+        : viteScss ? ['sass'] : viteTailwind ? ['tailwindcss', '@tailwindcss/vite'] : []
+  if ((!bootstrap && !frameworkPins && !viteScss && !viteTailwind) || pins.length !== expectedPins.length || pins.some((pin) => !expectedPins.includes(pin.packageName))) {
     throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Recipe dependency pin does not match its reviewed framework or styling adapter.', 'Use an exact catalog recipe and retry.')
   }
 
@@ -302,6 +323,7 @@ async function configureRecipeDependencies(stage: OwnedStage, resolved: Resolved
   const writes: { path: string; content: string; replace?: boolean }[] = [
     { path: `${projectName}/package.json`, content: `${JSON.stringify(packageJson, null, 2)}\n`, replace: true },
   ]
+  const generatedFiles: string[] = []
   if (bootstrap) {
     let html: string
     try {
@@ -319,9 +341,57 @@ async function configureRecipeDependencies(stage: OwnedStage, resolved: Resolved
       { path: `${projectName}/src/project-generator-bootstrap.css`, content: "@import 'bootstrap/dist/css/bootstrap.min.css';\n" },
       { path: `${projectName}/.npmrc`, content: 'legacy-peer-deps=true\n' },
     )
+    generatedFiles.push('src/project-generator-bootstrap.css', '.npmrc')
+  }
+  if (viteScss) {
+    const react = resolved.recipe.frontend === 'frontend.react-vite'
+    const appPath = react ? 'src/App.tsx' : 'src/App.vue'
+    const mainPath = react ? 'src/main.tsx' : 'src/main.ts'
+    const appSource = await readScaffoldFile(stage, appPath)
+    const mainSource = await readScaffoldFile(stage, mainPath)
+    const app = replaceScaffoldText(appSource, react ? '<section id="center">' : '<main>', react
+      ? '<section id="center" className="pg-starter">'
+      : '<main class="pg-starter">')
+    const main = replaceScaffoldText(mainSource, react ? "import './index.css'\n" : "import './assets/main.css'\n", react
+      ? "import './index.css'\nimport './project-generator.scss'\n"
+      : "import './assets/main.css'\nimport './project-generator.scss'\n")
+    writes.push(
+      { path: `${projectName}/${appPath}`, content: app, replace: true },
+      { path: `${projectName}/${mainPath}`, content: main, replace: true },
+      { path: `${projectName}/src/project-generator.scss`, content: '$starter-accent: #646cff;\n\n.pg-starter {\n  border-top: 4px solid $starter-accent;\n\n  @media (max-width: 48rem) {\n    border-top-width: 3px;\n  }\n}\n' },
+    )
+    generatedFiles.push('src/project-generator.scss')
+  }
+  if (viteTailwind) {
+    const react = resolved.recipe.frontend === 'frontend.react-vite'
+    const appPath = react ? 'src/App.tsx' : 'src/App.vue'
+    const mainPath = react ? 'src/main.tsx' : 'src/main.ts'
+    let viteConfig = await readScaffoldFile(stage, 'vite.config.ts')
+    if (react) {
+      viteConfig = replaceScaffoldText(viteConfig, "import react from '@vitejs/plugin-react'\n", "import react from '@vitejs/plugin-react'\nimport tailwindcss from '@tailwindcss/vite'\n")
+      viteConfig = replaceScaffoldText(viteConfig, 'plugins: [react()],', 'plugins: [react(), tailwindcss()],')
+    } else {
+      viteConfig = replaceScaffoldText(viteConfig, "import vueDevTools from 'vite-plugin-vue-devtools'\n", "import vueDevTools from 'vite-plugin-vue-devtools'\nimport tailwindcss from '@tailwindcss/vite'\n")
+      viteConfig = replaceScaffoldText(viteConfig, 'plugins: [\n    vue(),\n    vueDevTools(),\n  ],', 'plugins: [\n    vue(),\n    vueDevTools(),\n    tailwindcss(),\n  ],')
+    }
+    const appSource = await readScaffoldFile(stage, appPath)
+    const mainSource = await readScaffoldFile(stage, mainPath)
+    const app = replaceScaffoldText(appSource, react ? '<section id="center">' : '<main>', react
+      ? '<section id="center" className="mx-auto flex min-h-screen max-w-5xl flex-col gap-8 px-6 py-12">'
+      : '<main class="mx-auto flex min-h-screen max-w-5xl flex-col gap-8 px-6 py-12">')
+    const main = replaceScaffoldText(mainSource, react ? "import './index.css'\n" : "import './assets/main.css'\n", react
+      ? "import './index.css'\nimport './project-generator-tailwind.css'\n"
+      : "import './assets/main.css'\nimport './project-generator-tailwind.css'\n")
+    writes.push(
+      { path: `${projectName}/vite.config.ts`, content: viteConfig, replace: true },
+      { path: `${projectName}/${appPath}`, content: app, replace: true },
+      { path: `${projectName}/${mainPath}`, content: main, replace: true },
+      { path: `${projectName}/src/project-generator-tailwind.css`, content: '@import "tailwindcss";\n' },
+    )
+    generatedFiles.push('src/project-generator-tailwind.css')
   }
   await mutateOwnedStage(stage, [], writes)
-  return bootstrap ? ['src/project-generator-bootstrap.css', '.npmrc'] : []
+  return generatedFiles
 }
 
 async function verifyDependencyPins(projectPath: string, pins: NonNullable<RecipeManifestV1['dependencies']>): Promise<void> {
@@ -451,6 +521,34 @@ async function servedPageSmoke(
   }
   if (!outcome) throw userError('GEN_VALIDATE_FAILED', 'validating', 'Local server did not return an HTTP-served HTML page within 15 seconds.', 'Review the local redacted job log and retry.')
   return outcome
+}
+
+async function verifyGeneratedStyling(projectPath: string, recipe: RecipeManifestV1): Promise<ValidationOutcome | undefined> {
+  const viteScss = recipe.styling === 'styling.scss'
+    && (recipe.frontend === 'frontend.react-vite' || recipe.frontend === 'frontend.vue-vite')
+  const viteTailwind = recipe.styling === 'styling.tailwind'
+    && (recipe.frontend === 'frontend.react-vite' || recipe.frontend === 'frontend.vue-vite')
+  if (!viteScss && !viteTailwind) return undefined
+  let css = ''
+  try {
+    const assetsPath = win32.join(projectPath, 'dist', 'assets')
+    const assets = await readdir(assetsPath)
+    const cssFiles = assets.filter((file) => file.endsWith('.css'))
+    if (cssFiles.length === 0) throw new Error('No CSS asset was emitted.')
+    css = (await Promise.all(cssFiles.map((file) => readFile(win32.join(assetsPath, file), 'utf8')))).join('\n')
+  } catch {
+    throw userError('GEN_VALIDATE_FAILED', 'validating', 'Production build did not emit the selected styling output.', 'Review the local redacted job log and check the generated stylesheet import and Vite configuration.')
+  }
+  const requiredOutput = viteScss ? ['.pg-starter'] : ['.min-h-screen', '.max-w-5xl']
+  if (requiredOutput.some((token) => !css.includes(token))) {
+    throw userError('GEN_VALIDATE_FAILED', 'validating', 'Production CSS is missing the selected SCSS rule or Tailwind utilities.', 'Review the generated source imports, utility class names, and Vite styling integration.')
+  }
+  return {
+    id: 'styling-output',
+    status: 'pass',
+    message: viteScss ? 'Generated SCSS selector is present in production CSS.' : 'Generated Tailwind utility classes are present in production CSS.',
+    exitCode: 0,
+  }
 }
 
 async function executeScaffold(
@@ -610,6 +708,11 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       validations.push(outcome)
       emitValidation(emit, outcome, resolved.recipe.frontend)
       if (result.exitCode !== 0) throw mappedProcessError('validating', result)
+    }
+    const stylingOutput = await verifyGeneratedStyling(projectPath, resolved.recipe)
+    if (stylingOutput) {
+      validations.push(stylingOutput)
+      emitValidation(emit, stylingOutput, resolved.recipe.frontend)
     }
     if (selection.template) {
       const lint: ValidationOutcome = { id: 'lint', status: 'skipped', message: 'The pinned Forma installer does not define a lint script or install a lint tool.' }

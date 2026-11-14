@@ -53,7 +53,27 @@ const angularConfig = {
   styling: { adapterId: 'styling.scss' },
 }
 
-test('accepts exact FE-01 through FE-07 combinations without filesystem access', () => {
+const reactScssConfig = {
+  ...reactConfig,
+  styling: { adapterId: 'styling.scss' },
+}
+
+const vueScssConfig = {
+  ...vueConfig,
+  styling: { adapterId: 'styling.scss' },
+}
+
+const reactTailwindConfig = {
+  ...reactConfig,
+  styling: { adapterId: 'styling.tailwind' },
+}
+
+const vueTailwindConfig = {
+  ...vueConfig,
+  styling: { adapterId: 'styling.tailwind' },
+}
+
+test('accepts exact FE-01 through FE-11 combinations without filesystem access', () => {
   assert.equal(resolveSelection(parseSelection(reactConfig)).recipe.id, 'FE-01')
   assert.equal(resolveSelection(parseSelection(nextConfig)).recipe.id, 'FE-02')
   assert.equal(resolveSelection(parseSelection(vueConfig)).recipe.id, 'FE-03')
@@ -95,6 +115,23 @@ test('accepts exact FE-01 through FE-07 combinations without filesystem access',
   assert.equal(angularPlan.executionAvailable, false)
   assert.ok(angularPlan.expectedWrites.includes('<pinned Angular CLI workspace files>'))
   assert.match(angularPlan.steps.find((step) => step.id === 'install')?.readableSummary ?? '', /legacy peer handling/)
+
+  for (const [config, id, dependencies, styleFile] of [
+    [reactScssConfig, 'FE-08', [['sass', '1.108.2']], 'src/project-generator.scss'],
+    [vueScssConfig, 'FE-09', [['sass', '1.108.2']], 'src/project-generator.scss'],
+    [reactTailwindConfig, 'FE-10', [['tailwindcss', '4.3.5'], ['@tailwindcss/vite', '4.3.5']], 'src/project-generator-tailwind.css'],
+    [vueTailwindConfig, 'FE-11', [['tailwindcss', '4.3.5'], ['@tailwindcss/vite', '4.3.5']], 'src/project-generator-tailwind.css'],
+  ] as const) {
+    const recipe = resolveSelection(parseSelection(config)).recipe
+    assert.equal(recipe.id, id)
+    assert.equal(recipe.status, 'planned')
+    assert.deepEqual(recipe.dependencies?.map(({ packageName, version }) => [packageName, version]), dependencies)
+    assert.ok(recipe.dependencies?.every(({ integrity }) => integrity.startsWith('sha512-')))
+    const stylePlan = createPlan(parseSelection(config))
+    assert.equal(stylePlan.executionAvailable, false)
+    assert.ok(stylePlan.expectedWrites.includes(styleFile))
+    assert.match(stylePlan.steps.find((step) => step.id === 'configure')?.readableSummary ?? '', id === 'FE-08' || id === 'FE-09' ? /Dart Sass 1\.108\.2/ : /Tailwind CSS 4\.3\.5.*official Vite plugin/)
+  }
 })
 
 test('resolves only pinned Forma template/framework pairs without network access during planning', () => {
@@ -130,6 +167,8 @@ test('resolves only pinned Forma template/framework pairs without network access
   })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
   assert.throws(() => resolveSelection(parseSelection({ ...nuxtConfig, styling: { adapterId: 'styling.scss' } })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
   assert.throws(() => resolveSelection(parseSelection({ ...angularConfig, styling: { adapterId: 'styling.css' } })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  assert.throws(() => resolveSelection(parseSelection({ ...angularConfig, styling: { adapterId: 'styling.tailwind' } })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  assert.throws(() => resolveSelection(parseSelection({ ...nextConfig, styling: { adapterId: 'styling.scss' } })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
   assert.throws(() => parseSelection({
     ...reactConfig,
     styling: undefined,
@@ -149,10 +188,7 @@ test('rejects malformed types, unknown fields, unsupported managers and bad enum
 })
 
 test('blocks incompatible stacks and contradictory choices with structured errors', () => {
-  const parsed = parseSelection({
-    ...reactConfig,
-    styling: { adapterId: 'styling.tailwind' },
-  })
+  const parsed = parseSelection({ ...angularConfig, styling: { adapterId: 'styling.tailwind' } })
   assert.throws(() => resolveSelection(parsed), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
   const contradictory = parseSelection({ ...reactConfig, git: { initialize: false, initialCommit: true } })
   assert.throws(() => resolveSelection(contradictory), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
@@ -161,7 +197,7 @@ test('blocks incompatible stacks and contradictory choices with structured error
     frontend: { ...reactConfig.frontend, manager: 'pnpm' },
   })
   assert.throws(() => resolveSelection(unsupportedManager), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
-  assert.throws(() => resolveSelection(parseSelection({ ...vueConfig, styling: { adapterId: 'styling.tailwind' } })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  assert.equal(resolveSelection(parseSelection(vueTailwindConfig)).recipe.id, 'FE-11')
   assert.throws(() => resolveSelection(parseSelection({ ...nextConfig, styling: { adapterId: 'styling.bootstrap' } })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
   assert.throws(() => resolveSelection(parseSelection({ ...reactBootstrapConfig, styling: { adapterId: 'styling.bootstrap', uiLibraryId: 'styling.tailwind' } })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE' && error.message.includes('Bootstrap and Tailwind'))
 })

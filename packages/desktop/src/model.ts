@@ -95,6 +95,10 @@ export function findRecipe(catalog: Catalog | null, frontendId: string, stylingI
   return catalog?.recipes.find((recipe) => recipe.frontend === frontendId && (recipe.styling ?? '') === stylingId && recipe.manager === managerId)
 }
 
+export function retainCompatibleStyling(catalog: Catalog | null, frontendId: string, stylingId: string, managerId: string): string {
+  return findRecipe(catalog, frontendId, stylingId, managerId) ? stylingId : ''
+}
+
 export function findFrameworkRecipe(catalog: Catalog | null, frontendId: string, managerId: string): Recipe | undefined {
   const forma = catalog?.adapters.find((adapter) => adapter.id === 'template.forma')
   if (!forma?.compatibleWith.includes(frontendId)) return undefined

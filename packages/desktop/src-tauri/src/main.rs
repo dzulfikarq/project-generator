@@ -99,6 +99,14 @@ enum DesktopRecipeId {
     Fe06,
     #[serde(rename = "FE-07")]
     Fe07,
+    #[serde(rename = "FE-08")]
+    Fe08,
+    #[serde(rename = "FE-09")]
+    Fe09,
+    #[serde(rename = "FE-10")]
+    Fe10,
+    #[serde(rename = "FE-11")]
+    Fe11,
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -129,6 +137,10 @@ impl DesktopSelectionV1 {
             DesktopRecipeId::Fe05 => ("frontend.vue-vite", "styling.bootstrap"),
             DesktopRecipeId::Fe06 => ("frontend.nuxt", "styling.css"),
             DesktopRecipeId::Fe07 => ("frontend.angular", "styling.scss"),
+            DesktopRecipeId::Fe08 => ("frontend.react-vite", "styling.scss"),
+            DesktopRecipeId::Fe09 => ("frontend.vue-vite", "styling.scss"),
+            DesktopRecipeId::Fe10 => ("frontend.react-vite", "styling.tailwind"),
+            DesktopRecipeId::Fe11 => ("frontend.vue-vite", "styling.tailwind"),
         };
         let mut selection = json!({
             "schemaVersion": 1,
@@ -1346,6 +1358,18 @@ mod tests {
             ),
             (DesktopRecipeId::Fe06, "frontend.nuxt", "styling.css"),
             (DesktopRecipeId::Fe07, "frontend.angular", "styling.scss"),
+            (DesktopRecipeId::Fe08, "frontend.react-vite", "styling.scss"),
+            (DesktopRecipeId::Fe09, "frontend.vue-vite", "styling.scss"),
+            (
+                DesktopRecipeId::Fe10,
+                "frontend.react-vite",
+                "styling.tailwind",
+            ),
+            (
+                DesktopRecipeId::Fe11,
+                "frontend.vue-vite",
+                "styling.tailwind",
+            ),
         ] {
             let generated = DesktopSelectionV1 {
                 project_name: "demo".into(),

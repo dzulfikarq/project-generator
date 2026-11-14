@@ -16,8 +16,8 @@ Usage:
   project-generator recovery inspect [--job-id <id>] [--json]
   project-generator recovery apply --job-id <id> --action <cleanup|finalize> --confirm-job <id> [--json]
 
-Frontend recipes: FE-01 React + Vite + TypeScript + npm + CSS; FE-02 Next.js App Router + TypeScript + npm + Tailwind; FE-03 Vue + Vite + TypeScript + npm + CSS; FE-04 React + Vite + Bootstrap 5 CSS + npm; FE-05 Vue + Vite + Bootstrap 5 CSS + npm; FE-06 Nuxt 4 + npm + CSS; FE-07 Angular 21 + npm + SCSS.
-All FE-01–FE-07 and FM-01/FM-02 recipes remain planned until independent Windows acceptance and review. Normal generation refuses planned recipes.
+Frontend recipes: FE-01 React + Vite + TypeScript + npm + CSS; FE-02 Next.js App Router + TypeScript + npm + Tailwind; FE-03 Vue + Vite + TypeScript + npm + CSS; FE-04 React + Vite + Bootstrap 5 CSS + npm; FE-05 Vue + Vite + Bootstrap 5 CSS + npm; FE-06 Nuxt 4 + npm + CSS; FE-07 Angular 21 + npm + SCSS; FE-08 React + Vite + SCSS + npm; FE-09 Vue + Vite + SCSS + npm; FE-10 React + Vite + Tailwind CSS 4 + npm; FE-11 Vue + Vite + Tailwind CSS 4 + npm.
+All FE-01–FE-11 and FM-01/FM-02 recipes remain planned until independent Windows acceptance and review. Normal generation refuses planned recipes.
 The development-only flag runs a planned recipe for evidence gathering; it does not mark that recipe tested.
 Optional Forma selections live in config.template; inspect the pinned catalog with catalog --json. Forma template combos FM-01/FM-02 are also planned and require the development-only flag. Private fetch uses Git for Windows' configured credential manager; config never accepts tokens.
 npm installs may execute third-party lifecycle scripts and are not sandboxed.`

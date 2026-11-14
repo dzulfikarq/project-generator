@@ -9,6 +9,7 @@ import {
   filterFormaTemplates,
   formaMetadataCompatible,
   loadPreferences,
+  retainCompatibleStyling,
   savePreferences,
   STORAGE_KEY,
   validateParentDirectory,
@@ -42,10 +43,14 @@ test('recipe selection requires exact framework, styling, and manager catalog ma
       { id: 'FE-05', frontend: 'vue', styling: 'bootstrap', manager: 'npm' },
       { id: 'FE-06', frontend: 'nuxt', styling: 'css', manager: 'npm' },
       { id: 'FE-07', frontend: 'angular', styling: 'scss', manager: 'npm' },
+      { id: 'FE-08', frontend: 'react', styling: 'scss', manager: 'npm' },
+      { id: 'FE-09', frontend: 'vue', styling: 'scss', manager: 'npm' },
+      { id: 'FE-10', frontend: 'react', styling: 'tailwind', manager: 'npm' },
+      { id: 'FE-11', frontend: 'vue', styling: 'tailwind', manager: 'npm' },
     ],
   } as Catalog
   assert.equal(findRecipe(catalog, 'react', 'css', 'npm')?.id, 'FE-01')
-  assert.equal(findRecipe(catalog, 'react', 'tailwind', 'npm'), undefined)
+  assert.equal(findRecipe(catalog, 'react', 'tailwind', 'npm')?.id, 'FE-10')
   assert.equal(findRecipe(catalog, 'react', 'css', 'yarn'), undefined)
   assert.equal(findFrameworkRecipe(catalog, 'react', 'npm')?.id, 'FE-01')
   assert.equal(findRecipe(catalog, 'react', 'bootstrap', 'npm')?.id, 'FE-04')
@@ -55,6 +60,12 @@ test('recipe selection requires exact framework, styling, and manager catalog ma
   assert.equal(findRecipe(catalog, 'nuxt', 'css', 'npm')?.id, 'FE-06')
   assert.equal(findRecipe(catalog, 'angular', 'scss', 'npm')?.id, 'FE-07')
   assert.equal(findRecipe(catalog, 'angular', 'css', 'npm'), undefined)
+  assert.equal(findRecipe(catalog, 'react', 'scss', 'npm')?.id, 'FE-08')
+  assert.equal(findRecipe(catalog, 'vue', 'scss', 'npm')?.id, 'FE-09')
+  assert.equal(findRecipe(catalog, 'react', 'tailwind', 'npm')?.id, 'FE-10')
+  assert.equal(findRecipe(catalog, 'vue', 'tailwind', 'npm')?.id, 'FE-11')
+  assert.equal(retainCompatibleStyling(catalog, 'angular', 'tailwind', 'npm'), '')
+  assert.equal(retainCompatibleStyling(catalog, 'vue', 'scss', 'npm'), 'scss')
   assert.equal(findFrameworkRecipe(catalog, 'nuxt', 'npm'), undefined)
   assert.equal(findFrameworkRecipe(catalog, 'angular', 'npm'), undefined)
 })

@@ -22,7 +22,7 @@ test('catalog emits local versioned JSON without network', () => {
   }
   assert.equal(envelope.ok, true)
   assert.deepEqual(envelope.data.recipes.map(({ id, status }) => [id, status]), [
-    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'], ['FE-06', 'planned'], ['FE-07', 'planned'],
+    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'], ['FE-06', 'planned'], ['FE-07', 'planned'], ['FE-08', 'planned'], ['FE-09', 'planned'], ['FE-10', 'planned'], ['FE-11', 'planned'],
   ])
   const vue = envelope.data.recipes.find(({ id }) => id === 'FE-03')!
   assert.equal(vue.scaffold.packageName, 'create-vue')
@@ -131,7 +131,7 @@ test('plan reads config but does not create a missing destination', async () => 
   }
 })
 
-test('CLI plans FE-03 through FE-07 read-only and preserves planned status', async () => {
+test('CLI plans FE-03 through FE-11 read-only and preserves planned status', async () => {
   const parent = await mkdtemp(resolve(tmpdir(), 'pg-phase04a-plan-'))
   const cases = [
     ['FE-03', 'frontend.vue-vite', 'styling.css'],
@@ -139,6 +139,10 @@ test('CLI plans FE-03 through FE-07 read-only and preserves planned status', asy
     ['FE-05', 'frontend.vue-vite', 'styling.bootstrap'],
     ['FE-06', 'frontend.nuxt', 'styling.css'],
     ['FE-07', 'frontend.angular', 'styling.scss'],
+    ['FE-08', 'frontend.react-vite', 'styling.scss'],
+    ['FE-09', 'frontend.vue-vite', 'styling.scss'],
+    ['FE-10', 'frontend.react-vite', 'styling.tailwind'],
+    ['FE-11', 'frontend.vue-vite', 'styling.tailwind'],
   ] as const
   try {
     for (const [id, frontend, styling] of cases) {
@@ -164,6 +168,8 @@ test('CLI plans FE-03 through FE-07 read-only and preserves planned status', asy
         assert.ok(plan.networkAccess.includes('https://codeload.github.com'))
       }
       if (id === 'FE-07') assert.ok(plan.expectedWrites.includes('<pinned Angular CLI workspace files>'))
+      if (id === 'FE-08' || id === 'FE-09') assert.ok(plan.expectedWrites.includes('src/project-generator.scss'))
+      if (id === 'FE-10' || id === 'FE-11') assert.ok(plan.expectedWrites.includes('src/project-generator-tailwind.css'))
       await assert.rejects(access(resolve(parent, targetName)))
     }
   } finally {

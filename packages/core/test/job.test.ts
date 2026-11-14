@@ -35,11 +35,15 @@ test('production generation blocks planned recipes before destination writes', a
   }
 })
 
-test('production generation blocks planned Nuxt and Angular recipes before destination writes', async () => {
+test('production generation blocks planned frontend recipes before destination writes', async () => {
   const parent = await mkdtemp(win32.join(tmpdir(), 'pg-phase04b-planned-'))
   const cases = [
     { name: 'planned-nuxt', frontend: 'frontend.nuxt', style: 'styling.css' },
     { name: 'planned-angular', frontend: 'frontend.angular', style: 'styling.scss' },
+    { name: 'planned-react-scss', frontend: 'frontend.react-vite', style: 'styling.scss' },
+    { name: 'planned-vue-scss', frontend: 'frontend.vue-vite', style: 'styling.scss' },
+    { name: 'planned-react-tailwind', frontend: 'frontend.react-vite', style: 'styling.tailwind' },
+    { name: 'planned-vue-tailwind', frontend: 'frontend.vue-vite', style: 'styling.tailwind' },
   ] as const
   const logs: string[] = []
   try {
@@ -62,6 +66,35 @@ test('production generation blocks planned Nuxt and Angular recipes before desti
   } finally {
     await rm(parent, { recursive: true, force: true })
     for (const log of logs) await rm(dirname(log), { recursive: true, force: true })
+  }
+})
+
+test('unsupported Phase 04B.2 styling combinations fail before staging or target writes', async () => {
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-phase04b2-incompatible-'))
+  const cases: { name: string; frontend: string; style: string; uiLibrary?: string }[] = [
+    { name: 'react-dual-style', frontend: 'frontend.react-vite', style: 'styling.bootstrap', uiLibrary: 'styling.tailwind' },
+    { name: 'next-scss-style', frontend: 'frontend.nextjs-app', style: 'styling.scss' },
+    { name: 'nuxt-tailwind-style', frontend: 'frontend.nuxt', style: 'styling.tailwind' },
+    { name: 'angular-tailwind-style', frontend: 'frontend.angular', style: 'styling.tailwind' },
+  ]
+  try {
+    for (const item of cases) {
+      const selection = parseSelection({
+        schemaVersion: 1,
+        project: { name: item.name, type: 'frontend', parentDirectory: parent },
+        frontend: { adapterId: item.frontend, language: 'ts', manager: 'npm' },
+        styling: { adapterId: item.style, ...(item.uiLibrary ? { uiLibraryId: item.uiLibrary } : {}) },
+        documentation: 'minimal',
+        git: { initialize: false, initialCommit: false },
+      })
+      const result = await generateProject(selection)
+      assert.equal(result.status, 'failed')
+      assert.equal(result.error?.code, 'GEN_INCOMPATIBLE')
+      await assert.rejects(access(win32.join(parent, item.name)))
+    }
+    assert.deepEqual(await readdir(parent), [])
+  } finally {
+    await rm(parent, { recursive: true, force: true })
   }
 })
 
