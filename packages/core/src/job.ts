@@ -241,42 +241,87 @@ async function writeToolPackage(stage: OwnedStage, name: string, version: string
 async function configureRecipeDependencies(stage: OwnedStage, resolved: ResolvedSelection): Promise<string[]> {
   const pins = resolved.recipe.dependencies ?? []
   if (pins.length === 0) return []
-  if (resolved.recipe.styling !== 'styling.bootstrap' || pins.some((pin) => pin.packageName !== 'bootstrap')) {
-    throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Recipe dependency pin does not match a reviewed styling adapter.', 'Use an exact catalog recipe and retry.')
+  const bootstrap = resolved.recipe.styling === 'styling.bootstrap'
+  const frameworkPins = resolved.recipe.frontend === 'frontend.nuxt' || resolved.recipe.frontend === 'frontend.angular'
+  const expectedPins = bootstrap ? ['bootstrap']
+    : resolved.recipe.frontend === 'frontend.nuxt' ? ['nuxt', 'typescript', 'vue-tsc']
+      : resolved.recipe.frontend === 'frontend.angular' ? ['@angular/core', '@angular/cli'] : []
+  if ((!bootstrap && !frameworkPins) || pins.some((pin) => !expectedPins.includes(pin.packageName))) {
+    throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Recipe dependency pin does not match its reviewed framework or styling adapter.', 'Use an exact catalog recipe and retry.')
   }
 
   const projectName = win32.basename(stage.childPath)
   let packageJson: Record<string, unknown>
-  let html: string
   try {
     packageJson = JSON.parse(await readFile(win32.join(stage.childPath, 'package.json'), 'utf8')) as Record<string, unknown>
-    html = await readFile(win32.join(stage.childPath, 'index.html'), 'utf8')
   } catch {
-    throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Pinned styling integration could not read the scaffold package manifest or HTML entry.', 'Review the local redacted job log and retry with the pinned official scaffold.')
+    throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Pinned dependency integration could not read the scaffold package manifest.', 'Review the local redacted job log and retry with the pinned official scaffold.')
   }
   if (packageJson.name !== resolved.selection.project.name
     || typeof packageJson.dependencies !== 'object' || packageJson.dependencies === null || Array.isArray(packageJson.dependencies)) {
-    throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Pinned styling integration found an unexpected scaffold package manifest.', 'Review the local redacted job log and retry with the pinned official scaffold.')
+    throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Pinned dependency integration found an unexpected scaffold package manifest.', 'Review the local redacted job log and retry with the pinned official scaffold.')
   }
   const dependencies = packageJson.dependencies as Record<string, unknown>
+  let developmentDependencies = typeof packageJson.devDependencies === 'object' && packageJson.devDependencies !== null && !Array.isArray(packageJson.devDependencies)
+    ? packageJson.devDependencies as Record<string, unknown>
+    : undefined
   for (const pin of pins) {
-    if (dependencies[pin.packageName] !== undefined) {
-      throw userError('GEN_CONFIGURE_FAILED', 'configuring', `Pinned styling dependency ${pin.packageName} already exists in the scaffold.`, 'Review the local redacted job log before retrying.')
+    const scopes = [dependencies, developmentDependencies].filter((scope): scope is Record<string, unknown> => Boolean(scope && Object.hasOwn(scope, pin.packageName)))
+    if (bootstrap) {
+      if (scopes.length > 0) throw userError('GEN_CONFIGURE_FAILED', 'configuring', `Pinned styling dependency ${pin.packageName} already exists in the scaffold.`, 'Review the local redacted job log before retrying.')
+      dependencies[pin.packageName] = pin.version
+    } else if (scopes.length === 0 && pin.scope === 'devDependencies') {
+      developmentDependencies ??= {}
+      packageJson.devDependencies = developmentDependencies
+      developmentDependencies[pin.packageName] = pin.version
+    } else {
+      if (scopes.length !== 1 || typeof scopes[0]![pin.packageName] !== 'string') {
+        throw userError('GEN_CONFIGURE_FAILED', 'configuring', `Pinned framework dependency ${pin.packageName} was not declared exactly once by the scaffold.`, 'Review the scaffold package manifest and retry with the pinned official CLI.')
+      }
+      if (pin.scope === 'devDependencies' && scopes[0] !== developmentDependencies) {
+        delete scopes[0]![pin.packageName]
+        developmentDependencies ??= {}
+        packageJson.devDependencies = developmentDependencies
+        developmentDependencies[pin.packageName] = pin.version
+      } else {
+        scopes[0]![pin.packageName] = pin.version
+      }
     }
-    dependencies[pin.packageName] = pin.version
   }
-  const closingHead = /<\/head\s*>/gi
-  if ((html.match(closingHead) ?? []).length !== 1 || html.includes('project-generator-bootstrap.css')) {
-    throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Pinned styling integration found an unexpected HTML entry.', 'Review the local redacted job log and retry with the pinned official scaffold.')
+
+  if (resolved.recipe.frontend === 'frontend.nuxt') {
+    if (typeof packageJson.scripts !== 'object' || packageJson.scripts === null || Array.isArray(packageJson.scripts)) {
+      throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Pinned Nuxt starter did not provide its expected npm scripts.', 'Review the local redacted job log and retry with the pinned official starter.')
+    }
+    const scripts = packageJson.scripts as Record<string, unknown>
+    if (scripts.typecheck !== undefined) {
+      throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Pinned Nuxt starter already defines a typecheck script.', 'Review the starter package manifest before retrying.')
+    }
+    scripts.typecheck = 'nuxt typecheck'
   }
-  const configuredHtml = html.replace(/<\/head\s*>/i, '  <link rel="stylesheet" href="/src/project-generator-bootstrap.css">\n</head>')
-  await mutateOwnedStage(stage, [], [
+  const writes: { path: string; content: string; replace?: boolean }[] = [
     { path: `${projectName}/package.json`, content: `${JSON.stringify(packageJson, null, 2)}\n`, replace: true },
-    { path: `${projectName}/index.html`, content: configuredHtml, replace: true },
-    { path: `${projectName}/src/project-generator-bootstrap.css`, content: "@import 'bootstrap/dist/css/bootstrap.min.css';\n" },
-    { path: `${projectName}/.npmrc`, content: 'legacy-peer-deps=true\n' },
-  ])
-  return ['src/project-generator-bootstrap.css', '.npmrc']
+  ]
+  if (bootstrap) {
+    let html: string
+    try {
+      html = await readFile(win32.join(stage.childPath, 'index.html'), 'utf8')
+    } catch {
+      throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Pinned Bootstrap integration could not read the scaffold HTML entry.', 'Review the local redacted job log and retry with the pinned official scaffold.')
+    }
+    const closingHead = /<\/head\s*>/gi
+    if ((html.match(closingHead) ?? []).length !== 1 || html.includes('project-generator-bootstrap.css')) {
+      throw userError('GEN_CONFIGURE_FAILED', 'configuring', 'Pinned Bootstrap integration found an unexpected HTML entry.', 'Review the local redacted job log and retry with the pinned official scaffold.')
+    }
+    const configuredHtml = html.replace(/<\/head\s*>/i, '  <link rel="stylesheet" href="/src/project-generator-bootstrap.css">\n</head>')
+    writes.push(
+      { path: `${projectName}/index.html`, content: configuredHtml, replace: true },
+      { path: `${projectName}/src/project-generator-bootstrap.css`, content: "@import 'bootstrap/dist/css/bootstrap.min.css';\n" },
+      { path: `${projectName}/.npmrc`, content: 'legacy-peer-deps=true\n' },
+    )
+  }
+  await mutateOwnedStage(stage, [], writes)
+  return bootstrap ? ['src/project-generator-bootstrap.css', '.npmrc'] : []
 }
 
 async function verifyDependencyPins(projectPath: string, pins: NonNullable<RecipeManifestV1['dependencies']>): Promise<void> {
@@ -293,7 +338,7 @@ async function verifyDependencyPins(projectPath: string, pins: NonNullable<Recip
       throw new Error('CSS-only Bootstrap install unexpectedly resolved Popper.')
     }
   } catch {
-    throw userError('GEN_DEPENDENCY_INTEGRITY', 'installing', 'Pinned styling dependency integrity or Bootstrap CSS-only dependency scope did not match the reviewed catalog.', 'Check npm registry integrity and Bootstrap peer handling, then retry; no target project was committed.')
+    throw userError('GEN_DEPENDENCY_INTEGRITY', 'installing', 'Pinned dependency version or npm integrity did not match the reviewed catalog.', 'Check npm registry integrity and the generated lockfile, then retry; no target project was committed.')
   }
 }
 
@@ -357,18 +402,22 @@ async function servedPageSmoke(
   projectPath: string,
   stage: OwnedStage,
   dirs: { home: string; temp: string },
-  frontendId: 'frontend.react-vite' | 'frontend.nextjs-app' | 'frontend.vue-vite',
+  frontendId: 'frontend.react-vite' | 'frontend.nextjs-app' | 'frontend.vue-vite' | 'frontend.nuxt' | 'frontend.angular',
   signal: AbortSignal | undefined,
   log: JobLog,
 ): Promise<ValidationOutcome> {
   const port = await freePort()
-  const vite = frontendId !== 'frontend.nextjs-app'
+  const vite = frontendId === 'frontend.react-vite' || frontendId === 'frontend.vue-vite'
   const cliPath = vite
     ? win32.join(projectPath, 'node_modules', 'vite', 'bin', 'vite.js')
-    : win32.join(projectPath, 'node_modules', 'next', 'dist', 'bin', 'next')
+    : frontendId === 'frontend.nextjs-app' ? win32.join(projectPath, 'node_modules', 'next', 'dist', 'bin', 'next')
+      : frontendId === 'frontend.nuxt' ? win32.join(projectPath, 'node_modules', 'nuxt', 'bin', 'nuxt.mjs')
+        : win32.join(projectPath, 'node_modules', '@angular', 'cli', 'bin', 'ng.js')
   const args = vite
-    ? ['preview', '--host', '127.0.0.1', '--port', String(port), '--strictPort']
-    : ['start', '--hostname', '127.0.0.1', '--port', String(port)]
+      ? ['preview', '--host', '127.0.0.1', '--port', String(port), '--strictPort']
+      : frontendId === 'frontend.nextjs-app' ? ['start', '--hostname', '127.0.0.1', '--port', String(port)]
+        : frontendId === 'frontend.nuxt' ? ['preview', '--host', '127.0.0.1', '--port', String(port)]
+        : ['serve', '--host', '127.0.0.1', '--port', String(port)]
   const running = await startNodeProcess({
     scriptPath: cliPath,
     allowedScriptRoot: projectPath,
@@ -425,7 +474,9 @@ async function executeScaffold(
     allowedScriptRoot: dirs.tools,
     cwd: stage.path,
     allowedCwdRoot: stage.path,
-    args: [resolved.selection.project.name, ...resolved.recipe.scaffoldArgs],
+    args: resolved.recipe.scaffold.packageName === '@angular/cli'
+      ? ['new', resolved.selection.project.name, ...resolved.recipe.scaffoldArgs]
+      : [resolved.selection.project.name, ...resolved.recipe.scaffoldArgs],
     homeDirectory: dirs.home,
     tempDirectory: dirs.temp,
     ...(signal ? { signal } : {}),
@@ -502,13 +553,15 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
 
     stageStart('installing')
     throwIfCancelled(options.signal, currentStage)
-    const npmArgs = ['install', ...(resolved.recipe.styling === 'styling.bootstrap' ? ['--legacy-peer-deps'] : []), '--package-lock=true']
+    // ponytail: clean Angular 21 scaffold crashes npm 10.9.8 Arborist; remove when ordinary install passes on pinned toolchain.
+    const legacyPeerHandling = resolved.recipe.styling === 'styling.bootstrap' || resolved.recipe.frontend === 'frontend.angular'
+    const npmArgs = ['install', ...(legacyPeerHandling ? ['--legacy-peer-deps'] : []), '--package-lock=true']
     const install = await runNpm(npmArgs, projectPath, stage, npmTool.cliPath, npmRootFromCli(npmTool.cliPath), dirs, log, 'project-dependency-install', options.signal)
     validations.push(checkOutcome('dependency-install', install))
     if (install.exitCode !== 0) throw mappedProcessError('installing', install)
     await verifyDependencyPins(projectPath, resolved.recipe.dependencies ?? [])
     if (resolved.recipe.dependencies?.length) {
-      const integrity: ValidationOutcome = { id: 'dependency-integrity', status: 'pass', message: 'Pinned styling dependency version and npm integrity match the reviewed catalog.', exitCode: 0 }
+      const integrity: ValidationOutcome = { id: 'dependency-integrity', status: 'pass', message: 'Pinned project dependency versions and npm integrity match the reviewed catalog.', exitCode: 0 }
       validations.push(integrity)
       emitValidation(emit, integrity, resolved.recipe.frontend)
     }
@@ -523,6 +576,16 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
         ...(resolved.recipe.frontend === 'frontend.react-vite'
           ? [{ id: 'build', path: win32.join(projectPath, 'node_modules', 'vite', 'bin', 'vite.js'), args: ['build'] }]
           : [{ id: 'build', path: win32.join(projectPath, 'node_modules', 'next', 'dist', 'bin', 'next'), args: ['build'] }]),
+      ]
+      : resolved.recipe.frontend === 'frontend.nuxt'
+      ? [
+        { id: 'typecheck', path: win32.join(projectPath, 'node_modules', 'nuxt', 'bin', 'nuxt.mjs'), args: ['typecheck'] },
+        { id: 'build', path: win32.join(projectPath, 'node_modules', 'nuxt', 'bin', 'nuxt.mjs'), args: ['build'] },
+      ]
+      : resolved.recipe.frontend === 'frontend.angular'
+      ? [
+        { id: 'build', path: win32.join(projectPath, 'node_modules', '@angular', 'cli', 'bin', 'ng.js'), args: ['build'] },
+        { id: 'unit-tests', path: win32.join(projectPath, 'node_modules', '@angular', 'cli', 'bin', 'ng.js'), args: ['test', '--watch=false'] },
       ]
       : resolved.recipe.frontend === 'frontend.vue-vite'
       ? [

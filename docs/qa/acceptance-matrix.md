@@ -2,33 +2,33 @@
 
 | Field | Value |
 |---|---|
-| Status | **PARTIAL** — Phase 01 local evidence, Phase 03 UI implementation checks, and Phase 04A recipe/UI evidence exist; full acceptance/release review remains incomplete |
-| Date | 2026-11-13 |
+| Status | **PARTIAL** — Phase 01 local evidence, Phase 03 UI implementation checks, Phase 04A recipe/UI evidence, and Phase 04B Nuxt/Angular CLI evidence exist; full acceptance/release review remains incomplete |
+| Date | 2026-11-14 |
 | Target | Windows 11 first; record actual host and use clean target dirs for each run |
 | Rule | No PASS claims without executable evidence |
 
-Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PASS`, `FAIL` are not interchangeable. A **PASS** records the tested scope, exact recipe/tool versions, commands, exit codes and artifacts. A pass for FE-01/FE-02 does not promote either recipe or approve a release. Failure logs must be redacted.
+Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PASS`, `FAIL` are not interchangeable. A **PASS** records the tested scope, exact recipe/tool versions, commands, exit codes and artifacts. A local pass does not promote any recipe or approve a release. Failure logs must be redacted.
 
 | Test ID | Requirement | Acceptance procedure / expected evidence | Current status |
 |---|---|---|---|
-| GEN-001 | PRD-001–004 | Invalid framework/database/ORM/style rejected at plan stage; target untouched | PARTIAL — exact FE-01–FE-05 combinations and incompatible Bootstrap/Tailwind pairs tested; React-only Forma templates rejected with `GEN_INCOMPATIBLE` for Vue and target untouched; backend/database remain unavailable |
+| GEN-001 | PRD-001–004 | Invalid framework/database/ORM/style rejected at plan stage; target untouched | PARTIAL — exact FE-01–FE-07 combinations and incompatible styling pairs tested; React-only Forma templates rejected with `GEN_INCOMPATIBLE` for Vue and target untouched; backend/database remain unavailable |
 | GEN-002 | PRD-002,NFR-001–002 | Existing directory, path traversal, Windows reserved names, junction escape rejected | PARTIAL — non-elevated native create/write/cleanup/finalize and bounded process-crash recovery exercised; journal/marker identity rebind, pre-marker preservation, post-rename ACL failure, cleanup interruption, and outside sentinels covered; cross-account ACL denial remains untested and historical finalize anomaly unexplained; see [Phase 01.10 recovery evidence](evidence/phase-01.10-windows-recovery-implementation.md) |
-| GEN-003 | PRD-005,PRD-012 | npm default for Node; unsupported managers rejected; correct lockfile | PASS — FE-01–FE-05 npm-only local runs; Bootstrap CSS peer handling and lock integrity checked |
+| GEN-003 | PRD-005,PRD-012 | npm default for Node; unsupported managers rejected; correct lockfile | PASS — FE-01–FE-07 npm-only local CLI runs; Bootstrap CSS peer handling and FE-06/FE-07 lock integrity checked |
 | GEN-004 | PRD-007 | Missing Node/Go/PHP/Composer/Python/uv reported with fix action, no hidden install | PARTIAL — Node/npm positive detection; missing-tool scenarios incomplete |
-| GEN-005 | PRD-008–009 | Review shows accurate steps; scaffold is deterministic and noninteractive | PARTIAL — FE-03–FE-05 read-only plans, Doctor checks, and pinned CLI/native scaffolds passed; native Bootstrap reviews exposed `.npmrc` and Popper exclusion; broader plan-preview audit remains |
+| GEN-005 | PRD-008–009 | Review shows accurate steps; scaffold is deterministic and noninteractive | PARTIAL — FE-03–FE-07 read-only plans and Doctor checks passed; pinned FE-06/FE-07 CLI scaffolds passed; FE-04/FE-05 native Bootstrap reviews exposed `.npmrc` and Popper exclusion; broader plan-preview audit remains |
 | GEN-006 | PRD-010–011,NFR-009 | Cancelling running scaffold stops owned process tree and cleans only owned staging | PARTIAL — non-elevated cancellation, timeout, detached descendants, breakaway rejection, forced helper death, and real npm lifecycle-install cancellation passed; one expected elevated-only skip; broader independent acceptance remains open |
-| GEN-007 | PRD-013,NFR-010 | Generate from pinned scaffold; compile/build/typecheck/smoke selected recipe; record independent review separately | PASS — FE-01/FE-02 regression plus fresh FE-03–FE-05 CLI and native Windows runs passed listed checks; independent review, lifecycle isolation, and release approval remain blockers; see [Phase 04A native acceptance](evidence/phase-04a-native-desktop-acceptance.md) |
-| GEN-008 | PRD-014 | Minimal, Standard, Full docs contain working actual commands and truthful status | PARTIAL — FE-03–FE-05 Standard docs generated and observed; Minimal, Full, and broader doc assertions remain |
-| GEN-009 | PRD-016,NFR-003 | Exact tool versions, adapter IDs, source integrity and lock hash persisted where applicable; no secrets | PASS — FE-01–FE-05 manifests record exact tool/source versions, integrity, and lock hashes; no Forma template selected |
+| GEN-007 | PRD-013,NFR-010 | Generate from pinned scaffold; compile/build/typecheck/smoke selected recipe; record independent review separately | PASS — FE-01–FE-07 local CLI runs passed their listed recipe checks; FE-03–FE-05 also passed native desktop runs; FE-06/FE-07 native desktop flows remain unverified; independent review, lifecycle isolation, and release approval remain blockers; see [Phase 04B evidence](evidence/phase-04b-nuxt-angular.md) |
+| GEN-008 | PRD-014 | Minimal, Standard, Full docs contain working actual commands and truthful status | PARTIAL — FE-03–FE-07 Standard docs generated; Minimal, Full, and broader content assertions remain |
+| GEN-009 | PRD-016,NFR-003 | Exact tool versions, adapter IDs, source integrity and lock hash persisted where applicable; no secrets | PASS — FE-01–FE-07 manifests record exact tool/source versions, integrity, and lock hashes; no Forma template selected |
 | GEN-010 | PRD-017 | SQL migration and DB driver work against test service; none mode has no DB artifacts | NOT RUN — no database adapters in Phase 01 |
 | GEN-011 | PRD-018 | Fullstack UI can call actual API endpoint; root scripts work on Windows | NOT RUN |
 | GEN-012 | PRD-019,NFR-004–005 | No arbitrary commands/token logging; file ownership and consent controls enforced | PARTIAL — lifecycle scripts remain unsandboxed; no outside-write isolation is claimed. Journal ACL cross-account denial remains untested; same-user code remains outside this boundary. Path-based reads and independent acceptance remain open; see [DEC-017](../decisions/DEC-017-windows-staging-crash-recovery.md) |
 | GEN-013 | PRD-020,NFR-008 | Offline caches work if complete; otherwise transparent network/prerequisite error | NOT RUN |
 | GEN-014 | PRD-021 | Private Forma auth; SHA/manifest verified; React Vite/Next templates build and smoke | PARTIAL — Phase 02 local Windows integration E2Es pass for five exact template/framework pairs; FE-03–FE-05 desktop wizard and CLI plan reject React-only Forma + Vue; Forma integration remains unreviewed and unpromoted; see [Phase 02 evidence](evidence/phase-02-forma-local-integration.md) |
 | GEN-015 | PRD-024 | Optional Docker Compose generated correctly; services never started without action | NOT RUN |
-| GEN-016 | PRD-025 | Optional Git init and commit; without Git generation succeeds, no remote push | PARTIAL — no-Git FE-01–FE-05 generation only; Git bootstrap unsupported |
+| GEN-016 | PRD-025 | Optional Git init and commit; without Git generation succeeds, no remote push | PARTIAL — no-Git FE-01–FE-07 local CLI generation only; Git bootstrap unsupported |
 | GEN-017 | PRD-026,NFR-006 | Error includes stage, stable code, next action, and target-modification status | PARTIAL — selected CLI/core errors tested; full taxonomy incomplete |
-| GEN-018 | NFR-001 | Paths with spaces/Unicode, drive letters, long path/junction handling | PARTIAL — FE-01–FE-05 CLI E2E paths with spaces/`雪` passed; finalize/junction anomaly remains unexplained despite added identity-bound fail-closed checks |
+| GEN-018 | NFR-001 | Paths with spaces/Unicode, drive letters, long path/junction handling | PARTIAL — FE-01–FE-07 CLI E2E paths with spaces/`雪` passed; finalize/junction anomaly remains unexplained despite added identity-bound fail-closed checks |
 | GEN-019 | NFR-011 | Tampered template/manifest rejected before installation | NOT RUN |
 | GEN-020 | NFR-012 | Local redacted logs and user-controlled retention, telemetry off by default | NOT RUN |
 | UX-001 | PRD-001–006 | Wizard keyboard navigable; disabled options explain why | PARTIAL — native FE-03–FE-05 selection and plans observed; Vue/Tailwind and all React/Next Forma cards disabled for Vue; wizard-wide traversal and all project types remain untested |
@@ -150,6 +150,7 @@ Each GEN/UX test has PRD/NFR traceability. `NOT RUN`, `BLOCKED`, `PARTIAL`, `PAS
 - Silent same-host install/launch/uninstall passed; Node/npm `v22.22.1`/`10.9.4`; install directory and uninstall registry entry removed; external project sentinel hash unchanged. This is not clean-machine proof.
 - Earlier development FE-01 `GEN_INSTALL_FAILED` remains **unresolved**: immediate retry passed, but available npm logs contain no failed-install trace. No root cause or transient classification claimed; no failure-focused reproduction justified without diagnostic evidence.
 - Independent Phase 04B development decision: **SCOPED GO** from read-only independent OpenCode review (`ses_e29faff76ffeVKaTE7O3gIzvwT`). Bounded development only; `GEN_INSTALL_FAILED` remains unexplained, with no transient classification. This agent review is not human/external acceptance. Public release remains **NO-GO**; clean-machine install, broader security/acceptance gates, and separate release approval remain open.
+- Later FE-06/FE-07 local CLI results, including the distinct reproducible FE-07 npm failure/workaround and unverified native desktop flows: [Phase 04B Nuxt/Angular report](evidence/phase-04b-nuxt-angular.md). Earlier FE-01 `GEN_INSTALL_FAILED` remains separate and unresolved.
 
 ## Evidence protocol
 

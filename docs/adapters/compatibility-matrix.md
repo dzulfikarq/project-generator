@@ -2,12 +2,12 @@
 
 | Field | Value |
 |---|---|
-| Version | Draft 0.1 — 2026-11-13 |
-| Status | **FE-03–FE-05 fresh CLI and native desktop acceptance evidence complete; FE-01–FE-05/FM-01/FM-02 remain PLAN; no recipe promoted or release-approved** |
+| Version | Draft 0.1 — 2026-11-14 |
+| Status | **FE-03–FE-05 native acceptance complete; FE-06/FE-07 scoped implementation and local CLI verification recorded (native desktop unverified); FE-01–FE-07/FM-01/FM-02 remain PLAN; no recipe promoted or release-approved** |
 | Main platform | Windows 11 |
 | Source of truth | This matrix + machine-readable adapter manifests + QA results |
 
-> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-05 and FM-01/FM-02 have local implementation/evidence only, not independent acceptance or release approval; every recipe remains unavailable in normal generation.
+> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-07 and FM-01/FM-02 have local implementation/evidence only, not independent acceptance or release approval; every recipe remains unavailable in normal generation.
 
 ## 1. Status and test gates
 
@@ -27,8 +27,8 @@ The catalog can mention `PLAN`, but normal generation is enabled only for `TEST`
 | FW-REACT | React + Vite | V1 | npm | `create-vite` (React/TS) | Plain CSS, Bootstrap 5 CSS | Forma templates below | PLAN |
 | FW-NEXT | Next.js App Router | V1 | npm | `create-next-app` | Tailwind | Forma templates below | PLAN |
 | FW-VUE | Vue 3 + Vite | V1 | npm | Official `create-vue` (TypeScript; Vite) | Plain CSS, Bootstrap 5 CSS | No | PLAN |
-| FW-NUXT | Nuxt | V1 | npm | `create-nuxt` | CSS, Tailwind, Bootstrap, SCSS | No | PLAN |
-| FW-ANGULAR | Angular | V1 | npm | Angular CLI `ng new` | CSS, SCSS, Tailwind, Bootstrap | No | PLAN |
+| FW-NUXT | Nuxt 4 | V1 | npm | `create-nuxt@4.0.3` + immutable `nuxt/starter` commit; Nuxt `4.6.4` | Plain CSS (FE-06 only) | No | PLAN |
+| FW-ANGULAR | Angular 21 | V1 | npm | Local `@angular/cli@21.2.30 ng new`; Angular core `21.2.26` | SCSS (FE-07 only) | No | PLAN |
 | FW-SVELTE | SvelteKit | Later V1 candidate | npm | Svelte CLI | CSS, Tailwind, SCSS | No | CAT |
 | FW-RN | React Native / Expo | V1.1 | npm | `create-expo-app` | NativeWind, StyleSheet | No | FUT |
 | FW-FLUTTER | Flutter | V1.1 | pub | Flutter SDK | Material, Cupertino | No | FUT |
@@ -96,8 +96,8 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | React + Vite | PLAN (FE-01) | BLK | PLAN (FE-04; CSS only) | FUT | shadcn/ui (COND), MUI (COND), Ant Design (COND) |
 | Next.js | BLK | PLAN (FE-02) | BLK | FUT | shadcn/ui (COND), MUI (COND) |
 | Vue + Vite | PLAN (FE-03) | BLK | PLAN (FE-05; CSS only) | FUT | PrimeVue (COND), Vuetify (COND) |
-| Nuxt | PLAN | PLAN | PLAN | PLAN | Nuxt UI (COND), PrimeVue (COND), Vuetify (COND) |
-| Angular | PLAN | PLAN | PLAN | PLAN | Angular Material (COND), PrimeNG (COND) |
+| Nuxt 4 | PLAN (FE-06) | FUT | FUT | FUT | Nuxt UI (COND), PrimeVue (COND), Vuetify (COND) |
+| Angular 21 | FUT | FUT | FUT | PLAN (FE-07) | Angular Material (COND), PrimeNG (COND) |
 | SvelteKit | FUT | FUT | FUT | FUT | Future only |
 | Expo / React Native | Native StyleSheet | NativeWind FUT | **BLK** (web CSS) | **BLK** (web SCSS) | React Native Paper FUT |
 | Flutter | **BLK** (web CSS) | **BLK** | **BLK** | **BLK** | Material/Cupertino FUT |
@@ -110,7 +110,7 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 
 ## 7. Cross-stack recipe registry (unit of release)
 
-**Every row below remains `PLAN`.** FE-01–FE-05 and FM-01/FM-02 have implementations and local Windows CLI/native-desktop E2E evidence; other rows remain targets only. No recipe can be selected for normal generation until independent acceptance evidence is reviewed and status is explicitly promoted.
+**Every row below remains `PLAN`.** FE-01–FE-07 and FM-01/FM-02 have local implementations and development evidence; FE-06/FE-07 local verification scope and limits are recorded in [Phase 04B evidence](../qa/evidence/phase-04b-nuxt-angular.md). No recipe can be selected for normal generation until independent acceptance evidence is reviewed and status is explicitly promoted.
 
 | Recipe ID | Type | Frontend | Backend | DB / data access | Styling | Manager(s) | Launch target |
 |---|---|---|---|---|---|---|---|
@@ -119,8 +119,8 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | FE-03 | Frontend | Vue 3 + Vite | None | None | Plain CSS | npm | Phase 04A |
 | FE-04 | Frontend | React + Vite | None | None | Bootstrap 5 CSS | npm | Phase 04A |
 | FE-05 | Frontend | Vue 3 + Vite | None | None | Bootstrap 5 CSS | npm | Phase 04A |
-| FE-06 | Frontend | Nuxt | None separate | None | CSS | npm | V1 |
-| FE-07 | Frontend | Angular | None | None | SCSS | npm | V1 |
+| FE-06 | Frontend | Nuxt 4 | None separate | None | CSS | npm | Phase 04B |
+| FE-07 | Frontend | Angular 21 | None | None | SCSS | npm | Phase 04B |
 | BE-01 | Backend | None | Express | SQLite + Drizzle | N/A | npm | First backend slice |
 | BE-02 | Backend | None | NestJS | PostgreSQL + Prisma | N/A | npm | V1 |
 | BE-03 | Backend | None | Go + Gin | PostgreSQL + pgx | N/A | go | V1 |
@@ -140,6 +140,8 @@ FE-01 evidence: [Windows React + Vite run](../qa/evidence/FE-01/2026-11-11-cli-e
 
 Phase 04A pins and implementation evidence: [FE-03–FE-05 report](../qa/evidence/phase-04a-vue-bootstrap-expansion.md). Fresh CLI/native desktop acceptance and negative Vue/Forma plan evidence: [acceptance report](../qa/evidence/phase-04a-native-desktop-acceptance.md). Vue uses official `create-vue@3.24.0`; Bootstrap CSS uses `bootstrap@5.3.9`. All three recipes remain `PLAN`; no Forma/Vue compatibility is asserted.
 
+Phase 04B uses official `create-nuxt@4.0.3`, Nuxt `4.6.4`, and immutable `nuxt/starter` commit `db01806fcb37f2e369fb09443c72cac696b31548` for FE-06; FE-07 uses local `@angular/cli@21.2.30` and Angular core `21.2.26`. CLI verification, source/package pins, npm workaround, and untested native-desktop scope: [Phase 04B report](../qa/evidence/phase-04b-nuxt-angular.md). Both recipes remain `PLAN`; no Forma support is asserted.
+
 **Important:** the fullstack recipe must produce a real, reachable example API endpoint and frontend call when that is part of its advertised output. Generating two unrelated folder trees is insufficient.
 
 ## 8. Forma integration matrix
@@ -150,7 +152,7 @@ Phase 04A pins and implementation evidence: [FE-03–FE-05 report](../qa/evidenc
 | Modern Admin 1.0.0 | React + Vite; Next.js App Router | **PLAN** — generation, npm install, typecheck, build, HTTP and browser smokes passed | React + Vite, Next.js App Router |
 | Focus Planner 0.1.0 | React + Vite; Next.js untested | **PLAN** — React + Vite generation, npm install, typecheck, build, HTTP and browser smokes passed | React + Vite only |
 | Any other Forma template | Require manifest and independent evidence | Not in pinned Project Generator catalog | Do not offer |
-| Forma React on Vue/Angular/Expo | No native adapter, wrong component contract | **BLK** | Do not offer |
+| Forma React on Vue/Nuxt/Angular/Expo | No native adapter, wrong component contract | **BLK** | Do not offer |
 
 Phase 04A native UI disabled the React/Next Forma template cards when Vue was selected. CLI plans for Vue with React-only `modern-admin` and `staywise-host-dashboard` returned `GEN_INCOMPATIBLE` without creating a target; see [native acceptance evidence](../qa/evidence/phase-04a-native-desktop-acceptance.md).
 

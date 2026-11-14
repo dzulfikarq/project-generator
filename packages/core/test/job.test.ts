@@ -35,6 +35,36 @@ test('production generation blocks planned recipes before destination writes', a
   }
 })
 
+test('production generation blocks planned Nuxt and Angular recipes before destination writes', async () => {
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-phase04b-planned-'))
+  const cases = [
+    { name: 'planned-nuxt', frontend: 'frontend.nuxt', style: 'styling.css' },
+    { name: 'planned-angular', frontend: 'frontend.angular', style: 'styling.scss' },
+  ] as const
+  const logs: string[] = []
+  try {
+    for (const item of cases) {
+      const selection = parseSelection({
+        schemaVersion: 1,
+        project: { name: item.name, type: 'frontend', parentDirectory: parent },
+        frontend: { adapterId: item.frontend, language: 'ts', manager: 'npm' },
+        styling: { adapterId: item.style },
+        documentation: 'minimal',
+        git: { initialize: false, initialCommit: false },
+      })
+      const result = await generateProject(selection)
+      if (result.logFile) logs.push(result.logFile)
+      assert.equal(result.status, 'failed')
+      assert.equal(result.error?.code, 'GEN_RECIPE_UNTESTED')
+      await assert.rejects(access(win32.join(parent, item.name)))
+    }
+    assert.deepEqual(await readdir(parent), [])
+  } finally {
+    await rm(parent, { recursive: true, force: true })
+    for (const log of logs) await rm(dirname(log), { recursive: true, force: true })
+  }
+})
+
 test('production generation blocks planned Forma integrations before fetch or staging', async () => {
   const parent = await mkdtemp(win32.join(tmpdir(), 'pg-forma-planned-'))
   const selection = parseSelection({

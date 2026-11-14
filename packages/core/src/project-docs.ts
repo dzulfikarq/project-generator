@@ -37,6 +37,24 @@ function recipeText(resolved: ResolvedSelection): { title: string; scaffold: str
       smokeCommand: 'npm run preview',
     }
   }
+  if (resolved.recipe.frontend === 'frontend.nuxt') {
+    return {
+      title: 'Nuxt 4 + TypeScript',
+      scaffold: `create-nuxt 4.0.3 with nuxt/starter@${resolved.recipe.scaffold.source!.commitSha} (Nuxt 4.6.4)`,
+      nodeRange: 'Node.js 22.22.3+, 24.15.0+, or 26+',
+      devCommand: 'npm run dev',
+      smokeCommand: 'npm run preview',
+    }
+  }
+  if (resolved.recipe.frontend === 'frontend.angular') {
+    return {
+      title: 'Angular 21 + TypeScript + SCSS',
+      scaffold: 'Angular CLI 21.2.30 (`ng new --routing --style scss`); Angular core 21.2.26',
+      nodeRange: 'Node.js 20.19+, 22.12+, or 24+',
+      devCommand: 'npm start',
+      smokeCommand: 'ng serve',
+    }
+  }
   if (resolved.recipe.frontend === 'frontend.vue-vite') {
     const bootstrap = resolved.recipe.styling === 'styling.bootstrap'
     return {
@@ -61,7 +79,8 @@ function generatedContent(resolved: ResolvedSelection, nodeVersion: string, npmV
   const name = resolved.selection.project.name
   const styling = forma ? 'Forma-managed template styling and theme'
     : resolved.recipe.styling === 'styling.bootstrap' ? 'Bootstrap 5 CSS'
-      : resolved.recipe.styling === 'styling.tailwind' ? 'Tailwind CSS' : 'Plain CSS'
+      : resolved.recipe.styling === 'styling.tailwind' ? 'Tailwind CSS'
+        : resolved.recipe.styling === 'styling.scss' ? 'SCSS' : 'Plain CSS'
   const origin = forma
     ? `Generated from the Forma template ${forma.id}@${forma.version} at immutable commit ${forma.commitSha}. Portable package SHA-256: ${forma.contentHash}.\n\n`
     : `Generated from the official ${details.scaffold} scaffold.\n\n`
@@ -70,18 +89,33 @@ function generatedContent(resolved: ResolvedSelection, nodeVersion: string, npmV
     : ''
   const checks = forma
     ? `## Checks\n\n\`\`\`sh\nnpm run typecheck\nnpm run build\n\`\`\`\n\nThe Forma installer does not define a lint script; lint was not run. The generator HTTP smoke check is recorded in .project-generator/manifest.json.\n`
+    : resolved.recipe.frontend === 'frontend.nuxt'
+      ? `## Checks\n\n\`\`\`sh\nnpm run typecheck\nnpm run build\n\`\`\`\n\nThe recipe adds integrity-pinned TypeScript and vue-tsc dev dependencies because the official starter does not bundle a type checker. The starter does not define lint or unit-test scripts. The generator HTTP preview smoke check is recorded in .project-generator/manifest.json.\n`
+      : resolved.recipe.frontend === 'frontend.angular'
+        ? `## Checks\n\n\`\`\`sh\nnpm run build\nnpm test -- --watch=false\n\`\`\`\n\nThe Angular production build includes compiler/type validation. The official scaffold does not define a lint script. The generator HTTP server smoke check is recorded in .project-generator/manifest.json.\n`
     : resolved.recipe.frontend === 'frontend.vue-vite'
       ? `## Checks\n\n\`\`\`sh\nnpm run lint\nnpm run type-check\nnpm run build\n\`\`\`\n`
       : `## Checks\n\n\`\`\`sh\nnpm run lint\nnpm run build\n\`\`\`\n`
   const readme = `# ${name}\n\n${origin}${details.title} project.\n${bootstrapNote}\n## Prerequisites\n\n- ${details.nodeRange}\n- npm 10 or newer\n\n## Run locally\n\n\`\`\`sh\nnpm install\n${details.devCommand}\n\`\`\`\n\n${checks}\nSee [docs/SETUP.md](docs/SETUP.md) for setup and verification details.\n\nThis is a frontend-only project. No separate backend, database, or deployment is included. npm installation may run dependency lifecycle scripts; dependencies are not sandboxed.\n`
-  const setup = `# Setup\n\n## Toolchain\n\nGenerated with ${details.scaffold}, Node.js ${nodeVersion}, and npm ${npmVersion}.\n${forma ? `Forma source: private GitHub repository, commit ${forma.commitSha}. Template ${forma.id}@${forma.version}; portable SHA-256 ${forma.contentHash}; theme ${forma.variantName}.\n` : ''}${bootstrapNote}\n## Install and run\n\n\`\`\`sh\nnpm install\n${details.devCommand}\n\`\`\`\n\n## Validate\n\n\`\`\`sh\n${forma ? 'npm run typecheck\n' : 'npm run lint\n'}npm run build\n\`\`\`\n\nThe generator's HTTP smoke check verifies an HTML response from the local server. It does not launch a browser or verify visual rendering.\n`
+  const setupChecks = forma || resolved.recipe.frontend === 'frontend.nuxt' ? 'npm run typecheck\nnpm run build'
+    : resolved.recipe.frontend === 'frontend.angular' ? 'npm run build\nnpm test -- --watch=false'
+      : resolved.recipe.frontend === 'frontend.vue-vite' ? 'npm run lint\nnpm run type-check\nnpm run build' : 'npm run lint\nnpm run build'
+  const setup = `# Setup\n\n## Toolchain\n\nGenerated with ${details.scaffold}, Node.js ${nodeVersion}, and npm ${npmVersion}.\n${forma ? `Forma source: private GitHub repository, commit ${forma.commitSha}. Template ${forma.id}@${forma.version}; portable SHA-256 ${forma.contentHash}; theme ${forma.variantName}.\n` : ''}${bootstrapNote}\n## Install and run\n\n\`\`\`sh\nnpm install\n${details.devCommand}\n\`\`\`\n\n## Validate\n\n\`\`\`sh\n${setupChecks}\n\`\`\`\n\nThe generator's HTTP smoke check verifies an HTML response from the local server. It does not launch a browser or verify visual rendering.\n`
   const files = new Map<string, string>([['README.md', readme], ['docs/SETUP.md', setup]])
   if (resolved.selection.documentation === 'minimal') return files
 
-  files.set('AGENTS.md', `# Agent instructions\n\n- Project: ${details.title}.\n- Package manager: npm; retain package-lock.json.\n- Run ${forma ? '`npm run typecheck` and `npm run build`' : resolved.recipe.frontend === 'frontend.vue-vite' ? '`npm run lint`, `npm run type-check`, and `npm run build`' : '`npm run lint` and `npm run build`'} before reporting changes.\n- No separate backend or database is configured.\n- Generated by Project Generator; no approval or project history is implied.\n`)
+  const checkCommands = forma ? '`npm run typecheck` and `npm run build`'
+    : resolved.recipe.frontend === 'frontend.nuxt' ? '`npm run typecheck` and `npm run build`'
+      : resolved.recipe.frontend === 'frontend.angular' ? '`npm run build` and `npm test -- --watch=false`'
+        : resolved.recipe.frontend === 'frontend.vue-vite' ? '`npm run lint`, `npm run type-check`, and `npm run build`' : '`npm run lint` and `npm run build`'
+  files.set('AGENTS.md', `# Agent instructions\n\n- Project: ${details.title}.\n- Package manager: npm; retain package-lock.json.\n- Run ${checkCommands} before reporting changes.\n- No separate backend or database is configured.\n- Generated by Project Generator; no approval or project history is implied.\n`)
   files.set('docs/ARCHITECTURE.md', `# Architecture\n\nThis repository is a ${details.title} frontend application generated from ${details.scaffold}. Styling: ${styling}. It uses npm and has no separate backend or database.\n\nThe framework/template owns application source and build configuration. The Project Generator owns this document and the setup/manifest files.\n`)
   files.set('docs/TESTING.md', forma
     ? `# Testing\n\n- TypeScript: \`npm run typecheck\`.\n- Production build: \`npm run build\`.\n- Local server: \`${details.devCommand}\`.\n- Lint: not installed by the pinned Forma installer; no lint command is provided.\n\nThe generator performed only checks recorded in .project-generator/manifest.json. Its HTTP smoke check is not browser automation.\n`
+    : resolved.recipe.frontend === 'frontend.nuxt'
+        ? `# Testing\n\n- TypeScript: \`npm run typecheck\` (pinned TypeScript and vue-tsc dev dependencies).\n- Production build: \`npm run build\`.\n- Local server: \`${details.devCommand}\`.\n- The official starter does not define lint or unit-test scripts.\n\nThe generator performed only checks recorded in .project-generator/manifest.json. Its HTTP smoke check is not browser automation.\n`
+      : resolved.recipe.frontend === 'frontend.angular'
+        ? `# Testing\n\n- Production build and Angular compiler/type validation: \`npm run build\`.\n- Unit tests: \`npm test -- --watch=false\`.\n- Local server: \`${details.smokeCommand}\`.\n- The official scaffold does not define a lint script.\n\nThe generator performed only checks recorded in .project-generator/manifest.json. Its HTTP smoke check is not browser automation.\n`
     : `# Testing\n\n- Lint: \`npm run lint\`.\n${resolved.recipe.frontend === 'frontend.vue-vite' ? '- TypeScript validation: `npm run type-check`.\n' : ''}- Production build${resolved.recipe.frontend === 'frontend.vue-vite' ? '' : ' and scaffold TypeScript validation'}: \`npm run build\`.\n- Local server: \`${details.devCommand}\`.\n\nThe generator performed only checks recorded in .project-generator/manifest.json. No browser automation is included.\n`)
   if (resolved.selection.documentation === 'standard') return files
 
@@ -143,7 +177,12 @@ export async function writeProjectManifest(
     upstreamSources: forma
       ? [{ repository: 'private Forma repository', commitSha: forma.commitSha, templateId: forma.id, resolvedVersion: forma.version, integrity: { algorithm: 'sha256', contentHash: forma.contentHash } }]
       : [
-        { package: resolved.recipe.scaffold.packageName, resolvedVersion: resolved.recipe.scaffold.version, integrity: resolved.recipe.scaffold.integrity },
+        {
+          package: resolved.recipe.scaffold.packageName,
+          resolvedVersion: resolved.recipe.scaffold.version,
+          integrity: resolved.recipe.scaffold.integrity,
+          ...(resolved.recipe.scaffold.source ? { repository: resolved.recipe.scaffold.source.repository, commitSha: resolved.recipe.scaffold.source.commitSha } : {}),
+        },
         ...(resolved.recipe.dependencies ?? []).map((dependency) => ({ package: dependency.packageName, resolvedVersion: dependency.version, integrity: dependency.integrity })),
       ],
     ...(forma ? { template: { adapterId: 'template.forma', id: forma.id, version: forma.version, variantId: forma.variantId, variantName: forma.variantName, license: forma.license, commitSha: forma.commitSha, sourceRepository: 'private Forma repository', integrity: { algorithm: 'sha256', contentHash: forma.contentHash } } } : {}),

@@ -7,7 +7,20 @@ export function createPlan(selection: ProjectSelectionV1): GenerationPlan {
   const recipe = resolved.recipe
   const isForma = Boolean(resolved.selection.template)
   const bootstrap = recipe.styling === 'styling.bootstrap'
+  const isNuxt = recipe.frontend === 'frontend.nuxt'
+  const isAngular = recipe.frontend === 'frontend.angular'
   const pinnedDependencies = recipe.dependencies?.map(({ packageName, version }) => `${packageName}@${version}`).join(', ')
+  const scaffoldOutput = isForma ? `<Forma template ${resolved.selection.template!.templateId} files>`
+    : isNuxt ? '<pinned official Nuxt starter files>'
+      : isAngular ? '<pinned Angular CLI workspace files>' : '<pinned official framework scaffold files>'
+  const validationSummary = isForma
+    ? 'Run template typecheck, production build, and HTTP smoke; lint is unavailable in the pinned Forma installer.'
+    : isNuxt ? 'Run Nuxt typecheck with pinned TypeScript/vue-tsc, production build, and HTTP preview smoke; the official starter has no lint or unit-test script.'
+      : isAngular ? 'Run Angular production build, unit tests, and HTTP server smoke; the official scaffold has no lint script.'
+        : 'Run lint/typecheck/build and HTTP served-page smoke checks.'
+  const scaffoldSummary = isForma
+    ? `Fetch Forma at ${resolved.selection.template!.commitSha}, verify its package, and install ${resolved.selection.template!.templateId} with the existing Forma exporter/installer.`
+    : `Install and run integrity-pinned ${recipe.scaffold.packageName}@${recipe.scaffold.version}${recipe.scaffold.source ? ` with ${recipe.scaffold.source.repository}@${recipe.scaffold.source.commitSha}` : ''} using fixed arguments.`
   return {
     schemaVersion: 1,
     recipeId: recipe.id,
@@ -16,20 +29,24 @@ export function createPlan(selection: ProjectSelectionV1): GenerationPlan {
     steps: [
       { id: 'preflight', ownerAdapterId: 'core', phase: 'preflight', action: 'inspect', readableSummary: 'Check Node/npm versions and destination safety.', sideEffects: [] },
       { id: 'staging', ownerAdapterId: 'core', phase: 'stage', action: 'create-owned-stage', readableSummary: 'Create generator-owned staging beside the destination.', sideEffects: ['Create temporary directory in destination parent.'] },
-      { id: 'scaffold', ownerAdapterId: isForma ? 'template.forma' : recipe.frontend, phase: 'scaffold', action: 'run-pinned-cli', readableSummary: isForma
-        ? `Fetch Forma at ${resolved.selection.template!.commitSha}, verify its package, and install ${resolved.selection.template!.templateId} with the existing Forma exporter/installer.`
-        : `Install and run integrity-pinned ${recipe.scaffold.packageName}@${recipe.scaffold.version} with fixed arguments.`, sideEffects: isForma
+      { id: 'scaffold', ownerAdapterId: isForma ? 'template.forma' : recipe.frontend, phase: 'scaffold', action: 'run-pinned-cli', readableSummary: scaffoldSummary, sideEffects: isForma
         ? ['Authenticated read-only fetch from the pinned private Forma repository when cache misses.', 'Export and verify the SHA-256 package manifest.', 'Install reviewed template files into owned staging.']
-        : ['Download pinned official scaffold package.', 'Run reviewed scaffold code.'], consentKind: 'network' },
-      { id: 'configure', ownerAdapterId: 'documentation', phase: 'configure', action: 'write-declared-files', readableSummary: `Configure ${bootstrap ? `pinned Bootstrap ${pinnedDependencies?.replace(/^bootstrap@/, '')} CSS only` : 'selected framework styling'} and write truthful ${resolved.selection.documentation} documentation.`, sideEffects: ['Write declared files under staged project.'] },
-      { id: 'install', ownerAdapterId: 'npm', phase: 'install', action: 'install-dependencies', readableSummary: `Install project dependencies with npm${bootstrap ? ' using legacy peer handling to omit unused Bootstrap Popper' : ''} and write package-lock.json.`, sideEffects: ['Download project dependencies.', 'Run npm package lifecycle scripts.'], consentKind: 'network' },
-      { id: 'validate', ownerAdapterId: recipe.frontend, phase: 'validate', action: 'run-check', readableSummary: isForma
-        ? 'Run template typecheck, production build, and HTTP smoke; lint is unavailable in the pinned Forma installer.'
-        : 'Run lint/typecheck/build and HTTP served-page smoke checks.', sideEffects: ['Execute generated framework tools in staging.', 'Write reproducibility manifest with observed check outcomes.'] },
+        : [
+          'Download pinned official scaffold package.',
+          ...(recipe.scaffold.source ? [`Download the immutable ${recipe.scaffold.source.repository} starter commit.`] : []),
+          'Run reviewed scaffold code.',
+        ], consentKind: 'network' },
+      { id: 'configure', ownerAdapterId: 'documentation', phase: 'configure', action: 'write-declared-files', readableSummary: `Configure ${bootstrap ? `pinned Bootstrap ${pinnedDependencies?.replace(/^bootstrap@/, '')} CSS only` : 'selected framework styling'}${pinnedDependencies && !bootstrap ? ` and pinned dependencies ${pinnedDependencies}` : ''} and write truthful ${resolved.selection.documentation} documentation.`, sideEffects: ['Write declared files under staged project.'] },
+      { id: 'install', ownerAdapterId: 'npm', phase: 'install', action: 'install-dependencies', readableSummary: `Install project dependencies with npm${bootstrap ? ' using legacy peer handling to omit unused Bootstrap Popper' : isAngular ? ' using legacy peer handling for the Angular 21 dependency tree' : ''} and write package-lock.json.`, sideEffects: ['Download project dependencies.', 'Run npm package lifecycle scripts.'], consentKind: 'network' },
+      { id: 'validate', ownerAdapterId: recipe.frontend, phase: 'validate', action: 'run-check', readableSummary: validationSummary, sideEffects: ['Execute generated framework tools in staging.', 'Write reproducibility manifest with observed check outcomes.'] },
       { id: 'finalize', ownerAdapterId: 'core', phase: 'finalize', action: 'commit-no-replace', readableSummary: 'Move validated project to destination only if destination remains absent.', sideEffects: ['Create final destination with Windows fail-if-exists rename.'] },
     ],
-    expectedWrites: [isForma ? `<Forma template ${resolved.selection.template!.templateId} files>` : '<pinned official framework scaffold files>', ...(bootstrap ? ['package.json', 'index.html', 'src/project-generator-bootstrap.css', '.npmrc'] : []), ...(isForma ? ['FORMA-INSTALL.md', 'forma.install.json', 'forma-install-report.json', 'INSTALL.md'] : []), ...expectedDocumentationFiles(resolved.selection.documentation), 'package-lock.json', '.project-generator/manifest.json'],
-    networkAccess: [...(isForma ? ['https://github.com (authenticated private Forma source; pinned commit)'] : []), 'https://registry.npmjs.org/'],
+    expectedWrites: [scaffoldOutput, ...(bootstrap ? ['package.json', 'index.html', 'src/project-generator-bootstrap.css', '.npmrc'] : []), ...(isForma ? ['FORMA-INSTALL.md', 'forma.install.json', 'forma-install-report.json', 'INSTALL.md'] : []), ...expectedDocumentationFiles(resolved.selection.documentation), 'package-lock.json', '.project-generator/manifest.json'],
+    networkAccess: [
+      ...(isForma ? ['https://github.com (authenticated private Forma source; pinned commit)'] : []),
+      ...(recipe.scaffold.source ? ['https://api.github.com', 'https://codeload.github.com'] : []),
+      'https://registry.npmjs.org/',
+    ],
     executesDependencyLifecycleScripts: true,
     executionAvailable: recipe.status === 'tested',
     warnings: [

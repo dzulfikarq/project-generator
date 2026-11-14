@@ -1,8 +1,8 @@
 export type SupportState = 'cataloged' | 'planned' | 'experimental' | 'tested' | 'blocked' | 'retired'
 export type DocumentationMode = 'minimal' | 'standard' | 'full'
-export type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FM-01' | 'FM-02'
-export type StylingId = 'styling.css' | 'styling.tailwind' | 'styling.bootstrap'
-export type FrontendId = 'frontend.react-vite' | 'frontend.nextjs-app' | 'frontend.vue-vite'
+export type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FM-01' | 'FM-02'
+export type StylingId = 'styling.css' | 'styling.tailwind' | 'styling.bootstrap' | 'styling.scss'
+export type FrontendId = 'frontend.react-vite' | 'frontend.nextjs-app' | 'frontend.vue-vite' | 'frontend.nuxt' | 'frontend.angular'
 
 export interface ProjectSelectionV1 {
   schemaVersion: 1
@@ -46,16 +46,18 @@ export interface AdapterManifestV1 {
 }
 
 export interface ScaffoldPin {
-  packageName: 'create-vite' | 'create-next-app' | 'create-vue'
+  packageName: 'create-vite' | 'create-next-app' | 'create-vue' | 'create-nuxt' | '@angular/cli'
   version: string
   integrity: string
   binPath: string
+  source?: { repository: string; commitSha: string }
 }
 
 export interface DependencyPin {
   packageName: string
   version: string
   integrity: string
+  scope?: 'dependencies' | 'devDependencies'
 }
 
 export interface RecipeManifestV1 {

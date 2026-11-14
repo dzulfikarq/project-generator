@@ -95,6 +95,10 @@ enum DesktopRecipeId {
     Fe04,
     #[serde(rename = "FE-05")]
     Fe05,
+    #[serde(rename = "FE-06")]
+    Fe06,
+    #[serde(rename = "FE-07")]
+    Fe07,
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -123,6 +127,8 @@ impl DesktopSelectionV1 {
             DesktopRecipeId::Fe03 => ("frontend.vue-vite", "styling.css"),
             DesktopRecipeId::Fe04 => ("frontend.react-vite", "styling.bootstrap"),
             DesktopRecipeId::Fe05 => ("frontend.vue-vite", "styling.bootstrap"),
+            DesktopRecipeId::Fe06 => ("frontend.nuxt", "styling.css"),
+            DesktopRecipeId::Fe07 => ("frontend.angular", "styling.scss"),
         };
         let mut selection = json!({
             "schemaVersion": 1,
@@ -1319,6 +1325,8 @@ mod tests {
                 "frontend.vue-vite",
                 "styling.bootstrap",
             ),
+            (DesktopRecipeId::Fe06, "frontend.nuxt", "styling.css"),
+            (DesktopRecipeId::Fe07, "frontend.angular", "styling.scss"),
         ] {
             let generated = DesktopSelectionV1 {
                 project_name: "demo".into(),

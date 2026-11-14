@@ -17,12 +17,12 @@ test('catalog emits local versioned JSON without network', () => {
     ok: boolean
     data: {
       adapters: { id: string; compatibleWith: string[]; incompatibleWith: string[] }[]
-      recipes: { id: string; status: string; scaffold: { packageName: string; version: string; integrity: string }; dependencies?: { packageName: string; version: string; integrity: string }[] }[]
+      recipes: { id: string; status: string; scaffold: { packageName: string; version: string; integrity: string; source?: { commitSha: string } }; dependencies?: { packageName: string; version: string; integrity: string; scope?: string }[] }[]
     }
   }
   assert.equal(envelope.ok, true)
   assert.deepEqual(envelope.data.recipes.map(({ id, status }) => [id, status]), [
-    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'],
+    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'], ['FE-06', 'planned'], ['FE-07', 'planned'],
   ])
   const vue = envelope.data.recipes.find(({ id }) => id === 'FE-03')!
   assert.equal(vue.scaffold.packageName, 'create-vue')
@@ -33,6 +33,20 @@ test('catalog emits local versioned JSON without network', () => {
     assert.deepEqual(recipe.dependencies?.map(({ packageName, version }) => [packageName, version]), [['bootstrap', '5.3.9']])
     assert.match(recipe.dependencies?.[0]?.integrity ?? '', /^sha512-/)
   }
+  const nuxt = envelope.data.recipes.find(({ id }) => id === 'FE-06')!
+  assert.equal(nuxt.scaffold.packageName, 'create-nuxt')
+  assert.equal(nuxt.scaffold.version, '4.0.3')
+  assert.equal(nuxt.scaffold.source?.commitSha, 'db01806fcb37f2e369fb09443c72cac696b31548')
+  assert.deepEqual(nuxt.dependencies?.map(({ packageName, version, scope }) => [packageName, version, scope]), [
+    ['nuxt', '4.6.4', undefined],
+    ['typescript', '5.9.3', 'devDependencies'],
+    ['vue-tsc', '3.3.14', 'devDependencies'],
+  ])
+  assert.ok(nuxt.dependencies?.every(({ integrity }) => integrity.startsWith('sha512-')))
+  const angular = envelope.data.recipes.find(({ id }) => id === 'FE-07')!
+  assert.equal(angular.scaffold.packageName, '@angular/cli')
+  assert.equal(angular.scaffold.version, '21.2.30')
+  assert.deepEqual(angular.dependencies?.map(({ packageName, version }) => [packageName, version]), [['@angular/core', '21.2.26'], ['@angular/cli', '21.2.30']])
   const forma = envelope.data.adapters.find(({ id }) => id === 'template.forma')!
   assert.equal(forma.compatibleWith.includes('frontend.vue-vite'), false)
   const bootstrap = envelope.data.adapters.find(({ id }) => id === 'styling.bootstrap')!
@@ -117,12 +131,14 @@ test('plan reads config but does not create a missing destination', async () => 
   }
 })
 
-test('CLI plans the three Phase 04A stacks read-only and preserves planned status', async () => {
+test('CLI plans FE-03 through FE-07 read-only and preserves planned status', async () => {
   const parent = await mkdtemp(resolve(tmpdir(), 'pg-phase04a-plan-'))
   const cases = [
     ['FE-03', 'frontend.vue-vite', 'styling.css'],
     ['FE-04', 'frontend.react-vite', 'styling.bootstrap'],
     ['FE-05', 'frontend.vue-vite', 'styling.bootstrap'],
+    ['FE-06', 'frontend.nuxt', 'styling.css'],
+    ['FE-07', 'frontend.angular', 'styling.scss'],
   ] as const
   try {
     for (const [id, frontend, styling] of cases) {
@@ -138,11 +154,16 @@ test('CLI plans the three Phase 04A stacks read-only and preserves planned statu
       }))
       const result = spawnSync(process.execPath, [cli, 'plan', '--config', configPath, '--json'], { encoding: 'utf8' })
       assert.equal(result.status, 0, result.stdout)
-      const plan = (JSON.parse(result.stdout) as { data: { recipeId: string; recipeStatus: string; executionAvailable: boolean; expectedWrites: string[] } }).data
+      const plan = (JSON.parse(result.stdout) as { data: { recipeId: string; recipeStatus: string; executionAvailable: boolean; expectedWrites: string[]; networkAccess: string[] } }).data
       assert.equal(plan.recipeId, id)
       assert.equal(plan.recipeStatus, 'planned')
       assert.equal(plan.executionAvailable, false)
       if (styling === 'styling.bootstrap') assert.ok(plan.expectedWrites.includes('src/project-generator-bootstrap.css'))
+      if (id === 'FE-06') {
+        assert.ok(plan.networkAccess.includes('https://api.github.com'))
+        assert.ok(plan.networkAccess.includes('https://codeload.github.com'))
+      }
+      if (id === 'FE-07') assert.ok(plan.expectedWrites.includes('<pinned Angular CLI workspace files>'))
       await assert.rejects(access(resolve(parent, targetName)))
     }
   } finally {

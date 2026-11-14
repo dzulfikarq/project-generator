@@ -18,4 +18,4 @@
 
 ## Follow-up
 
-The packaged CLI planned-recipe bypass was remediated with release-profile core enforcement, CLI rejection, and release packaging checks; independent review of staged bundled CLI/core and compiled Tauri executable returned **SCOPED PASS**. Installer verification and independent recipe acceptance remain open. Phase 04B disposition remains **GO for independent review and evidence hardening only; NO-GO for another framework/component system or recipe promotion until review gates close.**
+The packaged CLI planned-recipe bypass was remediated with release-profile core enforcement, CLI rejection, and release packaging checks; independent review of staged bundled CLI/core and compiled Tauri executable returned **SCOPED PASS**. Installer verification and independent recipe acceptance remain open. The expansion hold remained in effect until separately scoped by [DEC-022](DEC-022-phase-04b-nuxt-angular.md), which authorizes only FE-06/FE-07 implementation and local evidence; it does not authorize other framework expansion, recipe promotion, or release.

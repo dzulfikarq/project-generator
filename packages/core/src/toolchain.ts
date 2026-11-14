@@ -35,6 +35,20 @@ export function supportsNodeForVue(version: string): boolean {
   return (major === 22 && atLeast(version, [22, 18, 0])) || ((major ?? 0) >= 24 && atLeast(version, [24, 12, 0]))
 }
 
+export function supportsNodeForNuxt(version: string): boolean {
+  const major = versionParts(version)?.[0]
+  return (major === 22 && atLeast(version, [22, 22, 3]))
+    || (major === 24 && atLeast(version, [24, 15, 0]))
+    || (major ?? 0) >= 26
+}
+
+export function supportsNodeForAngular(version: string): boolean {
+  const major = versionParts(version)?.[0]
+  return (major === 20 && atLeast(version, [20, 19, 0]))
+    || (major === 22 && atLeast(version, [22, 12, 0]))
+    || (major ?? 0) >= 24
+}
+
 export function supportsNpm(version: string): boolean {
   return atLeast(version, [10, 0, 0])
 }

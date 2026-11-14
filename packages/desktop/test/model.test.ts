@@ -40,6 +40,8 @@ test('recipe selection requires exact framework, styling, and manager catalog ma
       { id: 'FE-03', frontend: 'vue', styling: 'css', manager: 'npm' },
       { id: 'FE-04', frontend: 'react', styling: 'bootstrap', manager: 'npm' },
       { id: 'FE-05', frontend: 'vue', styling: 'bootstrap', manager: 'npm' },
+      { id: 'FE-06', frontend: 'nuxt', styling: 'css', manager: 'npm' },
+      { id: 'FE-07', frontend: 'angular', styling: 'scss', manager: 'npm' },
     ],
   } as Catalog
   assert.equal(findRecipe(catalog, 'react', 'css', 'npm')?.id, 'FE-01')
@@ -50,6 +52,11 @@ test('recipe selection requires exact framework, styling, and manager catalog ma
   assert.equal(findRecipe(catalog, 'vue', 'css', 'npm')?.id, 'FE-03')
   assert.equal(findRecipe(catalog, 'vue', 'bootstrap', 'npm')?.id, 'FE-05')
   assert.equal(findFrameworkRecipe(catalog, 'vue', 'npm'), undefined)
+  assert.equal(findRecipe(catalog, 'nuxt', 'css', 'npm')?.id, 'FE-06')
+  assert.equal(findRecipe(catalog, 'angular', 'scss', 'npm')?.id, 'FE-07')
+  assert.equal(findRecipe(catalog, 'angular', 'css', 'npm'), undefined)
+  assert.equal(findFrameworkRecipe(catalog, 'nuxt', 'npm'), undefined)
+  assert.equal(findFrameworkRecipe(catalog, 'angular', 'npm'), undefined)
 })
 
 test('Forma compatibility exposes catalog metadata only', () => {

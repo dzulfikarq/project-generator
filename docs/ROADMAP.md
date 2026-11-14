@@ -1,6 +1,6 @@
 # Roadmap — Project Generator Desktop V1
 
-Status: **Phase 01 bounded acceptance, Phase 02 local Forma integration/evidence, Phase 03 internal UI implementation, and Phase 04A Vue/Bootstrap local CLI/native acceptance complete; broader UI acceptance remains partial, no recipe release-approved.** Date: 2026-11-13.
+Status: **Phase 01 bounded acceptance, Phase 02 local Forma integration/evidence, Phase 03 internal UI implementation, Phase 04A local acceptance, and scoped Phase 04B Nuxt/Angular implementation/evidence present; broader UI acceptance remains partial, no recipe release-approved.** Date: 2026-11-14.
 
 ## Phase 0 — Specification and governance
 
@@ -36,8 +36,8 @@ Architecture specification: [`ARCHITECTURE.md`](ARCHITECTURE.md). UX specificati
 ## Phase 4 — Web/frontend breadth and styling
 
 - **Phase 04A local acceptance complete:** Vue 3 + Vite + TypeScript via integrity-pinned official `create-vue`; React/Vue Bootstrap 5 CSS pins; npm-only FE-03–FE-05; native desktop flows passed; incompatible combinations blocked. Local E2E does not promote recipes. See [DEC-021](decisions/DEC-021-phase-04a-vue-bootstrap.md) and [Phase 04A acceptance evidence](qa/evidence/phase-04a-native-desktop-acceptance.md).
-- **Phase 04B decision:** GO only for independent acceptance/review of FE-01–FE-05 and closure of per-recipe gaps. NO-GO for framework/component expansion, recipe promotion, or release until that review closes. Keep Nuxt, Angular, extra styles, and non-npm managers deferred until separately scoped and verified.
-- Remaining breadth: Nuxt, Angular, framework-specific components after checks. npm remains Node default; native package managers remain required for non-Node ecosystems.
+- **Phase 04B scope:** [DEC-022](decisions/DEC-022-phase-04b-nuxt-angular.md) authorizes only FE-06 Nuxt 4/CSS and FE-07 Angular 21/SCSS implementation plus local evidence gathering. Both remain `planned`; normal generation remains blocked. The expansion hold remains for other frameworks, components, styles, package managers, recipe promotion, and release.
+- Phase 04B verification and limitations: [FE-06/FE-07 report](qa/evidence/phase-04b-nuxt-angular.md). Local runs do not establish independent acceptance or promote recipes.
 - Output: independently accepted recipes only; block invalid styling/manager choices.
 
 ## Phase 5 — Backend and DB breadth
