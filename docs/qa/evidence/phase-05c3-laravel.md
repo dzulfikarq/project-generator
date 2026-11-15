@@ -38,7 +38,7 @@ The native cancellation test reached `installing started.`; requested target sta
 
 ## Isolated MySQL/Eloquent acceptance
 
-**Bounded local acceptance: PASS. BE-05 remains `planned`; this is not independent recipe acceptance or release approval.** Run ID: `phase05c3-mysql-e2e-20261115-00799f53`.
+**Bounded local acceptance: PASS.** This run records local behavior; by itself it does not promote BE-05 or approve release. Run ID: `phase05c3-mysql-e2e-20261115-00799f53`.
 
 - Used the vendor-verified portable MySQL 8.4.13 LTS ZIP above. Fresh data/temp directories lived under the unique approved OpenCode temp run. MySQL was initialized with `mysqld --defaults-file=<unique-my.ini> --initialize` (not `--initialize-insecure`), bound only to `127.0.0.1:3307`, and started as a process; no service or existing MySQL/MariaDB database was used or changed. Initial random root password was rotated. Root/app/wrong-password values stayed in process environment and were not recorded.
 - Exact test schema: `ff_be05_20261115_00799f53`; app account: `ffbe05_00799f53@localhost`. App connection used TCP `127.0.0.1:3307`. `SHOW GRANTS` contained only global `USAGE` plus `SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES, DROP` on that schema. MySQL listed metadata schemas (`information_schema`, `performance_schema`) as visible names; this did not grant application access to `mysql.user` (read denied) or permission to create another database (denied).
@@ -55,6 +55,10 @@ The native cancellation test reached `installing started.`; requested target sta
 | Cleanup | PASS — test schema and account dropped and absence verified; owned server stopped; no listener on `3307`, MySQL process, or service remained; unique test data/project/log run directory removed. Portable binaries retained. |
 
 The generated project and integration test were temporary acceptance artifacts, not committed. No existing database, `race-create` journal, global environment, PATH, registry, or security setting was changed.
+
+## Independent review and development closure
+
+Bounded independent read-only review of the BE-05 CLI/native and isolated MySQL evidence: **PASS**. Phase 05C development scope is closed. Review did not rerun E2E or promote BE-05; recipe remains `planned`, normal/release generation remains blocked, and no public release is approved.
 
 Harness bring-up retries exposed and corrected local test-driver issues (MySQL hostname matching, expired initial root credential handling, selected schema/working directory, PHPUnit's hardcoded DB defaults, and metadata-schema visibility). They were not treated as passes. Each failed instance was stopped by verified process identity; its test schema/account and unique data directory were cleaned. The final run above is the only completed acceptance result.
 
@@ -76,5 +80,5 @@ Harness bring-up retries exposed and corrected local test-driver issues (MySQL h
 
 ## Remaining gates
 
-- Independent BE-05 review and promotion remain open; bounded local MySQL evidence does not change planned status.
+- Bounded independent BE-05 evidence review: **PASS**; Phase 05C development scope closed. BE-05 remains `planned`; recipe promotion and release approval remain **NO-GO**.
 - Broader product acceptance, clean-machine packaging, security review, and release approval remain open. No push, deployment, or release occurred.
