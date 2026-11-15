@@ -37,7 +37,7 @@ export function createPlan(selection: ProjectSelectionV1): GenerationPlan {
       : isAngular ? 'Run Angular production build, unit tests, and HTTP server smoke; the official scaffold has no lint script.'
         : 'Run lint/typecheck/build and HTTP served-page smoke checks.'
   const scaffoldSummary = isPython
-    ? 'Write the reviewed FastAPI/Pydantic starter into owned staging; resolve exact direct pins into uv.lock with uv and Python downloads disabled.'
+    ? 'Write the reviewed FastAPI/Pydantic starter into owned staging; dependency resolution runs during install only after explicit consent.'
     : isGo
     ? 'Write a standard-library net/http REST API and Go Modules manifest into owned staging; no external dependencies.'
     : isBackend
