@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Date | 2026-11-15 |
-| Baseline | `4c1ec9022fc413ac96aad1d4a17b983c1282ee53` |
+| Baseline | `8cb82203b3fd528d5a2178560311e1124f4759ff` (follow-up; initial provisioning attempt: `4c1ec9022fc413ac96aad1d4a17b983c1282ee53`) |
 | Recipe | BE-06 — standalone FastAPI/Pydantic/Uvicorn + uv; no database/ORM/auth/fullstack |
 | Result | **BLOCKED** — official release metadata/checksums matched, but available GitHub attestations could not be fully verified with trusted roots; no binary downloaded or executed |
 | Host | Windows `10.0.26300.0`, x64; non-elevated user; Node.js `22.22.1`; npm `10.9.4`; Python `3.15.1`; Rust/Cargo `1.99.1` |
@@ -73,5 +73,7 @@ Earlier CLI plan/Doctor config used a unique path under `LOCALAPPDATA\Temp\openc
 
 ## Gate and next step
 
+- Follow-up verifier check at baseline `8cb8220`: `gh`, `cosign`, `sigstore`, `rekor-cli`, `step`, and `openssl` were not found; common per-user/system GitHub CLI paths were absent. Exact blocker: no trusted verifier available, so `gh attestation verify` could not run. No verifier was downloaded/installed, no binary archive was downloaded, and no alternate checksum-only verification was treated as provenance.
+- Follow-up state comparison against saved host snapshot: registry queries, User/System/process PATH, `py -0p`, Python launcher resolution, Python 3.15.1 version and executable SHA-256 all unchanged. Host remains non-elevated; `downloads/` remains empty.
 - **Phase 05C.2 remains BLOCKED.** User approval for Python/uv downloads is already recorded; no re-approval is needed for those assets. Resume only when a trusted GitHub/Sigstore attestation verifier and trust roots are available, then verify both attestations before binary download. Continue entirely under `%LOCALAPPDATA%\FormaForge\toolchains`, with process-only uv variables/PATH, fresh isolated generation targets, and before/after registry/PATH/launcher/Python 3.15 comparisons.
 - Then run CLI and actual Tauri E2Es for lock/sync/tampering, pytest, Python validation, API smoke/shutdown, cancellation/collision/rollback/cleanup, and Result/History/Open Folder/VS Code. Retain BE-06 `planned`; independent review remains required. Release-profile Tauri cargo tests also need a reversible, explicit release-resource staging procedure; do not overwrite the staged development resource. Laravel remains separate scope.
