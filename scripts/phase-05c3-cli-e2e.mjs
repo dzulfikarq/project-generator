@@ -132,7 +132,10 @@ try {
   for (const id of requiredChecks) assert.equal(manifest.validation.find((item) => item.id === id)?.status, 'pass', id)
   assert.ok((await readFile(join(target, 'routes', 'api.php'), 'utf8')).includes("Route::post('/notes'"))
   assert.ok((await readFile(join(target, 'tests', 'Feature', 'ApiTest.php'), 'utf8')).includes('assertJsonValidationErrors'))
-  assert.ok((await readFile(join(target, 'README.md'), 'utf8')).includes('does not install PHP/Composer, create `.env`'))
+  const readme = await readFile(join(target, 'README.md'), 'utf8')
+  assert.ok(readme.includes('does not install PHP/Composer, create `.env`'))
+  assert.match(readme, /## Database[\s\S]*?php artisan migrate/)
+  assert.match(await readFile(join(target, 'docs', 'SETUP.md'), 'utf8'), /## Database[\s\S]*?php artisan migrate/)
 
   success = true
   console.log(JSON.stringify({

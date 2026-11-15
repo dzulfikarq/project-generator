@@ -39,7 +39,7 @@ This project adopts EvoPilot's **decision accountability** pattern but uses stan
 | DEC-026 | Phase 05B standalone Go REST API | User-authorized implementation, bounded Windows CLI/native acceptance, and final regressions complete; independent review pending | [DEC-026](DEC-026-phase-05b-go-net-http.md), [Phase 05B evidence](../qa/evidence/phase-05b-go-net-http.md) | Keep BE-02 planned; DEC-027 covers FastAPI as a separate blocked slice; evaluate Laravel separately; no release approval |
 | DEC-027 | Phase 05C standalone FastAPI REST API | User-authorized implementation and bounded local CLI/native evidence complete; independent review pending | [DEC-027](DEC-027-phase-05c1-fastapi.md), [Phase 05C.1 evidence](../qa/evidence/phase-05c1-fastapi.md), [Phase 05C.2 evidence](../qa/evidence/phase-05c2-fastapi-toolchain-native.md) | Keep BE-06 planned; independently review pins, provenance boundary, and evidence; Laravel remains separate; no release approval |
 
-| DEC-028 | Phase 05C.3 standalone Laravel backend | User-authorized implementation and bounded local CLI/native acceptance complete; independent review pending | [DEC-028](DEC-028-phase-05c3-laravel.md), [Phase 05C.3 evidence](../qa/evidence/phase-05c3-laravel.md) | Keep BE-05 planned; MySQL integration blocked; no database provisioning/migration, frontend build, or release approval |
+| DEC-028 | Phase 05C.3 standalone Laravel backend | User-authorized implementation and bounded local CLI/native plus isolated MySQL/Eloquent acceptance complete; independent review pending | [DEC-028](DEC-028-phase-05c3-laravel.md), [Phase 05C.3 evidence](../qa/evidence/phase-05c3-laravel.md) | Keep BE-05 planned; no automatic DB provisioning/migration, frontend build, or release approval |
 
 ## Open items
 
