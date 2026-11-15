@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | User-authorized scoped implementation present; Python 3.14/uv acceptance blocked; independent review pending |
+| Status | User-authorized scoped implementation present; Phase 05C.2 bounded local CLI/native evidence passed; independent review and recipe acceptance pending |
 | Date | 2026-11-15 |
 | Scope | BE-06 standalone FastAPI/Pydantic/Uvicorn API; no database, ORM, authentication, frontend, or fullstack |
-| Evidence | [Phase 05C.1 evidence](../qa/evidence/phase-05c1-fastapi.md) |
+| Evidence | [Phase 05C.1 implementation evidence](../qa/evidence/phase-05c1-fastapi.md); [Phase 05C.2 toolchain and native evidence](../qa/evidence/phase-05c2-fastapi-toolchain-native.md) |
 
 ## Decision
 
@@ -19,8 +19,8 @@
 
 ## Rationale and limits
 
-FastAPI has no suitable official project generator for this bounded output, so use a small reviewed first-party starter rather than execute a third-party scaffold. uv remains the native Python package/lock manager. Python 3.15.1 is not the selected baseline, and uv is unavailable on the implementation host; dependency lock generation, locked installation, Python checks, HTTP smoke, and native recipe E2E are therefore blocked. PyPI metadata and a synthetic lock fixture do not prove exact recipe compatibility or acceptance. Process supervision is not a sandbox.
+FastAPI has no suitable official project generator for this bounded output, so use a small reviewed first-party starter rather than execute a third-party scaffold. uv remains the native Python package/lock manager. Phase 05C.2 provisioned isolated CPython 3.14.10 and uv 0.13.8 after bounded release/attestation verification, then passed local CLI and native Tauri checks, including generated lock, locked installation, Python checks, HTTP/OpenAPI smoke, shutdown, cancellation, and collision checks. Direct pins and independent acceptance remain open; process supervision is not a sandbox.
 
 ## Phase gate
 
-**GO only for implementation and local non-runtime regressions. NO-GO for recipe acceptance, promotion, or release.** Next: provision approved Python 3.14 and uv in an isolated environment, verify/finalize pins, then run fresh CLI and native E2E plus independent review. Evaluate Laravel separately; no Laravel implementation is authorized here.
+**GO for bounded local evidence only. NO-GO for recipe promotion or public release.** Keep BE-06 `planned`; next: independently review direct pins, trust/provenance boundary, and local acceptance evidence. Evaluate Laravel separately; no Laravel implementation is authorized here.

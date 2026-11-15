@@ -32,6 +32,7 @@ package = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+pythonpath = ["."]
 `
   const files: Record<string, string> = {
     'app/__init__.py': '',

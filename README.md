@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Phase 01 CLI + Phase 02 Forma + Phase 02.6 packaging PoC + Phase 03 internal UI MVP + Phase 03.5 UX polish + Phase 04A–04B.3 frontend evidence + Phase 05A BE-01 and Phase 05B BE-02 local evidence + Phase 05C.1 BE-06 implementation** — broader product acceptance remains partial; all FE/BE/FM recipes remain planned; no release approved |
+| Status | **Phase 01 CLI + Phase 02 Forma + Phase 02.6 packaging PoC + Phase 03 internal UI MVP + Phase 03.5 UX polish + Phase 04A–04B.3 frontend evidence + Phase 05A BE-01, Phase 05B BE-02, and Phase 05C.2 BE-06 bounded local evidence** — broader product acceptance remains partial; all FE/BE/FM recipes remain planned; no release approved |
 | Version | 0.1.0 |
 | Date | 2026-11-15 |
 | Product | Universal Project Generator Desktop |
@@ -24,9 +24,9 @@ BE-01 adds standalone Node.js `>=22.13.0` + TypeScript + Express `5.1.0` + npm, 
 
 BE-02 adds a standalone Go `net/http` REST API using Go Modules (Go `>=1.22`), standard library only. Windows CLI and native Forge Studio E2E passed generation, Go checks, HTTP smoke, history/open actions, cancellation cleanup, and collision preservation. Recovery inspection also reported an unrelated pre-existing `parentUnverifiable` test journal; it remains untouched. BE-02 remains planned; independent review and release approval remain open. See [Phase 05B evidence](docs/qa/evidence/phase-05b-go-net-http.md).
 
-## Phase 05C.1 status
+## Phase 05C status
 
-BE-06 adds a standalone FastAPI/Pydantic/Uvicorn API using uv, with `/health`, `/api/info`, `/docs`, OpenAPI, pytest checks, and no database, ORM, authentication, frontend, or automatic server start. Python 3.14.x is the acceptance baseline; exact direct pins remain provisional. Catalog/resolver/plan/Doctor/CLI/Tauri integration and local policy/unit coverage exist, but this host has Python 3.15.1 and no uv. Locked installation, generated lock verification, Python checks, HTTP smoke, and native generation are **BLOCKED / NOT RUN**. BE-06 remains `planned`; no release approval. See [DEC-027](docs/decisions/DEC-027-phase-05c1-fastapi.md) and [Phase 05C.1 evidence](docs/qa/evidence/phase-05c1-fastapi.md).
+BE-06 is a standalone FastAPI/Pydantic/Uvicorn API using uv, with `/health`, `/api/info`, `/docs`, OpenAPI, pytest checks, and no database, ORM, authentication, frontend, or automatic server start. Phase 05C.1 implemented the recipe; Phase 05C.2 passed bounded local provenance, CLI, and native Tauri checks with isolated CPython `3.14.10` and uv `0.13.8`. Direct pins remain provisional pending independent review. BE-06 remains `planned`; normal/release generation stays blocked and no release is approved. See [DEC-027](docs/decisions/DEC-027-phase-05c1-fastapi.md), [Phase 05C.1 evidence](docs/qa/evidence/phase-05c1-fastapi.md), and [Phase 05C.2 evidence](docs/qa/evidence/phase-05c2-fastapi-toolchain-native.md).
 
 ## Developer setup
 

@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Version | Draft 0.1 — 2026-11-15 |
-| Status | **FE-03–FE-15 and standalone BE-01/BE-02 local evidence recorded; BE-06 implementation present but acceptance blocked; FE-01–FE-15/BE-01–BE-02/BE-06/FM-01/FM-02 remain PLAN; no recipe promoted or release-approved** |
+| Status | **FE-03–FE-15 and standalone BE-01/BE-02/BE-06 bounded local evidence recorded; FE-01–FE-15/BE-01–BE-02/BE-06/FM-01/FM-02 remain PLAN; no recipe promoted or release-approved** |
 | Main platform | Windows 11 |
 | Source of truth | This matrix + machine-readable adapter manifests + QA results |
 
@@ -135,7 +135,7 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | BE-03 | Backend | None | NestJS | PostgreSQL + Prisma | N/A | npm | V1 |
 | BE-04 | Backend | None | Go + Gin | PostgreSQL + pgx | N/A | Go Modules | V1 |
 | BE-05 | Backend | None | Laravel | MySQL + Eloquent | N/A | Composer (+ npm assets) | V1 |
-| BE-06 | Backend | None | FastAPI | None in Phase 05C.1; SQLAlchemy/database remains separate proposal | N/A | uv | Phase 05C.1 standalone API; acceptance blocked |
+| BE-06 | Backend | None | FastAPI | None in Phase 05C.1; SQLAlchemy/database remains separate proposal | N/A | uv | Phase 05C.1 implementation; Phase 05C.2 bounded local CLI/native evidence; independent acceptance pending |
 | FS-01 | Fullstack | Vue Vite | Laravel | MySQL + Eloquent | Bootstrap | npm + Composer | V1 |
 | FS-02 | Fullstack | React Vite | Go Gin | PostgreSQL + pgx | Tailwind | npm + go | V1 |
 | FS-03 | Fullstack | Angular | NestJS | PostgreSQL + Prisma | Angular Material | npm | V1 |
@@ -154,7 +154,7 @@ Phase 04B uses official `create-nuxt@4.0.3`, Nuxt `4.6.4`, and immutable `nuxt/s
 
 Phase 04B.3 uses official `create-vite@9.3.4` / `create-vue@3.24.0` scaffolds for FE-12–FE-15. Fresh CLI and native Tauri evidence covers Yarn `4.18.1` with persistent `node-modules` config and pnpm `11.28.11` with persistent `hoisted` config, exactly one manager lockfile, generated docs/manifest, lint/typecheck/build/HTTP smoke, explicit lifecycle/planned consent, and planned status retention. All four remain `PLAN`; npm stays default and Forma remains npm-only. See [DEC-024](../decisions/DEC-024-phase-04b3-yarn-pnpm.md) and [Phase 04B.3 evidence](../qa/evidence/phase-04b3-yarn-pnpm.md).
 
-Phase 05C.1 adds BE-06 as standalone FastAPI/Pydantic/Uvicorn + uv with Python 3.14.x baseline, isolated `.venv`, `uv.lock`, API/docs/tests, and explicit unsandboxed build-code consent. Direct package pins remain provisional. Host Python 3.15.1 is unsupported and uv is absent; generated lock, locked installation, Python checks, HTTP smoke, native UI E2E, and pin compatibility remain NOT RUN/BLOCKED. See [DEC-027](../decisions/DEC-027-phase-05c1-fastapi.md) and [Phase 05C.1 evidence](../qa/evidence/phase-05c1-fastapi.md). BE-06 remains PLAN and release-blocked.
+Phase 05C.1 adds BE-06 as standalone FastAPI/Pydantic/Uvicorn + uv with Python 3.14.x baseline, isolated `.venv`, `uv.lock`, API/docs/tests, and explicit unsandboxed build-code consent. Phase 05C.2 recorded bounded local provenance and passed CLI/native checks using isolated CPython 3.14.10 and uv 0.13.8, including lock integrity, install, Python checks, HTTP/OpenAPI/shutdown, cancellation, and collision checks. Direct package pins still need independent review; local evidence does not promote the recipe. See [DEC-027](../decisions/DEC-027-phase-05c1-fastapi.md), [Phase 05C.1 evidence](../qa/evidence/phase-05c1-fastapi.md), and [Phase 05C.2 evidence](../qa/evidence/phase-05c2-fastapi-toolchain-native.md). BE-06 remains PLAN and release-blocked.
 
 **Important:** the fullstack recipe must produce a real, reachable example API endpoint and frontend call when that is part of its advertised output. Generating two unrelated folder trees is insufficient.
 
