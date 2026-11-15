@@ -155,12 +155,13 @@ export function canStartGeneration(input: {
   planAvailable: boolean
   doctorReady: boolean
   lifecycleConsent: boolean
+  networkConsent: boolean
   executionAvailable: boolean
   internalDevelopmentMode: boolean
   allowPlanned: boolean
 }): boolean {
   return !input.busy && !input.invocationActive && input.hasSelection && input.planAvailable
-    && input.doctorReady && input.lifecycleConsent
+    && input.doctorReady && input.lifecycleConsent && input.networkConsent
     && (input.executionAvailable || (input.internalDevelopmentMode && input.allowPlanned))
 }
 

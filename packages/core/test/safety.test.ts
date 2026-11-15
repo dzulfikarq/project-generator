@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
-import { lstat, mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises'
+import { chmod, lstat, mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve, win32 } from 'node:path'
 import test, { type TestContext } from 'node:test'
@@ -391,6 +391,26 @@ test('native stage writes stay rooted and preserve skip-existing files', { skip:
     assert.equal(await readFile(win32.join(stage.childPath, 'docs', 'guide', 'SETUP.md'), 'utf8'), 'setup instructions')
   } finally {
     await cleanupOwnedStage(stage)
+    await rm(parent, { recursive: true, force: true })
+  }
+})
+
+test('native owned-stage cleanup removes read-only Go module cache entries', { skip: process.platform !== 'win32' }, async (t) => {
+  if (await skipElevatedStageOperation(t)) return
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-stage-readonly-cache-'))
+  const stage = await createOwnedStage(parent, win32.join(parent, 'project'), 'project', 'readonly-module-cache')
+  const cacheFile = win32.join(stage.childPath, '.go-mod-cache', 'example', 'module.zip')
+  let cleaned = false
+  try {
+    await mutateOwnedStage(stage, ['project/.go-mod-cache/example'], [
+      { path: 'project/.go-mod-cache/example/module.zip', content: 'read-only Go module cache' },
+    ])
+    await chmod(cacheFile, 0o444)
+    await cleanupOwnedStage(stage)
+    cleaned = true
+    await assert.rejects(lstat(stage.path))
+  } finally {
+    if (!cleaned) await cleanupOwnedStage(stage).catch(() => undefined)
     await rm(parent, { recursive: true, force: true })
   }
 })

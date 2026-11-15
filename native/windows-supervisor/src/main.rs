@@ -36,11 +36,12 @@ mod windows {
     };
     use windows_sys::Win32::Storage::FileSystem::{
         BY_HANDLE_FILE_INFORMATION, CreateFileW, DELETE, FILE_ADD_SUBDIRECTORY,
-        FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_REPARSE_POINT,
-        FILE_ATTRIBUTE_TAG_INFO, FILE_DISPOSITION_INFO, FILE_FLAG_BACKUP_SEMANTICS,
-        FILE_FLAG_OPEN_REPARSE_POINT, FILE_ID_BOTH_DIR_INFO, FILE_LIST_DIRECTORY,
-        FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
-        FileAttributeTagInfo, FileDispositionInfo, FileIdBothDirectoryInfo,
+        FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_READONLY,
+        FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_TAG_INFO, FILE_BASIC_INFO,
+        FILE_DISPOSITION_INFO, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+        FILE_ID_BOTH_DIR_INFO, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE,
+        FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_WRITE_ATTRIBUTES, FileAttributeTagInfo,
+        FileBasicInfo, FileDispositionInfo, FileIdBothDirectoryInfo,
         FileIdBothDirectoryRestartInfo, GetFileInformationByHandle, GetFileInformationByHandleEx,
         OPEN_EXISTING, SYNCHRONIZE, SetFileInformationByHandle,
     };
@@ -1728,6 +1729,40 @@ mod windows {
         }
     }
 
+    fn clear_readonly_attribute(handle: HANDLE, attributes: u32) -> FsResult<()> {
+        if attributes & FILE_ATTRIBUTE_READONLY == 0 {
+            return Ok(());
+        }
+        let mut basic = FILE_BASIC_INFO::default();
+        if unsafe {
+            GetFileInformationByHandleEx(
+                handle,
+                FileBasicInfo,
+                (&mut basic as *mut FILE_BASIC_INFO).cast(),
+                size_of::<FILE_BASIC_INFO>() as u32,
+            )
+        } == 0
+        {
+            return Err(fs_last_error("native_fs_failed"));
+        }
+        basic.FileAttributes &= !FILE_ATTRIBUTE_READONLY;
+        if basic.FileAttributes == 0 {
+            basic.FileAttributes = FILE_ATTRIBUTE_NORMAL;
+        }
+        if unsafe {
+            SetFileInformationByHandle(
+                handle,
+                FileBasicInfo,
+                (&basic as *const FILE_BASIC_INFO).cast(),
+                size_of::<FILE_BASIC_INFO>() as u32,
+            )
+        } == 0
+        {
+            return Err(fs_last_error("native_fs_failed"));
+        }
+        Ok(())
+    }
+
     fn open_relative(
         parent: HANDLE,
         name: &str,
@@ -2051,7 +2086,7 @@ mod windows {
         let handle = match open_relative(
             parent,
             name,
-            DELETE | FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY,
+            DELETE | FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY | FILE_WRITE_ATTRIBUTES,
             FILE_SHARE_READ,
             FILE_OPEN,
             FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
@@ -2062,6 +2097,7 @@ mod windows {
             Err(error) => return Err(error),
         };
         let attrs = get_attributes(handle.raw()).map_err(|_| fs_last_error("native_fs_failed"))?;
+        clear_readonly_attribute(handle.raw(), attrs.FileAttributes)?;
         if attrs.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT == 0
             && attrs.FileAttributes & FILE_ATTRIBUTE_DIRECTORY != 0
         {

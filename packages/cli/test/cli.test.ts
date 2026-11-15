@@ -23,7 +23,7 @@ test('catalog emits local versioned JSON without network', () => {
   }
   assert.equal(envelope.ok, true)
   assert.deepEqual(envelope.data.recipes.map(({ id, status }) => [id, status]), [
-    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'], ['FE-06', 'planned'], ['FE-07', 'planned'], ['FE-08', 'planned'], ['FE-09', 'planned'], ['FE-10', 'planned'], ['FE-11', 'planned'], ['FE-12', 'planned'], ['FE-13', 'planned'], ['FE-14', 'planned'], ['FE-15', 'planned'], ['BE-01', 'planned'], ['BE-03', 'planned'], ['BE-02', 'planned'], ['BE-05', 'planned'], ['BE-06', 'planned'],
+    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'], ['FE-06', 'planned'], ['FE-07', 'planned'], ['FE-08', 'planned'], ['FE-09', 'planned'], ['FE-10', 'planned'], ['FE-11', 'planned'], ['FE-12', 'planned'], ['FE-13', 'planned'], ['FE-14', 'planned'], ['FE-15', 'planned'], ['BE-01', 'planned'], ['BE-03', 'planned'], ['BE-02', 'planned'], ['BE-04', 'planned'], ['BE-05', 'planned'], ['BE-06', 'planned'],
   ])
   assert.deepEqual(envelope.data.packageManagers.map(({ id, version }) => [id, version]), [['npm', '>=10.0.0'], ['yarn', '4.18.1'], ['pnpm', '11.28.11'], ['go-modules', 'Go 1.22+'], ['composer', '>=2.2.0'], ['uv', '>=0.8.0']])
   const vue = envelope.data.recipes.find(({ id }) => id === 'FE-03')!
@@ -61,6 +61,11 @@ test('catalog emits local versioned JSON without network', () => {
   assert.equal(nest.status, 'planned')
   assert.ok(nest.dependencies?.some(({ packageName, version }) => packageName === '@nestjs/core' && version === '11.2.10'))
   assert.ok(nest.dependencies?.every(({ integrity }) => integrity.startsWith('sha512-')))
+  const gin = envelope.data.recipes.find(({ id }) => id === 'BE-04')!
+  assert.equal(gin.backend, 'backend.go-gin')
+  assert.equal(gin.manager, 'go-modules')
+  assert.equal(gin.status, 'planned')
+  assert.ok(gin.limitations.some((limitation) => limitation.includes('Gin 1.12.0') && limitation.includes('no database')))
   const fastapi = envelope.data.recipes.find(({ id }) => id === 'BE-06')!
   assert.equal(fastapi.manager, 'uv')
   assert.equal(fastapi.status, 'planned')

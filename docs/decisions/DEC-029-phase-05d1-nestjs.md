@@ -23,4 +23,4 @@ Pinned Nest CLI output is a maintained official scaffold and includes a usable J
 
 ## BE-04 Go Gin recommendation
 
-**NO-GO for full BE-04 implementation as currently proposed; GO for a separate bounded design/evaluation only.** BE-04 currently couples Gin with PostgreSQL/pgx, while code supports only standalone Go `net/http` BE-02 and contains no Gin adapter, PostgreSQL driver, DB validation, or isolated database acceptance harness. Before implementation, authorize scope for the DB contract, schema/migration behavior, dependency integrity, service ownership, failure/isolation checks, and cleanup. Do not treat BE-02 evidence as Gin or PostgreSQL evidence.
+The former recommendation applied to Gin + PostgreSQL/pgx. User-authorized Phase 05D.2 narrows BE-04 to standalone Gin with no DB/auth; this supersedes that scope recommendation. See [DEC-030](DEC-030-phase-05d2-go-gin.md). BE-02 evidence remains evidence only for standard-library `net/http`, not Gin.

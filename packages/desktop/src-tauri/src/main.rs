@@ -53,6 +53,8 @@ fn error(code: &str, message: &str, next_action: &str) -> DesktopErrorV1 {
 fn authorize_generation(
     lifecycle_consent: bool,
     requires_lifecycle_consent: bool,
+    module_download_consent: bool,
+    requires_module_download_consent: bool,
     allow_planned: bool,
     internal_development_mode: bool,
 ) -> CommandResult<()> {
@@ -61,6 +63,13 @@ fn authorize_generation(
             "DESKTOP_CONSENT_REQUIRED",
             "Generation was not started because third-party dependency-execution consent is required.",
             "Read the disclosure and explicitly check the dependency-execution consent box.",
+        ));
+    }
+    if requires_module_download_consent && !module_download_consent {
+        return Err(error(
+            "DESKTOP_MODULE_DOWNLOAD_CONSENT_REQUIRED",
+            "Generation was not started because Go module downloads require separate network consent.",
+            "Review the disclosed Go module proxy and checksum database, then explicitly allow module downloads for this run.",
         ));
     }
     if allow_planned && !internal_development_mode {
@@ -123,6 +132,8 @@ enum DesktopRecipeId {
     Be02,
     #[serde(rename = "BE-03")]
     Be03,
+    #[serde(rename = "BE-04")]
+    Be04,
     #[serde(rename = "BE-05")]
     Be05,
     #[serde(rename = "BE-06")]
@@ -193,6 +204,23 @@ impl DesktopSelectionV1 {
                 "git": { "initialize": false, "initialCommit": false }
             });
         }
+        if matches!(self.recipe_id, DesktopRecipeId::Be04) {
+            let mut backend = json!({ "adapterId": "backend.go-gin", "manager": "go-modules" });
+            if let Some(module_path) = self.module_path.as_ref() {
+                backend["modulePath"] = json!(module_path);
+            }
+            return json!({
+                "schemaVersion": 1,
+                "project": {
+                    "name": self.project_name,
+                    "parentDirectory": self.parent_directory,
+                    "type": "backend"
+                },
+                "backend": backend,
+                "documentation": self.documentation.as_str(),
+                "git": { "initialize": false, "initialCommit": false }
+            });
+        }
         if matches!(self.recipe_id, DesktopRecipeId::Be06) {
             return json!({
                 "schemaVersion": 1,
@@ -238,6 +266,7 @@ impl DesktopSelectionV1 {
             DesktopRecipeId::Be01
             | DesktopRecipeId::Be02
             | DesktopRecipeId::Be03
+            | DesktopRecipeId::Be04
             | DesktopRecipeId::Be05
             | DesktopRecipeId::Be06 => {
                 unreachable!("backend selection returned above")
@@ -312,7 +341,10 @@ impl DesktopSelectionV1 {
             .module_path
             .as_ref()
             .is_some_and(|value| value.trim().is_empty() || value.len() > 512)
-            || (!matches!(self.recipe_id, DesktopRecipeId::Be02) && self.module_path.is_some())
+            || (!matches!(
+                self.recipe_id,
+                DesktopRecipeId::Be02 | DesktopRecipeId::Be04
+            ) && self.module_path.is_some())
         {
             return Err(error(
                 "GEN_CONFIG_INVALID",
@@ -325,6 +357,7 @@ impl DesktopSelectionV1 {
             DesktopRecipeId::Be01
                 | DesktopRecipeId::Be02
                 | DesktopRecipeId::Be03
+                | DesktopRecipeId::Be04
                 | DesktopRecipeId::Be05
                 | DesktopRecipeId::Be06
         ) && (self.template_id.is_some() || self.template_variant_id.is_some())
@@ -1048,12 +1081,18 @@ async fn start_generation(
     state: tauri::State<'_, DesktopState>,
     selection: DesktopSelectionV1,
     lifecycle_consent: bool,
+    module_download_consent: bool,
     allow_planned: bool,
     on_event: Channel<DesktopEventV1>,
 ) -> CommandResult<String> {
     authorize_generation(
         lifecycle_consent,
-        !matches!(selection.recipe_id, DesktopRecipeId::Be02),
+        !matches!(
+            selection.recipe_id,
+            DesktopRecipeId::Be02 | DesktopRecipeId::Be04
+        ),
+        module_download_consent,
+        matches!(selection.recipe_id, DesktopRecipeId::Be04),
         allow_planned,
         INTERNAL_DEVELOPMENT_MODE,
     )?;
@@ -1128,6 +1167,11 @@ async fn start_generation(
             })
             .args(if lifecycle_consent {
                 vec!["--allow-dependency-scripts"]
+            } else {
+                Vec::new()
+            })
+            .args(if module_download_consent {
+                vec!["--allow-module-downloads"]
             } else {
                 Vec::new()
             })
@@ -1622,6 +1666,23 @@ mod tests {
             "github.com/example/demo-api"
         );
 
+        let gin_backend = DesktopSelectionV1 {
+            project_name: "demo-api".into(),
+            parent_directory: "C:\\Projects".into(),
+            recipe_id: DesktopRecipeId::Be04,
+            documentation: DesktopDocumentationV1::Standard,
+            template_id: None,
+            template_variant_id: None,
+            module_path: Some("github.com/example/demo-api".into()),
+        }
+        .to_core_json("");
+        assert_eq!(gin_backend["backend"]["adapterId"], "backend.go-gin");
+        assert_eq!(gin_backend["backend"]["manager"], "go-modules");
+        assert_eq!(
+            gin_backend["backend"]["modulePath"],
+            "github.com/example/demo-api"
+        );
+
         let laravel_backend = DesktopSelectionV1 {
             project_name: "demo-api".into(),
             parent_directory: "C:\\Projects".into(),
@@ -1760,27 +1821,33 @@ mod tests {
     #[test]
     fn generation_requires_explicit_consent_and_release_build_cannot_override_planned() {
         assert_eq!(
-            authorize_generation(false, true, false, true)
+            authorize_generation(false, true, false, false, false, true)
                 .unwrap_err()
                 .code,
             "DESKTOP_CONSENT_REQUIRED"
         );
         assert_eq!(
-            authorize_generation(true, true, true, false)
+            authorize_generation(true, true, false, false, true, false)
                 .unwrap_err()
                 .code,
             "DESKTOP_INTERNAL_MODE_REQUIRED"
         );
-        assert!(authorize_generation(true, true, false, false).is_ok());
-        assert!(authorize_generation(true, true, true, true).is_ok());
-        assert!(authorize_generation(false, false, true, true).is_ok());
+        assert!(authorize_generation(true, true, false, false, false, false).is_ok());
+        assert!(authorize_generation(true, true, false, false, true, true).is_ok());
+        assert!(authorize_generation(false, false, false, false, true, true).is_ok());
+        assert_eq!(
+            authorize_generation(false, false, false, true, false, true)
+                .unwrap_err()
+                .code,
+            "DESKTOP_MODULE_DOWNLOAD_CONSENT_REQUIRED"
+        );
     }
 
     #[test]
     fn compiled_build_profile_controls_planned_recipe_override() {
         assert_eq!(INTERNAL_DEVELOPMENT_MODE, cfg!(debug_assertions));
         assert_eq!(
-            authorize_generation(true, true, true, INTERNAL_DEVELOPMENT_MODE).is_ok(),
+            authorize_generation(true, true, false, false, true, INTERNAL_DEVELOPMENT_MODE).is_ok(),
             cfg!(debug_assertions)
         );
     }

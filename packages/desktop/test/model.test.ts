@@ -141,12 +141,14 @@ test('generation requires consent, ready doctor, and internal planned override',
     planAvailable: true,
     doctorReady: true,
     lifecycleConsent: true,
+    networkConsent: true,
     executionAvailable: false,
     internalDevelopmentMode: true,
     allowPlanned: true,
   }
   assert.equal(canStartGeneration(base), true)
   assert.equal(canStartGeneration({ ...base, lifecycleConsent: false }), false)
+  assert.equal(canStartGeneration({ ...base, networkConsent: false }), false)
   assert.equal(canStartGeneration({ ...base, doctorReady: false }), false)
   assert.equal(canStartGeneration({ ...base, internalDevelopmentMode: false }), false)
   assert.equal(canStartGeneration({ ...base, executionAvailable: true, internalDevelopmentMode: false, allowPlanned: false }), true)

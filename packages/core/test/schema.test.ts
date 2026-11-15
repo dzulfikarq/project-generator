@@ -8,7 +8,7 @@ import { createPlan } from '../src/plan.js'
 import { resolveSelection } from '../src/resolver.js'
 import { normalizeWindowsParent, resolveOutputPath } from '../src/paths.js'
 import { GeneratorError } from '../src/errors.js'
-import { supportsComposer, supportsGo, supportsNodeForAngular, supportsNodeForBackend, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue, supportsNpm, supportsPhp, supportsPython, supportsUv } from '../src/toolchain.js'
+import { supportsComposer, supportsGo, supportsGoGin, supportsNodeForAngular, supportsNodeForBackend, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue, supportsNpm, supportsPhp, supportsPython, supportsUv } from '../src/toolchain.js'
 import { defaultGoModulePath, isValidGoModulePath } from '../src/go-module.js'
 import { FORMA_COMMIT_SHA, isFormaCommit } from '../src/forma-catalog.js'
 import { runDoctor } from '../src/doctor.js'
@@ -330,6 +330,42 @@ test('BE-02 resolves standalone Go net/http with Go Modules and validates module
     ...selection,
     frontend: { adapterId: 'frontend.react-vite', language: 'ts', manager: 'npm' },
   })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+})
+
+test('BE-04 resolves standalone Gin with separately disclosed module-download consent', () => {
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'gin-api', type: 'backend', parentDirectory: 'E:\\Projects' },
+    backend: { adapterId: 'backend.go-gin', manager: 'go-modules', modulePath: 'github.com/example/gin-api' },
+    documentation: 'standard',
+    git: { initialize: false, initialCommit: false },
+  })
+  const resolved = resolveSelection(selection)
+  const plan = createPlan(selection)
+  assert.equal(resolved.recipe.id, 'BE-04')
+  assert.equal(resolved.recipe.status, 'planned')
+  assert.equal(resolved.recipe.backend, 'backend.go-gin')
+  assert.equal(resolved.recipe.manager, 'go-modules')
+  assert.equal(plan.executionAvailable, false)
+  assert.equal(plan.requiresDependencyConsent, false)
+  assert.equal(plan.executesDependencyLifecycleScripts, false)
+  assert.equal(plan.requiresNetworkConsent, true)
+  assert.deepEqual(plan.networkAccess, ['https://proxy.golang.org/', 'https://sum.golang.org/ (Go checksum database)'])
+  assert.ok(plan.expectedWrites.includes('go.mod'))
+  assert.ok(plan.expectedWrites.includes('go.sum'))
+  assert.ok(plan.expectedWrites.includes('internal/server/server_test.go'))
+  assert.match(plan.steps.find((step) => step.id === 'preflight')?.readableSummary ?? '', /Go 1\.25\+/)
+  assert.match(plan.steps.find((step) => step.id === 'install')?.readableSummary ?? '', /pinned Gin module graph/)
+  assert.equal(supportsGoGin('1.25.0'), true)
+  assert.equal(supportsGoGin('1.24.99'), false)
+
+  for (const invalid of [
+    { backend: { adapterId: 'backend.go-gin', manager: 'npm' } },
+    { backend: { adapterId: 'backend.go-gin', manager: 'go-modules' }, database: { adapterId: 'database.postgresql', mode: 'existing-service' } },
+    { backend: { adapterId: 'backend.go-gin', manager: 'go-modules' }, project: { ...selection.project, type: 'fullstack' } },
+  ]) {
+    assert.throws(() => createPlan(parseSelection({ ...selection, ...invalid })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  }
 })
 
 test('BE-06 resolves standalone planned FastAPI with uv, Python 3.14, and locked dependencies', () => {

@@ -37,7 +37,7 @@ V1 does not execute unreviewed third-party adapters. New adapters are repository
 
 ## 3. Proposed TypeScript-facing contract (illustrative; not identical to Phase 01 code)
 
-Phase 01 implements FE-01/FE-02 selection; Phase 02 adds planned Forma FM-01/FM-02; Phase 04A–04B.3 add planned frontend recipes; Phase 05A adds planned standalone BE-01 Express + TypeScript + npm with no database; Phase 05B adds planned standalone BE-02 Go `net/http` + Go Modules with no external dependencies or database; Phase 05C.1 implements planned standalone BE-06 FastAPI + uv with no database/ORM and Phase 05C.2 records bounded local toolchain/CLI/native evidence; Phase 05D.1 adds planned standalone BE-03 NestJS + npm and bounded CLI/native evidence. Independent acceptance and release approval remain pending for all recipes. Broader interfaces below remain a target contract for future adapters and components.
+Phase 01 implements FE-01/FE-02 selection; Phase 02 adds planned Forma FM-01/FM-02; Phase 04A–04B.3 add planned frontend recipes; Phase 05A adds planned standalone BE-01 Express + TypeScript + npm with no database; Phase 05B adds planned standalone BE-02 Go `net/http` + Go Modules with no external dependencies or database; Phase 05C.1 implements planned standalone BE-06 FastAPI + uv with no database/ORM and Phase 05C.2 records bounded local toolchain/CLI/native evidence; Phase 05D.1 adds planned standalone BE-03 NestJS + npm and bounded CLI/native evidence; Phase 05D.2 adds planned standalone BE-04 Go + Gin + Go Modules with bounded Windows CLI/native evidence. Independent acceptance and release approval remain pending for all recipes. Broader interfaces below remain a target contract for future adapters and components.
 
 ```ts
 type SupportState =

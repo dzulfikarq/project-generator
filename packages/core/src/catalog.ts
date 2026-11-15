@@ -1,5 +1,6 @@
 import type { AdapterManifestV1, PackageManagerId, PackageManagerManifestV1, RecipeManifestV1 } from './types.js'
 import { FORMA_COMMIT_SHA, FORMA_INTEGRATIONS, FORMA_TEMPLATES } from './forma-catalog.js'
+import { GIN_GO_MINIMUM, GIN_VERSION } from './gin-module-graph.js'
 
 const nodeRequirement = {
   executableId: 'node',
@@ -27,6 +28,13 @@ const goRequirement = {
   versionRange: '>=1.22.0',
   optional: false,
   reason: 'Go Modules and method-aware standard-library HTTP routing.',
+} as const
+
+const goGinRequirement = {
+  executableId: 'go',
+  versionRange: `>=${GIN_GO_MINIMUM}`,
+  optional: false,
+  reason: `Gin ${GIN_VERSION}, generated project checks, and Go Modules installation.`,
 } as const
 
 const phpRequirement = {
@@ -311,6 +319,22 @@ export const ADAPTERS: readonly AdapterManifestV1[] = [
     capabilities: ['go', 'standard-library-http', 'go-modules', 'rest-api', 'health-check', 'unit-tests', 'http-smoke', 'graceful-shutdown'],
     compatibleWith: [],
     incompatibleWith: ['frontend.*', 'database.*', 'fullstack.*'],
+    recipeEvidenceIds: [],
+  },
+  {
+    schemaVersion: 1,
+    id: 'backend.go-gin',
+    adapterVersion: '0.1.0',
+    kind: 'backend',
+    displayName: 'Go · Gin',
+    supportState: 'planned',
+    supportedOS: ['windows'],
+    versionConstraints: { go: `>=${GIN_GO_MINIMUM}`, gin: GIN_VERSION, moduleGraph: 'pinned in go.mod/go.sum' },
+    packageManagers: ['go-modules'],
+    prerequisites: [goGinRequirement],
+    capabilities: ['go', 'gin', 'go-modules', 'rest-api', 'health-check', 'unit-tests', 'http-smoke', 'graceful-shutdown'],
+    compatibleWith: [],
+    incompatibleWith: ['frontend.*', 'database.*', 'fullstack.*', 'authentication', 'docker'],
     recipeEvidenceIds: [],
   },
   {
@@ -786,6 +810,23 @@ export const RECIPES: readonly RecipeManifestV1[] = [
     manager: 'go-modules',
     checks: ['go-module', 'go-fmt', 'go-vet', 'go-test', 'go-build', 'http-smoke', 'graceful-shutdown'],
     limitations: ['Standalone standard-library REST API; no frontend, database, ORM, authentication, or third-party dependency.', 'Go 1.22 or newer required; module path is configurable.'],
+    evidenceIds: [],
+  },
+  {
+    schemaVersion: 1,
+    id: 'BE-04',
+    status: 'planned',
+    platform: 'windows',
+    projectType: 'backend',
+    backend: 'backend.go-gin',
+    language: 'go',
+    manager: 'go-modules',
+    checks: ['module-download', 'go-module-integrity', 'go-module-compatibility', 'go-module', 'gofmt', 'go-vet', 'go-test', 'go-build', 'http-smoke'],
+    limitations: [
+      `Standalone Gin REST API; Gin ${GIN_VERSION}; no database, ORM, authentication, Docker, frontend, or fullstack.`,
+      `Go ${GIN_GO_MINIMUM} or newer required; module path is configurable; exact module graph is pinned in go.mod/go.sum.`,
+      'Go module downloads require separate affirmative consent and use the public Go module proxy and checksum database.',
+    ],
     evidenceIds: [],
   },
   {

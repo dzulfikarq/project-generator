@@ -1,7 +1,7 @@
 import { inspectTarget } from './paths.js'
 import { packageManager } from './catalog.js'
 import { tmpdir } from 'node:os'
-import { LARAVEL_REQUIRED_EXTENSIONS, resolveComposerPhar, resolveGoTool, resolveNpmTool, resolvePhpExecutable, resolvePythonExecutable, resolveUvExecutable, supportsComposer, supportsGo, supportsNpm, supportsNodeForAngular, supportsNodeForBackend, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue, supportsPhp, supportsPython, supportsUv } from './toolchain.js'
+import { LARAVEL_REQUIRED_EXTENSIONS, resolveComposerPhar, resolveGoTool, resolveNpmTool, resolvePhpExecutable, resolvePythonExecutable, resolveUvExecutable, supportsComposer, supportsGo, supportsGoGin, supportsNpm, supportsNodeForAngular, supportsNodeForBackend, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue, supportsPhp, supportsPython, supportsUv } from './toolchain.js'
 import { runSafeProcess } from './runner.js'
 import type { DoctorReport, ProjectSelectionV1, ToolStatus } from './types.js'
 import { resolveSelection } from './resolver.js'
@@ -10,6 +10,8 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
   const resolved = resolveSelection(selection)
   const recipe = resolved.recipe
   const isGo = recipe.id === 'BE-02'
+  const isGin = recipe.id === 'BE-04'
+  const usesGo = isGo || isGin
   const isLaravel = recipe.id === 'BE-05'
   const isPython = recipe.id === 'BE-06'
   const isPhp = isLaravel
@@ -22,15 +24,15 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
         : recipe.frontend === 'frontend.angular' ? supportsNodeForAngular(nodeVersion)
           : recipe.frontend === 'frontend.nextjs-app' ? supportsNodeForNext(nodeVersion) : supportsNodeForVite(nodeVersion)
   const nodeSupported = frameworkNodeSupported && (recipe.manager !== 'pnpm' || supportsNodeForPnpm(nodeVersion))
-  const node: ToolStatus | undefined = isGo || isPython || isPhp ? undefined : {
+  const node: ToolStatus | undefined = usesGo || isPython || isPhp ? undefined : {
     id: 'node',
     available: nodeSupported,
     version: nodeVersion,
     message: nodeSupported ? 'Node.js version satisfies pinned scaffold and package-manager requirements.' : `Node.js ${process.version} is outside this recipe's supported range.`,
   }
 
-  const npmTool = isGo || isPython || isPhp ? undefined : await resolveNpmTool()
-  const npm: ToolStatus | undefined = isGo || isPython || isPhp ? undefined : npmTool ? {
+  const npmTool = usesGo || isPython || isPhp ? undefined : await resolveNpmTool()
+  const npm: ToolStatus | undefined = usesGo || isPython || isPhp ? undefined : npmTool ? {
     id: 'npm',
     available: supportsNpm(npmTool.version),
     version: npmTool.version,
@@ -41,7 +43,7 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
     message: 'Trusted npm CLI was not found beside the active Node runtime.',
   }
 
-  const selectedManager = isGo || isPython || isPhp || recipe.manager === 'npm' ? undefined : packageManager(recipe.manager)
+  const selectedManager = usesGo || isPython || isPhp || recipe.manager === 'npm' ? undefined : packageManager(recipe.manager)
   const managerTool: ToolStatus | undefined = selectedManager ? {
     id: selectedManager.id === 'go-modules' ? 'go' : selectedManager.id,
     available: npm?.available === true && (selectedManager.id !== 'pnpm' || supportsNodeForPnpm(nodeVersion)),
@@ -52,10 +54,11 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
   } : undefined
 
   let go: ToolStatus | undefined
-  if (isGo) {
+  if (usesGo) {
+    const requiredGo = isGin ? '1.25.0' : '1.22.0'
     const executable = await resolveGoTool()
     if (!executable) {
-      go = { id: 'go', available: false, message: 'Go SDK was not found on PATH or under GOROOT. Install Go 1.22 or newer, add its bin directory to PATH, then rerun Doctor.' }
+      go = { id: 'go', available: false, message: `Go SDK was not found on PATH or under GOROOT. Install Go ${requiredGo} or newer, add its bin directory to PATH, then rerun Doctor.` }
     } else {
       try {
         const root = tmpdir()
@@ -68,18 +71,18 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
           homeDirectory: root,
           tempDirectory: root,
           extraPath: [executable.directory],
-          environment: { GOTOOLCHAIN: 'local' },
+          environment: { GOTOOLCHAIN: 'local', GOENV: 'off' },
           timeoutMs: 5_000,
         })
         const version = /^go version go(\d+\.\d+(?:\.\d+)?)\s/.exec(result.stdout.trim())?.[1]
-        const supported = result.exitCode === 0 && version !== undefined && supportsGo(version)
+        const supported = result.exitCode === 0 && version !== undefined && (isGin ? supportsGoGin(version) : supportsGo(version))
         go = {
           id: 'go',
           available: supported,
           path: executable.executablePath,
           ...(version ? { version } : {}),
-          message: supported ? `Go ${version} satisfies the Go Modules and net/http requirement (>=1.22.0).`
-            : version ? `Go ${version} is unsupported; install Go 1.22 or newer and rerun Doctor.`
+          message: supported ? `Go ${version} satisfies the ${isGin ? 'Gin module graph' : 'Go Modules and net/http'} requirement (>=${requiredGo}).`
+            : version ? `Go ${version} is unsupported; install Go ${requiredGo} or newer and rerun Doctor.`
               : 'Go SDK was found but its version could not be verified. Repair the Go installation and rerun Doctor.',
         }
       } catch {
@@ -256,7 +259,7 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
   return {
     schemaVersion: 1,
     platform: `${process.platform}-${process.arch}`,
-    ready: windows && (isGo ? Boolean(go?.available) : isLaravel ? Boolean(php?.available && composer?.available) : isPython ? Boolean(python?.available && uv?.available) : Boolean(node?.available && npm?.available && (!managerTool || managerTool.available))) && target.available,
+    ready: windows && (usesGo ? Boolean(go?.available) : isLaravel ? Boolean(php?.available && composer?.available) : isPython ? Boolean(python?.available && uv?.available) : Boolean(node?.available && npm?.available && (!managerTool || managerTool.available))) && target.available,
     tools,
     target,
   }

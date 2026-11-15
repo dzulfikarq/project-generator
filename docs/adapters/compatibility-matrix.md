@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Version | Draft 0.1 — 2026-11-16 |
-| Status | **FE-03–FE-15 and standalone BE-01/BE-02/BE-03/BE-05/BE-06 bounded local evidence recorded; FE-01–FE-15/BE-01–BE-03/BE-05–BE-06/FM-01/FM-02 remain PLAN; no recipe promoted or release-approved** |
+| Status | **FE-03–FE-15 and standalone BE-01/BE-02/BE-03/BE-04/BE-05/BE-06 bounded local evidence recorded; FE-01–FE-15/BE-01–BE-06/FM-01/FM-02 remain PLAN; no recipe promoted or release-approved** |
 | Main platform | Windows 11 |
 | Source of truth | This matrix + machine-readable adapter manifests + QA results |
 
-> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-15, BE-01–BE-03, BE-06, and FM-01/FM-02 have local implementation/evidence only. BE-05 also has a bounded independent review of its CLI/native and isolated MySQL evidence (**PASS**); this is not recipe promotion or release approval. Every recipe remains unavailable in normal generation.
+> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-15, BE-01–BE-04, BE-06, and FM-01/FM-02 have local implementation/evidence only. BE-05 also has a bounded independent review of its CLI/native and isolated MySQL evidence (**PASS**); this is not recipe promotion or release approval. Every recipe remains unavailable in normal generation.
 
 ## 1. Status and test gates
 
@@ -42,8 +42,8 @@ The catalog can mention `PLAN`, but normal generation is enabled only for `TEST`
 | BE-EXPRESS | Express | Node.js / npm | Reviewed minimal TS scaffold + official dependencies | None in bounded BE-01; database integrations remain separate proposed recipes | PLAN |
 | BE-NEST | NestJS | Node.js `>=22.13` / npm `>=10` | Official Nest CLI `11.0.24`; Nest framework `11.2.10`; CommonJS-compatible NodeNext + Jest scaffold | None in bounded standalone BE-03; database recipes remain separate proposed scope | PLAN |
 | BE-FASTIFY | Fastify | Node.js / npm | Official starter or reviewed minimal TS scaffold | Drizzle or Prisma for compatible SQL | PLAN |
-| BE-GO | Go standard-library `net/http` (BE-02); Gin is separate candidate | Go >=1.22 / Go Modules | Reviewed standalone REST starter; no scaffold CLI | None in BE-02; database integrations remain separate proposed recipes | PLAN |
-| BE-GIN | Go + Gin | Go / Go Modules | `go mod init` + versioned starter | pgx/PostgreSQL, MySQL driver/GORM if specifically tested | PLAN |
+| BE-GO | Go standard-library `net/http` (BE-02); Go + Gin (BE-04) | Go >=1.22 for BE-02; Go >=1.25 for BE-04 / Go Modules | Reviewed standalone REST starters; no scaffold CLI | None in BE-02/BE-04; database integrations remain separate proposed recipes | PLAN |
+| BE-GIN | Go + Gin `v1.12.0` (BE-04) | Go >=1.25 / Go Modules | Reviewed standalone Gin starter; exact module graph and checksums | None in BE-04; pgx/PostgreSQL and other DB pairings require separate recipe scope and evidence | PLAN |
 | BE-LARAVEL | Laravel 12 (BE-05) | PHP >=8.2 / Composer >=2.2 | Official `laravel/laravel@12.12.2`; frontend assets omitted | Eloquent + MySQL 8.4.13; bounded isolated acceptance PASS at `127.0.0.1:3307` (migration, CRUD, PHPUnit 4 tests/22 assertions, negative checks, isolation, cleanup) | PLAN |
 | BE-FASTAPI | FastAPI | Python 3.14.x / uv | Reviewed standalone FastAPI/Pydantic application skeleton; resolve `uv.lock` and verify artifact hashes | None in bounded BE-06; SQLAlchemy/database integration is separate unimplemented scope | PLAN |
 | BE-DJANGO | Django | Python / uv/pip | Official django-admin | Django ORM | FUT |
@@ -79,7 +79,7 @@ These scaffolding references are directions, not proof that the exact generated 
 |---|---|---|---|
 | Node web/backend/Expo | **npm** | Yarn `4.18.1` (FE-12/13); pnpm `11.28.11` (FE-14/15); Bun not implemented | Only listed React/Vue Vite + Plain CSS recipes use Yarn/pnpm; declare exact manager pin/config, install invocation, and one relevant lockfile |
 | PHP/Laravel | Composer | N/A for PHP packages | Laravel may *also* have npm for frontend asset pipeline |
-| Go | Go Modules (`go`) | N/A in V1 | Go >=1.22 for BE-02. Validate module path; `go.sum` only when dependencies require it. BE-02 has no third-party modules and generates only `go.mod`. |
+| Go | Go Modules (`go`) | N/A in V1 | Go >=1.22 for BE-02; Go >=1.25 for Gin BE-04. Validate module path. BE-02 has no third-party modules and generates only `go.mod`; BE-04 pins Gin and its module graph in `go.mod`/`go.sum`. |
 | Python/FastAPI | uv | pip later if tested | `pyproject.toml` and uv lock; no npm substitute |
 | Flutter | pub | N/A | Dart SDK / Flutter checks |
 | Java | Maven | Gradle | Future only |
@@ -133,7 +133,7 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | BE-01 | Backend | None | Express | None | N/A | npm | Phase 05A standalone API; DB excluded |
 | BE-02 | Backend | None | Go standard-library `net/http` | None | N/A | Go Modules | Phase 05B standalone API; no external modules |
 | BE-03 | Backend | None | NestJS | None in Phase 05D.1; PostgreSQL + Prisma remains a separate proposed recipe | N/A | npm | Phase 05D.1 standalone API |
-| BE-04 | Backend | None | Go + Gin | PostgreSQL + pgx | N/A | Go Modules | V1 |
+| BE-04 | Backend | None | Go + Gin `v1.12.0` | None | N/A | Go Modules | Phase 05D.2 standalone API; Go >=1.25 |
 | BE-05 | Backend | None | Laravel | MySQL + Eloquent | N/A | Composer only; npm assets omitted | Phase 05C.3 |
 | BE-06 | Backend | None | FastAPI | None in Phase 05C.1; SQLAlchemy/database remains separate proposal | N/A | uv | Phase 05C.1 implementation; Phase 05C.2 bounded local CLI/native evidence; independent acceptance pending |
 | FS-01 | Fullstack | Vue Vite | Laravel | MySQL + Eloquent | Bootstrap | npm + Composer | V1 |
@@ -145,6 +145,8 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | FM-02 | Template | Next App Router | None separate | None | Selected Forma template | npm + Forma installer | V1 integration |
 | MOB-01 | Mobile | Expo | Optional backend later | None | NativeWind / Native default | npm | V1.1 |
 | MOB-02 | Mobile | Flutter | Optional backend later | None | Material | pub | V1.1 |
+
+BE-04 does not imply PostgreSQL/pgx support. FS-02 remains a separate proposed fullstack recipe with PostgreSQL/pgx; it is unchanged and unverified by Phase 05D.2.
 
 FE-01 evidence: [Windows React + Vite run](../qa/evidence/FE-01/2026-11-11-cli-e2e.md). FE-02 evidence: [Windows Next.js run](../qa/evidence/FE-02/2026-11-11-cli-e2e.md). Both were invoked with `--development-allow-planned`; remain `PLAN` pending the full independent acceptance/review gates.
 
@@ -159,6 +161,8 @@ Phase 05C.1 adds BE-06 as standalone FastAPI/Pydantic/Uvicorn + uv with Python 3
 Phase 05C.3 adds BE-05 as standalone Laravel 12/PHP/Composer with MySQL/Eloquent configuration. Bounded Windows CLI/native and isolated database acceptance passed using vendor-verified portable MySQL 8.4.13 bound only to `127.0.0.1:3307`: explicit migration passed; temporary PHPUnit integration passed 4 tests/22 assertions, including Eloquent create/read/update/delete; invalid-credential and unavailable-DB checks, schema isolation, and cleanup passed. Generation created no `.env`, schema, or migration. Composer scripts/plugins are disabled; package code remains unsandboxed and requires explicit consent. Bounded independent review of this evidence: **PASS**; Phase 05C development scope is closed. Acceptance/review does not promote the recipe or approve release: BE-05 remains `PLAN` and blocked in normal/release generation. See [DEC-028](../decisions/DEC-028-phase-05c3-laravel.md) and [Phase 05C.3 evidence](../qa/evidence/phase-05c3-laravel.md).
 
 Phase 05D.1 adds BE-03 as standalone NestJS 11/TypeScript/npm using integrity-pinned Nest CLI `11.0.24`, framework packages `11.2.10`, Node `>=22.13`, Jest 30 + ts-jest `29.4.15`, and CommonJS-compatible NodeNext output. Windows CLI/native acceptance passed scaffold, dependency/lock integrity, typecheck, lint, unit/e2e, build, HTTP, cancellation (CLI), consent, history/open, and collision checks. No DB/ORM/auth/Docker/fullstack/Observe integration. Evidence is local and pending independent review; BE-03 remains `PLAN`, normal/release generation remains blocked. See [DEC-029](../decisions/DEC-029-phase-05d1-nestjs.md) and [Phase 05D.1 evidence](../qa/evidence/phase-05d1-nestjs.md).
+
+Phase 05D.2 adds BE-04 as standalone Go + Gin `1.12.0` + Go Modules with Go `>=1.25.0`; bounded Windows CLI/native acceptance passed pinned module integrity, Go checks, HTTP/shutdown, separate module-download consent, cancellation, cleanup, collision, and native result/history/open. The generated graph hash and test details are recorded in [Phase 05D.2 evidence](../qa/evidence/phase-05d2-go-gin.md). Independent evidence review remains pending; BE-04 stays `PLAN` and normal/release generation remains blocked. This does not implement or verify database/fullstack scope; FS-02 PostgreSQL/pgx remains separate and unverified.
 
 **Important:** the fullstack recipe must produce a real, reachable example API endpoint and frontend call when that is part of its advertised output. Generating two unrelated folder trees is insufficient.
 

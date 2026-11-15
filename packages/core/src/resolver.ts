@@ -12,16 +12,18 @@ export function resolveSelection(selection: ProjectSelectionV1): ResolvedSelecti
   if (project.type === 'backend') {
     const adapterId = selection.backend?.adapterId
     const isGo = adapterId === 'backend.go-net-http'
+    const isGin = adapterId === 'backend.go-gin'
+    const isGoBackend = isGo || isGin
     const isLaravel = adapterId === 'backend.laravel'
     const isPython = adapterId === 'backend.fastapi'
     const isNest = adapterId === 'backend.nestjs'
-    const manager = selection.backend?.manager ?? (isGo ? 'go-modules' : isLaravel ? 'composer' : isPython ? 'uv' : 'npm')
-    const recipeId = isGo ? 'BE-02' : isLaravel ? 'BE-05' : isPython ? 'BE-06' : isNest ? 'BE-03' : 'BE-01'
-    if (!selection.backend || !['backend.express', 'backend.nestjs', 'backend.go-net-http', 'backend.laravel', 'backend.fastapi'].includes(adapterId ?? '') || manager !== (isGo ? 'go-modules' : isLaravel ? 'composer' : isPython ? 'uv' : 'npm')
+    const manager = selection.backend?.manager ?? (isGoBackend ? 'go-modules' : isLaravel ? 'composer' : isPython ? 'uv' : 'npm')
+    const recipeId = isGo ? 'BE-02' : isGin ? 'BE-04' : isLaravel ? 'BE-05' : isPython ? 'BE-06' : isNest ? 'BE-03' : 'BE-01'
+    if (!selection.backend || !['backend.express', 'backend.nestjs', 'backend.go-net-http', 'backend.go-gin', 'backend.laravel', 'backend.fastapi'].includes(adapterId ?? '') || manager !== (isGoBackend ? 'go-modules' : isLaravel ? 'composer' : isPython ? 'uv' : 'npm')
         || selection.frontend || selection.database || selection.styling || selection.template) {
-      throw incompatibleError('Backend recipes support only standalone Express/NestJS + npm, Go net/http + Go Modules, Laravel + Composer, or FastAPI + uv; frontend, separate database selections, and fullstack choices are unavailable.')
+      throw incompatibleError('Backend recipes support only standalone Express/NestJS + npm, Go net/http or Gin + Go Modules, Laravel + Composer, or FastAPI + uv; frontend, separate database selections, and fullstack choices are unavailable.')
     }
-    if (isGo) {
+    if (isGoBackend) {
       const modulePath = selection.backend.modulePath ?? defaultGoModulePath(project.name)
       if (!isValidGoModulePath(modulePath)) throw configError('backend.modulePath must be a valid lowercase Go module path such as github.com/user/project or example.com/project.')
       const normalized = { ...selection, backend: { ...selection.backend, modulePath } }
@@ -29,7 +31,7 @@ export function resolveSelection(selection: ProjectSelectionV1): ResolvedSelecti
       if (!recipe) throw incompatibleError('Selection does not match a cataloged backend recipe.')
       return { selection: Object.freeze(normalized), recipe, outputPath: win32.normalize(outputPath) }
     }
-    if (selection.backend.modulePath !== undefined) throw incompatibleError('backend.modulePath is supported only by the Go recipe.')
+    if (selection.backend.modulePath !== undefined) throw incompatibleError('backend.modulePath is supported only by Go backend recipes.')
     const recipe = RECIPES.find((candidate) => candidate.id === recipeId)
     if (!recipe) throw incompatibleError('Selection does not match a cataloged backend recipe.')
     return { selection: Object.freeze(selection), recipe, outputPath: win32.normalize(outputPath) }

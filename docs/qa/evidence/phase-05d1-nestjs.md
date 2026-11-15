@@ -59,6 +59,8 @@ CLI cancellation was sent after `installing` began; job exited cancelled, target
 
 **NO-GO for full BE-04 implementation as currently proposed; GO for a separate bounded design/evaluation only.** The current codebase implements BE-02 with standard-library `net/http`; no Go Gin adapter, PostgreSQL driver, DB validation, schema/migration contract, or isolated PostgreSQL acceptance harness exists. The proposed BE-04 tuple couples Gin + PostgreSQL + pgx and needs separate decisions for existing-service-only versus provisioning, data model/migrations, connection error behavior, dependency/module integrity, test isolation and cleanup. BE-02 tests do not cover those requirements. Authorize implementation only after that scope and acceptance plan are approved.
 
+**Historical recommendation superseded:** User authorized Phase 05D.2 with a narrower BE-04 scope—standalone Gin, no DB/auth. See [DEC-030](../../decisions/DEC-030-phase-05d2-go-gin.md); FS-02 PostgreSQL/pgx scope remains separate.
+
 ## Remaining gates
 
 - Independent review of exact pins, generated output, cancellation/safety evidence, and CLI/native report remains pending.

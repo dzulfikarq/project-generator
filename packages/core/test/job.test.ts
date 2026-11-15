@@ -61,6 +61,29 @@ test('production generation blocks planned BE-02 before staging or destination w
   }
 })
 
+test('BE-04 refuses module downloads without separate consent before staging', { skip: !ALLOW_PLANNED_RECIPE_GENERATION }, async () => {
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-gin-consent-'))
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'gin-consent-api', type: 'backend', parentDirectory: parent },
+    backend: { adapterId: 'backend.go-gin', manager: 'go-modules', modulePath: 'example.com/gin-consent-api' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  })
+  let logFile = ''
+  try {
+    const result = await generateProject(selection, { allowPlanned: true, allowDependencyScripts: true })
+    logFile = result.logFile ?? ''
+    assert.equal(result.status, 'failed')
+    assert.equal(result.error?.code, 'GEN_MODULE_DOWNLOAD_CONSENT_REQUIRED')
+    await assert.rejects(access(win32.join(parent, 'gin-consent-api')))
+    assert.deepEqual(await readdir(parent), [])
+  } finally {
+    await rm(parent, { recursive: true, force: true })
+    if (logFile) await rm(dirname(logFile), { recursive: true, force: true })
+  }
+})
+
 test('production generation blocks planned BE-03 before staging or destination writes', async () => {
   const parent = await mkdtemp(win32.join(tmpdir(), 'pg-planned-nest-'))
   const selection = parseSelection({

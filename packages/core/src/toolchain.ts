@@ -91,6 +91,10 @@ export function supportsGo(version: string): boolean {
   return atLeast(version, [1, 22, 0])
 }
 
+export function supportsGoGin(version: string): boolean {
+  return atLeast(version, [1, 25, 0])
+}
+
 export function supportsPython(version: string): boolean {
   return /^3\.14\.\d+$/.test(version.trim())
 }

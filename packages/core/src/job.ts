@@ -14,13 +14,16 @@ import { verifyUvLockfile, writeFastApiProjectDocs, writeFastApiProjectManifest 
 import { writeLaravelBackendStarter, LARAVEL_PINS } from './laravel-backend-starter.js'
 import { verifyComposerLockfile, writeLaravelProjectDocs, writeLaravelProjectManifest } from './laravel-project-docs.js'
 import { writeGoBackendStarter } from './go-backend-starter.js'
+import { writeGinBackendStarter } from './gin-backend-starter.js'
 import { writeGoProjectDocs, writeGoProjectManifest } from './go-project-docs.js'
+import { writeGinProjectDocs, writeGinProjectManifest } from './gin-project-docs.js'
+import { createGinGoMod, verifyGinModuleGraph, GIN_GO_MINIMUM, GIN_GO_SUM_SHA256 } from './gin-module-graph.js'
 import { runDoctor } from './doctor.js'
 import { createPlan } from './plan.js'
 import { writeProjectDocs, writeProjectManifest } from './project-docs.js'
 import { runNodeProcess, runSafeProcess, startNodeProcess, startSafeProcess, type ProcessResult, type SafeProcessOptions } from './runner.js'
 import { bindOwnedStageProjectIdentity, createOwnedStage, cleanupOwnedStage, cleanupStageSupportFiles, markOwnedStageGenerating, mutateOwnedStage, moveDirectoryNoReplace, verifyOwnedStageProjectIdentity, type OwnedStage } from './staging.js'
-import { resolveComposerPhar, resolveGoTool, resolveNpmTool, resolvePhpExecutable, resolvePythonExecutable, resolveUvExecutable, supportsComposer, supportsGo, supportsNpm, supportsPhp, supportsPython, supportsUv, type ComposerPhar, type GoTool, type NpmTool, type PhpExecutable, type PythonExecutable, type UvExecutable } from './toolchain.js'
+import { resolveComposerPhar, resolveGoTool, resolveNpmTool, resolvePhpExecutable, resolvePythonExecutable, resolveUvExecutable, supportsComposer, supportsGo, supportsGoGin, supportsNpm, supportsPhp, supportsPython, supportsUv, type ComposerPhar, type GoTool, type NpmTool, type PhpExecutable, type PythonExecutable, type UvExecutable } from './toolchain.js'
 import { assertGenerationAllowed } from './native-supervisor.js'
 import { resolveSelection } from './resolver.js'
 import { installFormaTemplate, type FormaInstallEvidence } from './forma.js'
@@ -29,6 +32,7 @@ import type { DoctorReport, JobEventV1, JobStatus, PackageManagerManifestV1, Pro
 export interface GenerateOptions {
   allowPlanned?: boolean
   allowDependencyScripts?: boolean
+  allowModuleDownloads?: boolean
   signal?: AbortSignal
   onEvent?: (event: JobEventV1) => void
 }
@@ -115,7 +119,7 @@ function userError(code: string, stage: StageId, message: string, nextAction: st
 function preflightError(report: DoctorReport): GeneratorError {
   const go = report.tools.find((tool) => tool.id === 'go')
   if (go && !go.available) {
-    return userError(go.version ? 'GEN_TOOL_UNSUPPORTED' : 'GEN_TOOL_MISSING', 'preflight', go.message, 'Install a supported Go 1.22+ SDK, add its bin directory to PATH, and rerun Doctor.')
+    return userError(go.version ? 'GEN_TOOL_UNSUPPORTED' : 'GEN_TOOL_MISSING', 'preflight', go.message, 'Install the Go version required by this recipe, add its bin directory to PATH, and rerun Doctor.')
   }
   if (!report.target.available) {
     const exists = report.target.message.includes('already exists')
@@ -266,6 +270,7 @@ async function runGo(
   label: string,
   signal?: AbortSignal,
   timeoutMs = 10 * 60 * 1000,
+  allowModuleDownloads = false,
 ): Promise<ProcessResult> {
   const result = await runSafeProcess({
     executablePath: go.executablePath,
@@ -278,8 +283,9 @@ async function runGo(
     extraPath: [go.directory],
     environment: {
       GOTOOLCHAIN: 'local',
-      GOPROXY: 'off',
-      GOSUMDB: 'off',
+      GOENV: 'off',
+      GOPROXY: allowModuleDownloads ? 'https://proxy.golang.org' : 'off',
+      GOSUMDB: allowModuleDownloads ? 'sum.golang.org' : 'off',
       GOCACHE: dirs.goCache,
       GOMODCACHE: dirs.goModCache,
       GOTMPDIR: dirs.temp,
@@ -288,6 +294,32 @@ async function runGo(
     timeoutMs,
   })
   log.process(label, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
+  return result
+}
+
+async function runGofmt(
+  args: readonly string[],
+  cwd: string,
+  stage: OwnedStage,
+  go: GoTool,
+  dirs: { home: string; temp: string },
+  log: JobLog,
+  signal?: AbortSignal,
+): Promise<ProcessResult> {
+  const result = await runSafeProcess({
+    executablePath: win32.join(go.directory, 'gofmt.exe'),
+    allowedExecutableRoot: go.directory,
+    cwd,
+    allowedCwdRoot: stage.path,
+    args,
+    homeDirectory: dirs.home,
+    tempDirectory: dirs.temp,
+    extraPath: [go.directory],
+    environment: { GOTOOLCHAIN: 'local', GOENV: 'off', GOTMPDIR: dirs.temp },
+    ...(signal ? { signal } : {}),
+    timeoutMs: 2 * 60 * 1000,
+  })
+  log.process('gofmt', result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
   return result
 }
 
@@ -839,6 +871,7 @@ async function servedGoBackendSmoke(
       HOST: '127.0.0.1',
       PORT: String(port),
       GOTOOLCHAIN: 'local',
+      GOENV: 'off',
       GOPROXY: 'off',
       GOSUMDB: 'off',
       GOCACHE: dirs.goCache,
@@ -945,6 +978,23 @@ async function servedFastApiSmoke(
     { id: 'http-smoke', status: 'pass', message: 'FastAPI returned valid JSON from /health and /api/info.', exitCode: 0 },
     { id: 'openapi', status: 'pass', message: 'Swagger UI and OpenAPI schema expose the generated routes.', exitCode: 0 },
   ]
+}
+
+async function verifyGinPinnedFiles(projectPath: string, modulePath: string): Promise<void> {
+  let goMod: string
+  let goSum: Buffer
+  try {
+    ;[goMod, goSum] = await Promise.all([
+      readFile(win32.join(projectPath, 'go.mod'), 'utf8'),
+      readFile(win32.join(projectPath, 'go.sum')),
+    ])
+  } catch {
+    throw userError('GEN_MODULE_INTEGRITY', 'installing', 'Generated Go module files are missing.', 'Retry with the reviewed Gin starter and pinned Go module graph.')
+  }
+  const sumHash = createHash('sha256').update(goSum).digest('hex')
+  if (goMod !== createGinGoMod(modulePath) || sumHash !== GIN_GO_SUM_SHA256) {
+    throw userError('GEN_MODULE_INTEGRITY', 'installing', 'Generated go.mod or go.sum differs from the reviewed Gin module pins.', 'Do not download modules from this project; review the generator pins and retry.')
+  }
 }
 
 async function verifyGeneratedStyling(projectPath: string, recipe: RecipeManifestV1): Promise<ValidationOutcome | undefined> {
@@ -1090,6 +1140,8 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
   const resolved = resolveSelection(selection)
   selection = resolved.selection
   const isGo = resolved.recipe.id === 'BE-02'
+  const isGin = resolved.recipe.id === 'BE-04'
+  const usesGo = isGo || isGin
   const isNest = resolved.recipe.id === 'BE-03'
   const isLaravel = resolved.recipe.id === 'BE-05'
   const isPython = resolved.recipe.id === 'BE-06'
@@ -1111,27 +1163,32 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
   let uvVersion: string | undefined
 
   emit({ type: 'job-started', stageOwner: 'core', status: 'running', message: `Generation job ${jobId} started.` })
-  if (createPlan(selection).requiresDependencyConsent) emit({ type: 'warning', stageOwner: 'core', code: 'GEN_LIFECYCLE_SCRIPTS', message: isLaravel
+  const plan = createPlan(selection)
+  if (plan.requiresDependencyConsent) emit({ type: 'warning', stageOwner: 'core', code: 'GEN_LIFECYCLE_SCRIPTS', message: isLaravel
     ? 'Composer package installation and generated Artisan/PHPUnit checks load third-party PHP code without a sandbox; Composer scripts and plugins are disabled.'
     : isPython ? 'uv sync can execute third-party package build code; execution is not sandboxed.' : `${resolved.recipe.manager} install can execute third-party lifecycle scripts; execution is not sandboxed.` })
+  if (plan.requiresNetworkConsent) emit({ type: 'warning', stageOwner: 'core', code: 'GEN_MODULE_DOWNLOADS', message: 'Pinned Go Modules will download from proxy.golang.org and verify through sum.golang.org only after separate affirmative consent.' })
   try {
     stageStart('preflight')
     throwIfCancelled(options.signal, currentStage)
     if (resolved.recipe.status !== 'tested' && !(ALLOW_PLANNED_RECIPE_GENERATION && options.allowPlanned && resolved.recipe.status === 'planned')) {
       throw userError('GEN_RECIPE_UNTESTED', 'preflight', `${resolved.recipe.id} is planned and disabled for normal generation.`, 'Use a tested recipe; development-only runs do not change recipe status.')
     }
-    if (createPlan(selection).requiresDependencyConsent && !options.allowDependencyScripts) {
+    if (plan.requiresDependencyConsent && !options.allowDependencyScripts) {
       throw userError('GEN_DEPENDENCY_CONSENT_REQUIRED', 'preflight', 'Generation was not started because dependency installation and validation load third-party code.', 'Review the plan and explicitly consent to unsandboxed dependency execution before generation.')
+    }
+    if (plan.requiresNetworkConsent && !options.allowModuleDownloads) {
+      throw userError('GEN_MODULE_DOWNLOAD_CONSENT_REQUIRED', 'preflight', 'Generation was not started because Go Modules download requires separate network consent.', 'Review the disclosed Go module proxy and checksum database, then explicitly allow module downloads for this run.')
     }
     await assertGenerationAllowed()
     throwIfCancelled(options.signal, currentStage)
     const doctor = await runDoctor(selection)
     if (!doctor.ready) throw preflightError(doctor)
-    if (isGo) {
+    if (usesGo) {
       const executable = await resolveGoTool()
       const version = doctor.tools.find((tool) => tool.id === 'go')?.version
-      if (!executable || !version) throw userError('GEN_TOOL_MISSING', 'preflight', 'Go SDK could not be resolved after Doctor verification.', 'Install Go 1.22 or newer, add its bin directory to PATH, and rerun Doctor.')
-      if (!supportsGo(version)) throw userError('GEN_TOOL_UNSUPPORTED', 'preflight', `Go ${version} is below the required Go 1.22 minimum.`, 'Install Go 1.22 or newer and rerun Doctor.')
+      if (!executable || !version) throw userError('GEN_TOOL_MISSING', 'preflight', 'Go SDK could not be resolved after Doctor verification.', `Install Go ${isGin ? GIN_GO_MINIMUM : '1.22.0'} or newer, add its bin directory to PATH, and rerun Doctor.`)
+      if (isGin ? !supportsGoGin(version) : !supportsGo(version)) throw userError('GEN_TOOL_UNSUPPORTED', 'preflight', `Go ${version} is below the required Go ${isGin ? GIN_GO_MINIMUM : '1.22.0'} minimum.`, `Install Go ${isGin ? GIN_GO_MINIMUM : '1.22.0'} or newer and rerun Doctor.`)
       goTool = { ...executable, version }
     } else if (isLaravel) {
       phpTool = await resolvePhpExecutable()
@@ -1183,6 +1240,8 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       starterFiles = await writeFastApiBackendStarter(stage, selection.project.name)
     } else if (isGo) {
       starterFiles = await writeGoBackendStarter(stage, selection.project.name, selection.backend!.modulePath!)
+    } else if (isGin) {
+      starterFiles = await writeGinBackendStarter(stage, selection.project.name, selection.backend!.modulePath!)
     } else if (isNest) {
       await executeScaffold(stage, resolved, npmTool!.cliPath, dirs, log, options.signal)
       starterFiles = await writeNestBackendStarter(stage, selection.project.name, resolved.recipe.dependencies ?? [])
@@ -1198,8 +1257,8 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     }
     const projectPath = stage.childPath
     await bindOwnedStageProjectIdentity(stage, selection.project.name)
-    await verifyOwnedStageProjectIdentity(stage, selection.project.name, isGo ? selection.backend?.modulePath : undefined, isPython ? 'pyproject.toml' : isLaravel ? 'composer.json' : undefined)
-    const identityOutcome: ValidationOutcome = { id: isLaravel ? 'laravel-scaffold' : 'scaffold-identity', status: 'pass', message: isGo ? 'Generated module and project identity match the requested configuration.' : isPython ? 'Generated pyproject project name matches the requested project identity.' : isLaravel ? 'Generated Composer package identity matches the requested project name.' : 'Generated package identity matches the requested name.' }
+    await verifyOwnedStageProjectIdentity(stage, selection.project.name, usesGo ? selection.backend?.modulePath : undefined, isPython ? 'pyproject.toml' : isLaravel ? 'composer.json' : undefined)
+    const identityOutcome: ValidationOutcome = { id: isLaravel ? 'laravel-scaffold' : 'scaffold-identity', status: 'pass', message: usesGo ? 'Generated module and project identity match the requested configuration.' : isPython ? 'Generated pyproject project name matches the requested project identity.' : isLaravel ? 'Generated Composer package identity matches the requested project name.' : 'Generated package identity matches the requested name.' }
     validations.push(identityOutcome)
     emit({ type: 'validation', stageId: 'scaffolding', stageOwner: eventOwner('scaffolding'), stageStatus: 'passed', message: identityOutcome.message })
     stageFinish('scaffolding', 'passed')
@@ -1213,14 +1272,15 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       if (error instanceof GeneratorError) throw error
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
-    const generatedFiles = [...starterFiles, ...(isGo || isPython || isLaravel || isNest ? [] : await configureRecipeDependencies(stage, resolved))]
+    const generatedFiles = [...starterFiles, ...(usesGo || isPython || isLaravel || isNest ? [] : await configureRecipeDependencies(stage, resolved))]
     const managerConfig = packageManagerConfiguration(resolved.recipe.manager)
     if (managerConfig) {
       const projectPrefix = `${win32.basename(projectPath)}/`
       const written = await mutateOwnedStage(stage, [], [{ ...managerConfig, path: `${projectPrefix}${managerConfig.path}` }])
       generatedFiles.push(...written.map((path) => path.slice(projectPrefix.length)))
     }
-    if (isGo) generatedFiles.push(...await writeGoProjectDocs(stage, resolved, goTool!.version))
+    if (isGin) generatedFiles.push(...await writeGinProjectDocs(stage, resolved, goTool!.version))
+    else if (isGo) generatedFiles.push(...await writeGoProjectDocs(stage, resolved, goTool!.version))
     else if (isPython) generatedFiles.push(...await writeFastApiProjectDocs(stage, resolved, pythonVersion!, uvVersion!))
     else if (isLaravel) generatedFiles.push(...await writeLaravelProjectDocs(stage, resolved, phpVersion!, composerVersion!))
     else generatedFiles.push(...await writeProjectDocs(stage, resolved, process.version.replace(/^v/, ''), npmTool!, formaEvidence))
@@ -1229,7 +1289,43 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
 
     stageStart('installing')
     throwIfCancelled(options.signal, currentStage)
-    if (isGo) {
+    if (isGin) {
+      await verifyGinPinnedFiles(projectPath, selection.backend!.modulePath!)
+      const download = await runGo(['mod', 'download', 'all'], projectPath, stage, goTool!, dirs, log, 'go-module-download', options.signal, 10 * 60 * 1000, true)
+      const downloadOutcome = checkOutcome('module-download', download)
+      validations.push(downloadOutcome)
+      emitValidation(emit, downloadOutcome, 'go-modules')
+      if (download.exitCode !== 0) throw mappedProcessError('installing', download)
+      await verifyGinPinnedFiles(projectPath, selection.backend!.modulePath!)
+
+      const verify = await runGo(['mod', 'verify'], projectPath, stage, goTool!, dirs, log, 'go-module-verify', options.signal)
+      const verifyOutcome = checkOutcome('go-module-integrity', verify)
+      validations.push(verifyOutcome)
+      emitValidation(emit, verifyOutcome, 'go-modules')
+      if (verify.exitCode !== 0) throw mappedProcessError('installing', verify)
+      if (!verify.stdout.includes('all modules verified')) {
+        throw userError('GEN_MODULE_INTEGRITY', 'installing', 'go mod verify did not confirm the complete pinned module cache.', 'Review Go module download output and retry with the approved checksum database.')
+      }
+
+      const graph = await runGo(['list', '-m', '-f', '{{.Path}}|{{.Version}}|{{.GoVersion}}', 'all'], projectPath, stage, goTool!, dirs, log, 'go-module-compatibility', options.signal)
+      if (graph.exitCode !== 0) throw mappedProcessError('installing', graph)
+      let graphEvidence: { moduleCount: number; maximumGoVersion: string }
+      try {
+        graphEvidence = verifyGinModuleGraph(graph.stdout)
+      } catch (error) {
+        throw userError('GEN_MODULE_COMPATIBILITY', 'installing', error instanceof Error ? error.message : 'Go module graph is incompatible.', `Use Go ${GIN_GO_MINIMUM} or newer and review the pinned transitive module requirements.`)
+      }
+      const graphOutcome: ValidationOutcome = {
+        id: 'go-module-compatibility',
+        status: 'pass',
+        message: `${graphEvidence.moduleCount} pinned modules verified; maximum declared dependency Go version ${graphEvidence.maximumGoVersion}.`,
+        exitCode: 0,
+      }
+      validations.push(graphOutcome)
+      emitValidation(emit, graphOutcome, 'go-modules')
+      await verifyGinPinnedFiles(projectPath, selection.backend!.modulePath!)
+      stageFinish('installing', 'passed')
+    } else if (isGo) {
       stageFinish('installing', 'skipped', 'No dependency installation required; Go standard library only.')
     } else if (isLaravel) {
       const update = await runComposer([
@@ -1333,7 +1429,19 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
 
     stageStart('validating')
     throwIfCancelled(options.signal, currentStage)
-    if (isGo) {
+    if (isGin) {
+      const moduleResult = await runGo(['mod', 'edit', '-json'], projectPath, stage, goTool!, dirs, log, 'go-module-validation', options.signal)
+      if (moduleResult.exitCode !== 0) throw mappedProcessError('validating', moduleResult)
+      let module: { Module?: { Path?: string }; Go?: string }
+      try { module = JSON.parse(moduleResult.stdout) as typeof module } catch { throw userError('GEN_VALIDATE_FAILED', 'validating', 'Go Modules metadata could not be parsed.', 'Review the generated go.mod and retry.') }
+      if (module.Module?.Path !== selection.backend?.modulePath || module.Go !== GIN_GO_MINIMUM) {
+        throw userError('GEN_MODULE_INTEGRITY', 'validating', `Gin module must declare the requested path and Go ${GIN_GO_MINIMUM}.`, 'Review the generated go.mod and retry.')
+      }
+      await verifyGinPinnedFiles(projectPath, selection.backend!.modulePath!)
+      const moduleOutcome: ValidationOutcome = { id: 'go-module', status: 'pass', message: `Go module path and Go ${GIN_GO_MINIMUM} minimum match the reviewed Gin recipe.`, exitCode: 0 }
+      validations.push(moduleOutcome)
+      emitValidation(emit, moduleOutcome, recipeOwnerId)
+    } else if (isGo) {
       const moduleResult = await runGo(['mod', 'edit', '-json'], projectPath, stage, goTool!, dirs, log, 'go-module-validation', options.signal)
       if (moduleResult.exitCode !== 0) throw mappedProcessError('validating', moduleResult)
       let module: { Module?: { Path?: string }; Go?: string }
@@ -1379,6 +1487,13 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
         { id: 'python-syntax', args: ['run', '--locked', '--no-sync', '--extra', 'test', '--python', pythonExecutable!.executablePath, 'python', '-m', 'compileall', '-q', 'app', 'tests'] },
         { id: 'pytest', args: ['run', '--locked', '--no-sync', '--extra', 'test', '--python', pythonExecutable!.executablePath, 'pytest', 'tests/test_health.py', 'tests/test_info.py'] },
         { id: 'graceful-shutdown', args: ['run', '--locked', '--no-sync', '--extra', 'test', '--python', pythonExecutable!.executablePath, 'pytest', 'tests/test_shutdown.py'] },
+      ]
+      : isGin
+      ? [
+        { id: 'gofmt', args: ['-w', 'cmd/server/main.go', 'internal/server/server.go', 'internal/server/server_test.go'] },
+        { id: 'go-vet', args: ['vet', './...'] },
+        { id: 'go-test', args: ['test', './...'] },
+        { id: 'go-build', args: ['build', './...'] },
       ]
       : isGo
       ? [
@@ -1433,7 +1548,9 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
         ? await runPhp(check.args, projectPath, stage, phpTool!, dirs, log, check.id, options.signal)
         : isPython
         ? await runUv(check.args, projectPath, stage, uvExecutable!, pythonExecutable!, dirs, log, check.id, options.signal)
-        : isGo
+        : isGin && check.id === 'gofmt'
+        ? await runGofmt(check.args, projectPath, stage, goTool!, dirs, log, options.signal)
+        : usesGo
         ? await runGo(check.args, projectPath, stage, goTool!, dirs, log, check.id, options.signal)
         : await runAppScript(check.path!, check.args, projectPath, stage, dirs, options.signal, log, check.id)
       let outcome = checkOutcome(check.id, result)
@@ -1478,7 +1595,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       ? [await servedLaravelSmoke(projectPath, stage, phpTool!, dirs, options.signal, log)]
       : isPython
       ? await servedFastApiSmoke(projectPath, stage, dirs, uvExecutable!, pythonExecutable!, options.signal, log)
-      : [isGo
+      : [usesGo
         ? await servedGoBackendSmoke(projectPath, stage, dirs, goTool!, selection.project.name, options.signal, log)
         : resolved.recipe.projectType === 'backend'
           ? await servedBackendSmoke(projectPath, stage, dirs, options.signal, log, isNest)
@@ -1488,7 +1605,11 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     const allPassed = validations.every((item) => item.status === 'pass'
       || (selection.template !== undefined && item.id === 'lint' && item.status === 'skipped'))
     if (!allPassed) throw userError('GEN_VALIDATE_FAILED', 'validating', 'One or more required checks did not pass.', 'Review the local redacted job log and retry.')
-    if (isGo) await writeGoProjectManifest(stage, resolved, goTool!.version, validations, generatedFiles)
+    if (isGin) {
+      await verifyGinPinnedFiles(projectPath, selection.backend!.modulePath!)
+      await writeGinProjectManifest(stage, resolved, goTool!.version, validations, generatedFiles)
+    }
+    else if (isGo) await writeGoProjectManifest(stage, resolved, goTool!.version, validations, generatedFiles)
     else if (isLaravel) await writeLaravelProjectManifest(stage, resolved, phpVersion!, composerVersion!, await verifyComposerLockfile(projectPath), validations, generatedFiles)
     else if (isPython) await writeFastApiProjectManifest(stage, resolved, pythonVersion!, uvVersion!, await verifyUvLockfile(projectPath), validations, generatedFiles)
     else await writeProjectManifest(stage, resolved, process.version.replace(/^v/, ''), npmTool!, validations, generatedFiles, formaEvidence)

@@ -199,7 +199,7 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for component boundaries, Windows stagi
 - BE-01 proposed target: Express + npm + SQLite + Drizzle (verify selected driver). Phase 05A is narrower: standalone API with no database; it does not claim this tuple.
 - BE-02 Go standard-library `net/http` + Go Modules, standalone with no database or third-party dependencies (Phase 05B implementation; remains planned pending independent acceptance).
 - BE-03 NestJS + npm + PostgreSQL + Prisma.
-- BE-04 Go + Gin + PostgreSQL + pgx (Go Modules).
+- BE-04 standalone Go + Gin `v1.12.0` + Go Modules, Go `>=1.25.0`; no database, ORM, authentication, Docker, or frontend.
 - BE-05 Laravel + MySQL + Eloquent (Composer + npm for assets as relevant).
 - BE-06 target: FastAPI + PostgreSQL + SQLAlchemy (uv). Phase 05C.1 is narrower: standalone FastAPI API with no database/ORM; it does not implement or verify this database target.
 - FS-01 Vue + Laravel + MySQL.
@@ -212,6 +212,8 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for component boundaries, Windows stagi
 Each recipe requires a specific integration test and may be disabled until that evidence exists. All DB recipes must declare what is provisioned vs configured only.
 
 **Recipe ID reconciliation (Phase 05B):** The earlier draft assigned BE-02 to NestJS. Scoped Phase 05B work assigns BE-02 to the standalone Go standard-library API; NestJS and subsequent backend candidates move down one ID as listed above. This corrects the planning registry to match the implemented catalog and does not imply support for any planned recipe.
+
+**BE-04 scope decision (Phase 05D.2):** BE-04 is standalone Go + Gin + Go Modules with no database/authentication. PostgreSQL + pgx remains separate proposed database/fullstack scope; FS-02 remains React + Go Gin + PostgreSQL and is not implemented or verified by BE-04.
 
 ## 10. Release gates
 

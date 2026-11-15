@@ -2,13 +2,13 @@
 
 | Field | Value |
 |---|---|
-| Status | **Phase 01 CLI + Phase 02 Forma + Phase 02.6 packaging PoC + Phase 03 internal UI MVP + Phase 03.5 UX polish + Phase 04A–04B.3 frontend evidence + Phase 05A–05D.1 bounded BE-01–BE-03/BE-05/BE-06 local evidence** — broader product acceptance remains partial; all FE/BE/FM recipes remain planned; no release approved |
+| Status | **Phase 01 CLI + Phase 02 Forma + Phase 02.6 packaging PoC + Phase 03 internal UI MVP + Phase 03.5 UX polish + Phase 04A–04B.3 frontend evidence + Phase 05A–05D.2 bounded BE-01–BE-06 local evidence** — broader product acceptance remains partial; all FE/BE/FM recipes remain planned; no release approved |
 | Version | 0.1.0 |
 | Date | 2026-11-16 |
 | Product | Universal Project Generator Desktop |
 | Target OS | Windows 11 first |
 | Documentation inspiration | EvoPilot (PRD ↔ design ↔ decision register ↔ QA evidence) |
-| Scope | CLI kernel, internal Tauri desktop UI/runtime PoC, planned frontend, standalone Express, Go `net/http`, NestJS, FastAPI, and Laravel API recipes, optional React/Next Forma templates; Laravel MySQL/Eloquent has bounded local evidence only, and fullstack remains unverified |
+| Scope | CLI kernel, internal Tauri desktop UI/runtime PoC, planned frontend, standalone Express, Go `net/http` and Gin, NestJS, FastAPI, and Laravel API recipes, optional React/Next Forma templates; Laravel MySQL/Eloquent has bounded local evidence only, and fullstack remains unverified |
 
 Planning documents remain source for requirements and boundaries. Code and observed test evidence define implemented behavior. Phase 03 includes the FormaForge Forge Studio dashboard, catalog-driven wizard, metadata-only Forma gallery, review/Doctor, consent-gated job UI, results, local metadata history/settings, and fixed native open actions. Phase 03.5 fixes invalid typography declarations and a clipped dashboard empty-state action; native Windows UI runs completed FE-01/FE-02 generation, collision/error/retry, cancellation, history, and open actions using explicit internal consent. Phase 04A adds FE-03 Vue/Vite/CSS, FE-04 React/Vite/Bootstrap CSS, and FE-05 Vue/Vite/Bootstrap CSS through pinned official packages; fresh CLI and native desktop runs passed listed checks. Phase 04B adds planned Nuxt 4 and Angular 21 recipes through pinned official scaffolds; fresh non-elevated CLI and native Tauri runs passed listed checks, result/history open actions, and bounded safety checks. Phase 04B.2 adds React/Vue Vite SCSS via Sass 1.108.2 and Tailwind CSS 4 via the official Vite plugin 4.3.5. Phase 04B.3 adds FE-12–FE-15 React/Vue Vite + Plain CSS recipes with Yarn `4.18.1` or pnpm `11.28.11`; fresh CLI and native Tauri runs passed checks, while npm remains default. All FE recipes remain `planned` pending independent acceptance and review. Bootstrap JS/Popper and Forma outside React/Next remain excluded. Broader product acceptance remains partial. Desktop install/update/uninstall and both runtime package modes have same-host Windows 11 PoC evidence; no clean-machine proof or release approval exists. See [Phase 03.5 desktop acceptance](docs/qa/evidence/phase-03.5-final-desktop-acceptance.md), [Forge Studio verification](docs/qa/evidence/forge-studio-redesign.md), [Phase 04A acceptance](docs/qa/evidence/phase-04a-native-desktop-acceptance.md), [Phase 04B evidence](docs/qa/evidence/phase-04b-nuxt-angular.md), [Phase 04B.2 evidence](docs/qa/evidence/phase-04b2-scss-tailwind.md), and [Phase 04B.3 evidence](docs/qa/evidence/phase-04b3-yarn-pnpm.md).
 
@@ -33,6 +33,10 @@ BE-05 is a standalone Laravel 12 API using PHP/Composer, with MySQL/Eloquent con
 ## Phase 05D.1 status
 
 BE-03 adds a standalone NestJS 11 / TypeScript / npm API from integrity-pinned official Nest CLI `11.0.24`, preserving its CommonJS-compatible NodeNext/Jest scaffold. Windows CLI and native Tauri acceptance passed scaffold, dependency/lock integrity, typecheck, lint, Jest unit/e2e, build, HTTP, consent, history/open, and collision checks; CLI cancellation cleaned owned staging. No database, ORM, auth, Docker, or fullstack; HTTP smoke server is stopped before finalization; no Observe integration. BE-03 remains `planned`; normal/release generation stays blocked. See [DEC-029](docs/decisions/DEC-029-phase-05d1-nestjs.md) and [Phase 05D.1 evidence](docs/qa/evidence/phase-05d1-nestjs.md).
+
+## Phase 05D.2 status
+
+BE-04 adds a standalone Go + Gin `1.12.0` REST API using Go Modules (Go `>=1.25.0`), with pinned module graph and checksums. Windows CLI/native acceptance passed module integrity, Go formatting/vet/test/build, HTTP smoke, graceful shutdown, consent separation, cancellation cleanup, collision preservation, and UI result/history/open flows. No database, ORM, authentication, Docker, or fullstack. BE-04 remains `planned`; normal/release generation stays blocked. PostgreSQL/pgx remains separate proposed FS-02 scope. See [DEC-030](docs/decisions/DEC-030-phase-05d2-go-gin.md) and [Phase 05D.2 evidence](docs/qa/evidence/phase-05d2-go-gin.md).
 
 ## Developer setup
 

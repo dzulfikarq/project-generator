@@ -100,6 +100,7 @@ const allowedEnvironmentOverrides = new Set([
   'pnpm_config_dangerously_allow_all_builds',
   'pnpm_config_registry',
   'GOTOOLCHAIN',
+  'GOENV',
   'GOPROXY',
   'GOSUMDB',
   'GOCACHE',
