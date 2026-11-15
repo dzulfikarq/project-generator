@@ -34,7 +34,11 @@ The native cancellation test reached `installing started.`; requested target sta
 
 ## Database boundary
 
-**BLOCKED — MySQL/Eloquent integration was not tested.** No approved isolated MySQL test database was available. No database connection, database creation, or migration was attempted. Config, model, and migration generation plus non-DB API smoke do not establish database connectivity.
+**BLOCKED — MySQL/Eloquent integration was not tested.** Follow-up read-only preflight found no Docker CLI; no `mysql`/`mysqld` executable on PATH; the existing Laragon MySQL candidate contained only `my.ini`, without `bin/mysqld.exe`; no MySQL/MariaDB process or service; and no listener on ports `3306`/`3307`. No approved isolated database endpoint/configuration was documented.
+
+No database connection, server startup, data-directory initialization, schema creation, or migration was attempted. Generated config/model/migration and non-DB API smoke do not establish connectivity.
+
+**Single provisioning option for approval:** provide one dedicated MySQL 8 test endpoint bound to `127.0.0.1:3307`, with a pre-created run-specific schema (for example `ff_be05_test_<run-id>`) and a dedicated user granted only that schema's required DDL/CRUD permissions. Supply temporary credentials through process-scoped environment variables. Do not reuse Laragon/application databases, grant global schema access, or install Docker/MySQL as part of this run.
 
 ## Regression checks
 
