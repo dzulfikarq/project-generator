@@ -86,6 +86,29 @@ test('production generation blocks planned BE-06 before staging or destination w
   }
 })
 
+test('production generation blocks planned BE-05 before staging or destination writes', async () => {
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-planned-laravel-'))
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'planned-laravel-api', type: 'backend', parentDirectory: parent },
+    backend: { adapterId: 'backend.laravel', manager: 'composer' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  })
+  let logFile = ''
+  try {
+    const result = await generateProject(selection)
+    logFile = result.logFile ?? ''
+    assert.equal(result.status, 'failed')
+    assert.equal(result.error?.code, 'GEN_RECIPE_UNTESTED')
+    await assert.rejects(access(win32.join(parent, 'planned-laravel-api')))
+    assert.deepEqual(await readdir(parent), [])
+  } finally {
+    await rm(parent, { recursive: true, force: true })
+    if (logFile) await rm(dirname(logFile), { recursive: true, force: true })
+  }
+})
+
 test('BE-06 development generation requires explicit third-party dependency consent before staging', { skip: !ALLOW_PLANNED_RECIPE_GENERATION }, async () => {
   const parent = await mkdtemp(win32.join(tmpdir(), 'pg-fastapi-consent-'))
   const selection = parseSelection({
@@ -102,6 +125,28 @@ test('BE-06 development generation requires explicit third-party dependency cons
     assert.equal(result.status, 'failed')
     assert.equal(result.error?.code, 'GEN_DEPENDENCY_CONSENT_REQUIRED')
     await assert.rejects(access(win32.join(parent, 'fastapi-consent')))
+    assert.deepEqual(await readdir(parent), [])
+  } finally {
+    await rm(parent, { recursive: true, force: true })
+    if (logFile) await rm(dirname(logFile), { recursive: true, force: true })
+  }
+})
+
+test('BE-05 development generation requires explicit Composer dependency consent before staging', { skip: !ALLOW_PLANNED_RECIPE_GENERATION }, async () => {
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-laravel-consent-'))
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'laravel-consent', type: 'backend', parentDirectory: parent },
+    backend: { adapterId: 'backend.laravel', manager: 'composer' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  })
+  let logFile = ''
+  try {
+    const result = await generateProject(selection, { allowPlanned: true })
+    logFile = result.logFile ?? ''
+    assert.equal(result.status, 'failed')
+    assert.equal(result.error?.code, 'GEN_DEPENDENCY_CONSENT_REQUIRED')
     assert.deepEqual(await readdir(parent), [])
   } finally {
     await rm(parent, { recursive: true, force: true })

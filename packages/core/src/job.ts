@@ -10,6 +10,8 @@ import { packageManager, packageManagerConfiguration } from './catalog.js'
 import { writeBackendStarter } from './backend-starter.js'
 import { writeFastApiBackendStarter } from './fastapi-backend-starter.js'
 import { verifyUvLockfile, writeFastApiProjectDocs, writeFastApiProjectManifest } from './fastapi-project-docs.js'
+import { writeLaravelBackendStarter, LARAVEL_PINS } from './laravel-backend-starter.js'
+import { verifyComposerLockfile, writeLaravelProjectDocs, writeLaravelProjectManifest } from './laravel-project-docs.js'
 import { writeGoBackendStarter } from './go-backend-starter.js'
 import { writeGoProjectDocs, writeGoProjectManifest } from './go-project-docs.js'
 import { runDoctor } from './doctor.js'
@@ -17,7 +19,7 @@ import { createPlan } from './plan.js'
 import { writeProjectDocs, writeProjectManifest } from './project-docs.js'
 import { runNodeProcess, runSafeProcess, startNodeProcess, startSafeProcess, type ProcessResult, type SafeProcessOptions } from './runner.js'
 import { bindOwnedStageProjectIdentity, createOwnedStage, cleanupOwnedStage, cleanupStageSupportFiles, markOwnedStageGenerating, mutateOwnedStage, moveDirectoryNoReplace, verifyOwnedStageProjectIdentity, type OwnedStage } from './staging.js'
-import { resolveGoTool, resolveNpmTool, resolvePythonExecutable, resolveUvExecutable, supportsGo, supportsNpm, supportsPython, supportsUv, type GoTool, type NpmTool, type PythonExecutable, type UvExecutable } from './toolchain.js'
+import { resolveComposerPhar, resolveGoTool, resolveNpmTool, resolvePhpExecutable, resolvePythonExecutable, resolveUvExecutable, supportsComposer, supportsGo, supportsNpm, supportsPhp, supportsPython, supportsUv, type ComposerPhar, type GoTool, type NpmTool, type PhpExecutable, type PythonExecutable, type UvExecutable } from './toolchain.js'
 import { assertGenerationAllowed } from './native-supervisor.js'
 import { resolveSelection } from './resolver.js'
 import { installFormaTemplate, type FormaInstallEvidence } from './forma.js'
@@ -122,6 +124,10 @@ function preflightError(report: DoctorReport): GeneratorError {
     return userError('GEN_PLATFORM_UNSUPPORTED', 'preflight', 'Phase 01 generation is supported on Windows only.', 'Run generation on Windows.')
   }
   if (go) return userError('GEN_TOOL_MISSING', 'preflight', 'Go toolchain preflight did not pass.', 'Review Doctor output and install a supported Go SDK.')
+  const php = report.tools.find((tool) => tool.id === 'php')
+  if (php && !php.available) return userError(php.version ? 'GEN_TOOL_UNSUPPORTED' : 'GEN_TOOL_MISSING', 'preflight', php.message, 'Install user-managed PHP 8.2+ with required extensions including pdo_mysql, add php.exe to PATH, and rerun Doctor.')
+  const composer = report.tools.find((tool) => tool.id === 'composer')
+  if (composer && !composer.available) return userError(composer.version ? 'GEN_TOOL_UNSUPPORTED' : 'GEN_TOOL_MISSING', 'preflight', composer.message, 'Install Composer 2.2+ for the current user and rerun Doctor.')
   const python = report.tools.find((tool) => tool.id === 'python')
   if (python && !python.available) {
     return userError(python.version ? 'GEN_TOOL_UNSUPPORTED' : 'GEN_TOOL_MISSING', 'preflight', python.message, 'Install a user-managed Python 3.14.x runtime, add python.exe to PATH, then rerun Doctor. Automatic runtime downloads are disabled.')
@@ -147,7 +153,7 @@ function mappedProcessError(stage: StageId, result: ProcessResult): GeneratorErr
     staging: { code: 'GEN_STAGE_CREATE_FAILED', message: 'Could not prepare owned staging.', nextAction: 'Check destination permissions and retry.' },
     scaffolding: { code: 'GEN_SCAFFOLD_FAILED', message: `Pinned official scaffold exited with code ${result.exitCode}.`, nextAction: 'Review the local redacted job log and retry.' },
     configuring: { code: 'GEN_CONFIGURE_FAILED', message: 'Could not write declared project documentation.', nextAction: 'Review the local redacted job log and retry.' },
-    installing: { code: 'GEN_INSTALL_FAILED', message: `Selected package-manager install exited with code ${result.exitCode}.`, nextAction: 'Check npm registry/network access and review the local redacted job log.' },
+    installing: { code: 'GEN_INSTALL_FAILED', message: `Selected package-manager command exited with code ${result.exitCode}.`, nextAction: 'Check package registry/network access and review the local redacted job log.' },
     validating: { code: 'GEN_VALIDATE_FAILED', message: `Required project check exited with code ${result.exitCode}.`, nextAction: 'Review the local redacted job log and fix the reported check before retrying.' },
     finalizing: { code: 'GEN_FINALIZE_FAILED', message: 'Could not finalize the validated project.', nextAction: 'Review the local redacted job log and retry at a new destination.' },
   }
@@ -159,7 +165,7 @@ function throwIfCancelled(signal: AbortSignal | undefined, stage: StageId): void
   if (signal?.aborted) throw userError('GEN_CANCELLED', stage, 'Generation was cancelled.', 'Retry from the beginning at a new destination.')
 }
 
-async function prepareDirectories(stage: OwnedStage): Promise<{ tools: string; home: string; temp: string; cache: string; goCache: string; goModCache: string; uvCache: string; userConfig: string; globalConfig: string }> {
+async function prepareDirectories(stage: OwnedStage): Promise<{ tools: string; home: string; temp: string; cache: string; goCache: string; goModCache: string; uvCache: string; composerCache: string; composerHome: string; userConfig: string; globalConfig: string }> {
   const tools = win32.join(stage.path, '.tools')
   const home = win32.join(stage.path, '.home')
   const temp = win32.join(stage.path, '.tmp')
@@ -167,22 +173,26 @@ async function prepareDirectories(stage: OwnedStage): Promise<{ tools: string; h
   const goCache = win32.join(stage.path, '.go-cache')
   const goModCache = win32.join(stage.path, '.go-mod-cache')
   const uvCache = win32.join(stage.path, '.uv-cache')
+  const composerCache = win32.join(stage.path, '.composer-cache')
+  const composerHome = win32.join(home, 'composer')
   const userConfig = win32.join(stage.path, '.npmrc-user')
   const globalConfig = win32.join(stage.path, '.npmrc-global')
   await mutateOwnedStage(stage, [
     '.tools',
     '.home/AppData/Roaming',
     '.home/AppData/Local',
+    '.home/composer',
     '.tmp',
     '.npm-cache',
     '.go-cache',
     '.go-mod-cache',
     '.uv-cache',
+    '.composer-cache',
   ], [
     { path: '.npmrc-user', content: 'registry=https://registry.npmjs.org/\n' },
     { path: '.npmrc-global', content: 'registry=https://registry.npmjs.org/\n' },
   ])
-  return { tools, home, temp, cache, goCache, goModCache, uvCache, userConfig, globalConfig }
+  return { tools, home, temp, cache, goCache, goModCache, uvCache, composerCache, composerHome, userConfig, globalConfig }
 }
 
 function npmArguments(userConfig: string, globalConfig: string, cache: string, commandArgs: readonly string[]): string[] {
@@ -314,6 +324,66 @@ async function runUv(
     timeoutMs: 10 * 60 * 1000,
   })
   log.process(label, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, dirs.uvCache, tmpdir()])
+  return result
+}
+
+async function runComposer(
+  args: readonly string[],
+  cwd: string,
+  stage: OwnedStage,
+  php: PhpExecutable,
+  composer: ComposerPhar,
+  dirs: { home: string; temp: string; composerHome: string; composerCache: string },
+  log: JobLog,
+  label: string,
+  signal?: AbortSignal,
+): Promise<ProcessResult> {
+  const result = await runSafeProcess({
+    executablePath: php.executablePath,
+    allowedExecutableRoot: php.directory,
+    cwd,
+    allowedCwdRoot: stage.path,
+    args: [composer.pharPath, ...args],
+    homeDirectory: dirs.home,
+    tempDirectory: dirs.temp,
+    extraPath: [php.directory, composer.directory],
+    environment: {
+      COMPOSER_HOME: dirs.composerHome,
+      COMPOSER_CACHE_DIR: dirs.composerCache,
+      COMPOSER_DISABLE_XDEBUG_WARN: '1',
+    },
+    ...(signal ? { signal } : {}),
+    timeoutMs: 20 * 60 * 1000,
+  })
+  log.process(label, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, dirs.composerHome, dirs.composerCache, tmpdir()])
+  return result
+}
+
+async function runPhp(
+  args: readonly string[],
+  cwd: string,
+  stage: OwnedStage,
+  php: PhpExecutable,
+  dirs: { home: string; temp: string },
+  log: JobLog,
+  label: string,
+  signal?: AbortSignal,
+  environment?: Readonly<Record<string, string>>,
+): Promise<ProcessResult> {
+  const result = await runSafeProcess({
+    executablePath: php.executablePath,
+    allowedExecutableRoot: php.directory,
+    cwd,
+    allowedCwdRoot: stage.path,
+    args,
+    homeDirectory: dirs.home,
+    tempDirectory: dirs.temp,
+    extraPath: [php.directory],
+    ...(environment ? { environment } : {}),
+    ...(signal ? { signal } : {}),
+    timeoutMs: 10 * 60 * 1000,
+  })
+  log.process(label, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
   return result
 }
 
@@ -903,6 +973,69 @@ async function verifyGeneratedStyling(projectPath: string, recipe: RecipeManifes
   }
 }
 
+async function servedLaravelSmoke(
+  projectPath: string,
+  stage: OwnedStage,
+  php: PhpExecutable,
+  dirs: { home: string; temp: string },
+  signal: AbortSignal | undefined,
+  log: JobLog,
+): Promise<ValidationOutcome> {
+  const port = await freePort()
+  const running = await startSafeProcess({
+    executablePath: php.executablePath,
+    allowedExecutableRoot: php.directory,
+    cwd: projectPath,
+    allowedCwdRoot: stage.path,
+    args: [win32.join(projectPath, 'artisan'), 'serve', '--host=127.0.0.1', `--port=${port}`],
+    homeDirectory: dirs.home,
+    tempDirectory: dirs.temp,
+    extraPath: [php.directory],
+    environment: {
+      APP_ENV: 'testing',
+      APP_KEY: '',
+      APP_DEBUG: 'true',
+      DB_CONNECTION: 'mysql',
+      DB_HOST: '127.0.0.1',
+      DB_PORT: '3306',
+      DB_DATABASE: 'laravel_test',
+      DB_USERNAME: 'root',
+      DB_PASSWORD: '',
+      CACHE_STORE: 'array',
+      QUEUE_CONNECTION: 'sync',
+      SESSION_DRIVER: 'array',
+    },
+    ...(signal ? { signal } : {}),
+  })
+  let outcome: ValidationOutcome | undefined
+  try {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      throwIfCancelled(signal, 'validating')
+      try {
+        const health = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(800) })
+        const healthBody = await health.json() as { status?: string }
+        const info = await fetch(`http://127.0.0.1:${port}/api/info`, { signal: AbortSignal.timeout(800) })
+        const infoBody = await info.json() as { name?: string; framework?: string; version?: string }
+        if (health.status === 200 && healthBody.status === 'ok'
+          && info.status === 200 && info.headers.get('content-type')?.includes('application/json')
+          && infoBody.name && infoBody.framework === 'Laravel' && infoBody.version === '0.1.0') {
+          outcome = { id: 'http-smoke', status: 'pass', message: 'Laravel returned JSON from /health and /api/info without connecting to MySQL.', exitCode: 0 }
+          break
+        }
+      } catch {
+        // Probe stays local and bounded; response bodies are not surfaced.
+      }
+      await new Promise((resolveWait) => setTimeout(resolveWait, 500))
+    }
+  } finally {
+    await running.stop()
+    const result = await running.result.catch(() => undefined)
+    if (result) log.process('laravel-http-smoke-server', result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
+  }
+  if (!outcome) throw userError('GEN_VALIDATE_FAILED', 'validating', 'Laravel did not return valid JSON from /health and /api/info within 15 seconds.', 'Review the local redacted job log; MySQL is not required for these endpoints.')
+  return outcome
+}
+
 async function executeScaffold(
   stage: OwnedStage,
   resolved: ResolvedSelection,
@@ -955,6 +1088,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
   const resolved = resolveSelection(selection)
   selection = resolved.selection
   const isGo = resolved.recipe.id === 'BE-02'
+  const isLaravel = resolved.recipe.id === 'BE-05'
   const isPython = resolved.recipe.id === 'BE-06'
   const isForma = Boolean(selection.template)
   const recipeOwnerId = resolved.recipe.backend ?? resolved.recipe.frontend ?? 'core'
@@ -964,21 +1098,27 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
   let formaEvidence: FormaInstallEvidence | undefined
   let npmTool: NpmTool | undefined
   let goTool: GoTool | undefined
+  let phpTool: PhpExecutable | undefined
+  let composerPhar: ComposerPhar | undefined
   let pythonExecutable: PythonExecutable | undefined
   let uvExecutable: UvExecutable | undefined
+  let phpVersion: string | undefined
+  let composerVersion: string | undefined
   let pythonVersion: string | undefined
   let uvVersion: string | undefined
 
   emit({ type: 'job-started', stageOwner: 'core', status: 'running', message: `Generation job ${jobId} started.` })
-  if (!isGo) emit({ type: 'warning', stageOwner: 'core', code: 'GEN_LIFECYCLE_SCRIPTS', message: isPython ? 'uv sync can execute third-party package build code; execution is not sandboxed.' : `${resolved.recipe.manager} install can execute third-party lifecycle scripts; execution is not sandboxed.` })
+  if (createPlan(selection).requiresDependencyConsent) emit({ type: 'warning', stageOwner: 'core', code: 'GEN_LIFECYCLE_SCRIPTS', message: isLaravel
+    ? 'Composer package installation and generated Artisan/PHPUnit checks load third-party PHP code without a sandbox; Composer scripts and plugins are disabled.'
+    : isPython ? 'uv sync can execute third-party package build code; execution is not sandboxed.' : `${resolved.recipe.manager} install can execute third-party lifecycle scripts; execution is not sandboxed.` })
   try {
     stageStart('preflight')
     throwIfCancelled(options.signal, currentStage)
     if (resolved.recipe.status !== 'tested' && !(ALLOW_PLANNED_RECIPE_GENERATION && options.allowPlanned && resolved.recipe.status === 'planned')) {
       throw userError('GEN_RECIPE_UNTESTED', 'preflight', `${resolved.recipe.id} is planned and disabled for normal generation.`, 'Use a tested recipe; development-only runs do not change recipe status.')
     }
-    if (createPlan(selection).executesDependencyLifecycleScripts && !options.allowDependencyScripts) {
-      throw userError('GEN_DEPENDENCY_CONSENT_REQUIRED', 'preflight', 'Generation was not started because dependency installation can execute third-party code.', 'Review the plan and explicitly allow dependency scripts before generation.')
+    if (createPlan(selection).requiresDependencyConsent && !options.allowDependencyScripts) {
+      throw userError('GEN_DEPENDENCY_CONSENT_REQUIRED', 'preflight', 'Generation was not started because dependency installation and validation load third-party code.', 'Review the plan and explicitly consent to unsandboxed dependency execution before generation.')
     }
     await assertGenerationAllowed()
     throwIfCancelled(options.signal, currentStage)
@@ -990,6 +1130,13 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       if (!executable || !version) throw userError('GEN_TOOL_MISSING', 'preflight', 'Go SDK could not be resolved after Doctor verification.', 'Install Go 1.22 or newer, add its bin directory to PATH, and rerun Doctor.')
       if (!supportsGo(version)) throw userError('GEN_TOOL_UNSUPPORTED', 'preflight', `Go ${version} is below the required Go 1.22 minimum.`, 'Install Go 1.22 or newer and rerun Doctor.')
       goTool = { ...executable, version }
+    } else if (isLaravel) {
+      phpTool = await resolvePhpExecutable()
+      composerPhar = await resolveComposerPhar()
+      phpVersion = doctor.tools.find((tool) => tool.id === 'php')?.version
+      composerVersion = doctor.tools.find((tool) => tool.id === 'composer')?.version
+      if (!phpTool || !phpVersion || !supportsPhp(phpVersion)) throw userError('GEN_TOOL_UNSUPPORTED', 'preflight', 'PHP 8.2+ with pdo_mysql could not be resolved after Doctor verification.', 'Install user-managed PHP 8.2+ with required extensions and rerun Doctor.')
+      if (!composerPhar || !composerVersion || !supportsComposer(composerVersion)) throw userError('GEN_TOOL_UNSUPPORTED', 'preflight', 'Composer 2.2+ could not be resolved after Doctor verification.', 'Install Composer 2.2+ for the current user and rerun Doctor.')
     } else if (isPython) {
       pythonExecutable = await resolvePythonExecutable()
       uvExecutable = await resolveUvExecutable()
@@ -1021,6 +1168,14 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     let starterFiles: string[] = []
     if (selection.template) {
       formaEvidence = await installFormaTemplate(stage, selection.template, resolved.recipe.frontend!, selection.project.name, dirs, log, options.signal)
+    } else if (isLaravel) {
+      const scaffoldPath = win32.join(dirs.tools, 'laravel-scaffold')
+      const scaffold = await runComposer([
+        'create-project', 'laravel/laravel', scaffoldPath, LARAVEL_PINS.scaffold,
+        '--no-install', '--no-scripts', '--no-plugins', '--no-interaction', '--prefer-dist', '--no-progress',
+      ], stage.path, stage, phpTool!, composerPhar!, dirs, log, 'laravel-official-scaffold', options.signal)
+      if (scaffold.exitCode !== 0) throw mappedProcessError('scaffolding', scaffold)
+      starterFiles = await writeLaravelBackendStarter(stage, scaffoldPath, selection.project.name)
     } else if (isPython) {
       starterFiles = await writeFastApiBackendStarter(stage, selection.project.name)
     } else if (isGo) {
@@ -1037,8 +1192,8 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     }
     const projectPath = stage.childPath
     await bindOwnedStageProjectIdentity(stage, selection.project.name)
-    await verifyOwnedStageProjectIdentity(stage, selection.project.name, isGo ? selection.backend?.modulePath : undefined, isPython ? 'pyproject.toml' : undefined)
-    const identityOutcome: ValidationOutcome = { id: 'scaffold-identity', status: 'pass', message: isGo ? 'Generated module and project identity match the requested configuration.' : isPython ? 'Generated pyproject project name matches the requested project identity.' : 'Generated package identity matches the requested name.' }
+    await verifyOwnedStageProjectIdentity(stage, selection.project.name, isGo ? selection.backend?.modulePath : undefined, isPython ? 'pyproject.toml' : isLaravel ? 'composer.json' : undefined)
+    const identityOutcome: ValidationOutcome = { id: isLaravel ? 'laravel-scaffold' : 'scaffold-identity', status: 'pass', message: isGo ? 'Generated module and project identity match the requested configuration.' : isPython ? 'Generated pyproject project name matches the requested project identity.' : isLaravel ? 'Generated Composer package identity matches the requested project name.' : 'Generated package identity matches the requested name.' }
     validations.push(identityOutcome)
     emit({ type: 'validation', stageId: 'scaffolding', stageOwner: eventOwner('scaffolding'), stageStatus: 'passed', message: identityOutcome.message })
     stageFinish('scaffolding', 'passed')
@@ -1052,7 +1207,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       if (error instanceof GeneratorError) throw error
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
-    const generatedFiles = [...starterFiles, ...(isGo || isPython ? [] : await configureRecipeDependencies(stage, resolved))]
+    const generatedFiles = [...starterFiles, ...(isGo || isPython || isLaravel ? [] : await configureRecipeDependencies(stage, resolved))]
     const managerConfig = packageManagerConfiguration(resolved.recipe.manager)
     if (managerConfig) {
       const projectPrefix = `${win32.basename(projectPath)}/`
@@ -1061,6 +1216,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     }
     if (isGo) generatedFiles.push(...await writeGoProjectDocs(stage, resolved, goTool!.version))
     else if (isPython) generatedFiles.push(...await writeFastApiProjectDocs(stage, resolved, pythonVersion!, uvVersion!))
+    else if (isLaravel) generatedFiles.push(...await writeLaravelProjectDocs(stage, resolved, phpVersion!, composerVersion!))
     else generatedFiles.push(...await writeProjectDocs(stage, resolved, process.version.replace(/^v/, ''), npmTool!, formaEvidence))
     if (formaEvidence) generatedFiles.push('FORMA-INSTALL.md', 'INSTALL.md', 'forma.install.json', 'forma-install-report.json')
     stageFinish('configuring', 'passed')
@@ -1069,6 +1225,44 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     throwIfCancelled(options.signal, currentStage)
     if (isGo) {
       stageFinish('installing', 'skipped', 'No dependency installation required; Go standard library only.')
+    } else if (isLaravel) {
+      const update = await runComposer([
+        'update', '--no-install', '--no-scripts', '--no-plugins', '--no-interaction', '--prefer-dist', '--no-progress',
+      ], projectPath, stage, phpTool!, composerPhar!, dirs, log, 'composer-lock-resolution', options.signal)
+      const updateOutcome = checkOutcome('composer-lock', update)
+      validations.push(updateOutcome)
+      emitValidation(emit, updateOutcome, 'composer')
+      if (update.exitCode !== 0) throw mappedProcessError('installing', update)
+
+      let lockEvidence
+      try {
+        lockEvidence = await verifyComposerLockfile(projectPath)
+      } catch {
+        throw userError('GEN_LOCKFILE_INTEGRITY', 'installing', 'composer.lock does not match the reviewed Laravel/PHPUnit pins or contains an unexpected lockfile.', 'Review the local redacted Composer log and generated composer.json; retry without editing the destination.')
+      }
+
+      const install = await runComposer([
+        'install', '--no-scripts', '--no-plugins', '--no-interaction', '--prefer-dist', '--no-progress',
+      ], projectPath, stage, phpTool!, composerPhar!, dirs, log, 'composer-locked-install', options.signal)
+      const installOutcome = checkOutcome('composer-install', install)
+      validations.push(installOutcome)
+      emitValidation(emit, installOutcome, 'composer')
+      if (install.exitCode !== 0) throw mappedProcessError('installing', install)
+
+      const installedLock = await verifyComposerLockfile(projectPath).catch(() => undefined)
+      if (!installedLock || installedLock.sha256 !== lockEvidence.sha256) {
+        throw userError('GEN_LOCKFILE_INTEGRITY', 'installing', 'composer.lock changed or failed verification during locked installation.', 'Review the redacted Composer log and retry in a new destination.')
+      }
+      const integrity: ValidationOutcome = {
+        id: 'lockfile-integrity',
+        status: 'pass',
+        message: `composer.lock pins Laravel ${lockEvidence.frameworkVersion}, PHPUnit ${lockEvidence.phpunitVersion}, and ${lockEvidence.packageCount} resolved packages (SHA-256 ${lockEvidence.sha256}).`,
+        exitCode: 0,
+      }
+      validations.push(integrity)
+      emitValidation(emit, integrity, 'composer')
+      generatedFiles.push('composer.lock')
+      stageFinish('installing', 'passed')
     } else if (isPython) {
       const lock = await runUv(['lock', '--python', pythonExecutable!.executablePath], projectPath, stage, uvExecutable!, pythonExecutable!, dirs, log, 'uv-lock', options.signal)
       const lockOutcome = checkOutcome('uv-lock', lock)
@@ -1152,7 +1346,20 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       validations.push(moduleOutcome)
       emitValidation(emit, moduleOutcome, recipeOwnerId)
     }
-    const checks: { id: string; path?: string; args: string[] }[] = isPython
+    const checks: { id: string; path?: string; args: string[] }[] = isLaravel
+      ? [
+        { id: 'php-lint-bootstrap', args: ['-l', 'bootstrap/app.php'] },
+        { id: 'php-lint-database', args: ['-l', 'config/database.php'] },
+        { id: 'php-lint-filesystems', args: ['-l', 'config/filesystems.php'] },
+        { id: 'php-lint-routes', args: ['-l', 'routes/api.php'] },
+        { id: 'php-lint-model', args: ['-l', 'app/Models/ProjectNote.php'] },
+        { id: 'php-lint-migration', args: ['-l', 'database/migrations/2026_11_15_000000_create_project_notes_table.php'] },
+        { id: 'php-lint-tests', args: ['-l', 'tests/Feature/ApiTest.php'] },
+        { id: 'artisan-version', args: ['artisan', '--version'] },
+        { id: 'artisan-route-list', args: ['artisan', 'route:list', '--json'] },
+        { id: 'phpunit', args: ['vendor/phpunit/phpunit/phpunit', '--configuration', 'phpunit.xml'] },
+      ]
+      : isPython
       ? [
         { id: 'python-syntax', args: ['run', '--locked', '--no-sync', '--extra', 'test', '--python', pythonExecutable!.executablePath, 'python', '-m', 'compileall', '-q', 'app', 'tests'] },
         { id: 'pytest', args: ['run', '--locked', '--no-sync', '--extra', 'test', '--python', pythonExecutable!.executablePath, 'pytest', 'tests/test_health.py', 'tests/test_info.py'] },
@@ -1207,15 +1414,39 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       ]
     for (const check of checks) {
       throwIfCancelled(options.signal, currentStage)
-      const result = isPython
+      const result = isLaravel
+        ? await runPhp(check.args, projectPath, stage, phpTool!, dirs, log, check.id, options.signal)
+        : isPython
         ? await runUv(check.args, projectPath, stage, uvExecutable!, pythonExecutable!, dirs, log, check.id, options.signal)
         : isGo
         ? await runGo(check.args, projectPath, stage, goTool!, dirs, log, check.id, options.signal)
         : await runAppScript(check.path!, check.args, projectPath, stage, dirs, options.signal, log, check.id)
-      const outcome = checkOutcome(check.id, result)
+      let outcome = checkOutcome(check.id, result)
+      if (isLaravel && result.exitCode === 0 && check.id === 'artisan-version'
+        && !result.stdout.includes(`Laravel Framework ${LARAVEL_PINS.framework}`)) {
+        outcome = { id: check.id, status: 'fail', message: `Artisan did not report Laravel Framework ${LARAVEL_PINS.framework}.`, exitCode: result.exitCode }
+      }
+      if (isLaravel && result.exitCode === 0 && check.id === 'artisan-route-list') {
+        try {
+          const routes = JSON.parse(result.stdout.trim()) as { uri?: string; method?: string }[]
+          const expected = [
+            ['health', 'GET'],
+            ['api/info', 'GET'],
+            ['api/notes', 'POST'],
+          ] as const
+          const routeListValid = routes.length === expected.length
+            && expected.every(([uri, method]) => routes.some((route) => route.uri === uri && route.method?.split('|').includes(method)))
+          if (!routeListValid) outcome = { id: check.id, status: 'fail', message: 'Artisan route list omitted a required health/info/notes route or HTTP method.', exitCode: result.exitCode }
+        } catch {
+          outcome = { id: check.id, status: 'fail', message: 'Artisan route list did not return valid JSON.', exitCode: result.exitCode }
+        }
+      }
       validations.push(outcome)
       emitValidation(emit, outcome, recipeOwnerId)
-      if (result.exitCode !== 0) throw mappedProcessError('validating', result)
+      if (outcome.status !== 'pass') {
+        if (result.exitCode !== 0) throw mappedProcessError('validating', result)
+        throw userError('GEN_VALIDATE_FAILED', 'validating', outcome.message, 'Review the generated Laravel version, API routes, and PHPUnit output before retrying.')
+      }
     }
     const stylingOutput = await verifyGeneratedStyling(projectPath, resolved.recipe)
     if (stylingOutput) {
@@ -1228,7 +1459,9 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       emitValidation(emit, lint, recipeOwnerId)
     }
     throwIfCancelled(options.signal, currentStage)
-    const smokeOutcomes = isPython
+    const smokeOutcomes = isLaravel
+      ? [await servedLaravelSmoke(projectPath, stage, phpTool!, dirs, options.signal, log)]
+      : isPython
       ? await servedFastApiSmoke(projectPath, stage, dirs, uvExecutable!, pythonExecutable!, options.signal, log)
       : [isGo
         ? await servedGoBackendSmoke(projectPath, stage, dirs, goTool!, selection.project.name, options.signal, log)
@@ -1241,6 +1474,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       || (selection.template !== undefined && item.id === 'lint' && item.status === 'skipped'))
     if (!allPassed) throw userError('GEN_VALIDATE_FAILED', 'validating', 'One or more required checks did not pass.', 'Review the local redacted job log and retry.')
     if (isGo) await writeGoProjectManifest(stage, resolved, goTool!.version, validations, generatedFiles)
+    else if (isLaravel) await writeLaravelProjectManifest(stage, resolved, phpVersion!, composerVersion!, await verifyComposerLockfile(projectPath), validations, generatedFiles)
     else if (isPython) await writeFastApiProjectManifest(stage, resolved, pythonVersion!, uvVersion!, await verifyUvLockfile(projectPath), validations, generatedFiles)
     else await writeProjectManifest(stage, resolved, process.version.replace(/^v/, ''), npmTool!, validations, generatedFiles, formaEvidence)
     stageFinish('validating', 'passed')

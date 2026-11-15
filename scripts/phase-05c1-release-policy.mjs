@@ -15,6 +15,13 @@ const cases = [
     documentation: 'minimal',
     git: { initialize: false, initialCommit: false },
   }],
+  ['BE-05', 'laravel.json', {
+    schemaVersion: 1,
+    project: { name: 'planned-laravel-api', parentDirectory: parent, type: 'backend' },
+    backend: { adapterId: 'backend.laravel', manager: 'composer' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  }],
   ['BE-06', 'fastapi.json', {
     schemaVersion: 1,
     project: { name: 'planned-fastapi-api', parentDirectory: parent, type: 'backend' },
@@ -45,7 +52,7 @@ try {
     assert.equal(events.some((event) => event.stageId === 'staging'), false, `${recipeId}: ${result.stdout}`)
   }
   assert.deepEqual((await readdir(parent)).sort(), cases.map(([, configName]) => configName).sort())
-  console.log('Release policy blocked planned BE-02 and BE-06 before staging despite runtime override attempts.')
+  console.log('Release policy blocked planned BE-02, BE-05, and BE-06 before staging despite runtime override attempts.')
 } finally {
   for (const jobLog of jobLogs) await rm(dirname(jobLog), { recursive: true, force: true })
   await rm(parent, { recursive: true, force: true })

@@ -1,10 +1,10 @@
 export type SupportState = 'cataloged' | 'planned' | 'experimental' | 'tested' | 'blocked' | 'retired'
 export type DocumentationMode = 'minimal' | 'standard' | 'full'
-export type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15' | 'BE-01' | 'BE-02' | 'BE-06' | 'FM-01' | 'FM-02'
+export type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15' | 'BE-01' | 'BE-02' | 'BE-05' | 'BE-06' | 'FM-01' | 'FM-02'
 export type StylingId = 'styling.css' | 'styling.tailwind' | 'styling.bootstrap' | 'styling.scss'
 export type FrontendId = 'frontend.react-vite' | 'frontend.nextjs-app' | 'frontend.vue-vite' | 'frontend.nuxt' | 'frontend.angular'
-export type BackendId = 'backend.express' | 'backend.go-net-http' | 'backend.fastapi'
-export type PackageManagerId = 'npm' | 'yarn' | 'pnpm' | 'go-modules' | 'uv'
+export type BackendId = 'backend.express' | 'backend.go-net-http' | 'backend.laravel' | 'backend.fastapi'
+export type PackageManagerId = 'npm' | 'yarn' | 'pnpm' | 'go-modules' | 'composer' | 'uv'
 
 export interface ProjectSelectionV1 {
   schemaVersion: 1
@@ -82,7 +82,7 @@ export interface RecipeManifestV1 {
   projectType?: 'backend'
   frontend?: FrontendId
   backend?: BackendId
-  language: 'ts' | 'go' | 'python'
+  language: 'ts' | 'go' | 'php' | 'python'
   manager: PackageManagerId
   styling?: StylingId
   scaffold?: ScaffoldPin
@@ -118,6 +118,7 @@ export interface GenerationPlan {
   expectedWrites: readonly string[]
   networkAccess: readonly string[]
   executesDependencyLifecycleScripts: boolean
+  requiresDependencyConsent: boolean
   executionAvailable: boolean
   warnings: readonly string[]
   template?: { adapterId: 'template.forma'; templateId: string; commitSha: string }
@@ -151,7 +152,7 @@ export interface GeneratorErrorShape {
 }
 
 export interface ToolStatus {
-  id: 'node' | 'npm' | 'yarn' | 'pnpm' | 'go' | 'python' | 'uv' | 'target'
+  id: 'node' | 'npm' | 'yarn' | 'pnpm' | 'go' | 'php' | 'composer' | 'python' | 'uv' | 'target'
   available: boolean
   version?: string
   path?: string

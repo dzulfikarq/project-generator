@@ -59,8 +59,8 @@ fn authorize_generation(
     if requires_lifecycle_consent && !lifecycle_consent {
         return Err(error(
             "DESKTOP_CONSENT_REQUIRED",
-            "Generation was not started because lifecycle-script consent is required.",
-            "Read the disclosure and explicitly check the consent box.",
+            "Generation was not started because third-party dependency-execution consent is required.",
+            "Read the disclosure and explicitly check the dependency-execution consent box.",
         ));
     }
     if allow_planned && !internal_development_mode {
@@ -121,6 +121,8 @@ enum DesktopRecipeId {
     Be01,
     #[serde(rename = "BE-02")]
     Be02,
+    #[serde(rename = "BE-05")]
+    Be05,
     #[serde(rename = "BE-06")]
     Be06,
 }
@@ -189,6 +191,19 @@ impl DesktopSelectionV1 {
                 "git": { "initialize": false, "initialCommit": false }
             });
         }
+        if matches!(self.recipe_id, DesktopRecipeId::Be05) {
+            return json!({
+                "schemaVersion": 1,
+                "project": {
+                    "name": self.project_name,
+                    "parentDirectory": self.parent_directory,
+                    "type": "backend"
+                },
+                "backend": { "adapterId": "backend.laravel", "manager": "composer" },
+                "documentation": self.documentation.as_str(),
+                "git": { "initialize": false, "initialCommit": false }
+            });
+        }
         let (frontend, styling, manager) = match self.recipe_id {
             DesktopRecipeId::Fe01 => ("frontend.react-vite", "styling.css", "npm"),
             DesktopRecipeId::Fe02 => ("frontend.nextjs-app", "styling.tailwind", "npm"),
@@ -205,7 +220,10 @@ impl DesktopSelectionV1 {
             DesktopRecipeId::Fe13 => ("frontend.vue-vite", "styling.css", "yarn"),
             DesktopRecipeId::Fe14 => ("frontend.react-vite", "styling.css", "pnpm"),
             DesktopRecipeId::Fe15 => ("frontend.vue-vite", "styling.css", "pnpm"),
-            DesktopRecipeId::Be01 | DesktopRecipeId::Be02 | DesktopRecipeId::Be06 => {
+            DesktopRecipeId::Be01
+            | DesktopRecipeId::Be02
+            | DesktopRecipeId::Be05
+            | DesktopRecipeId::Be06 => {
                 unreachable!("backend selection returned above")
             }
         };
@@ -286,13 +304,18 @@ impl DesktopSelectionV1 {
                 "Enter a valid Go module path or remove it for the selected recipe.",
             ));
         }
-        if matches!(self.recipe_id, DesktopRecipeId::Be01)
-            && (self.template_id.is_some() || self.template_variant_id.is_some())
+        if matches!(
+            self.recipe_id,
+            DesktopRecipeId::Be01
+                | DesktopRecipeId::Be02
+                | DesktopRecipeId::Be05
+                | DesktopRecipeId::Be06
+        ) && (self.template_id.is_some() || self.template_variant_id.is_some())
         {
             return Err(error(
                 "DESKTOP_SELECTION_INVALID",
-                "BE-01 is standalone and cannot include a Forma frontend template.",
-                "Remove the template selection and resolve the BE-01 plan again.",
+                "Standalone backend recipes cannot include a Forma frontend template.",
+                "Remove the template selection and resolve the backend plan again.",
             ));
         }
         Ok(())
@@ -1565,6 +1588,20 @@ mod tests {
             go_backend["backend"]["modulePath"],
             "github.com/example/demo-api"
         );
+
+        let laravel_backend = DesktopSelectionV1 {
+            project_name: "demo-api".into(),
+            parent_directory: "C:\\Projects".into(),
+            recipe_id: DesktopRecipeId::Be05,
+            documentation: DesktopDocumentationV1::Standard,
+            template_id: None,
+            template_variant_id: None,
+            module_path: None,
+        }
+        .to_core_json("");
+        assert_eq!(laravel_backend["backend"]["adapterId"], "backend.laravel");
+        assert_eq!(laravel_backend["backend"]["manager"], "composer");
+        assert!(laravel_backend.get("frontend").is_none());
 
         let fastapi_backend = DesktopSelectionV1 {
             project_name: "demo-api".into(),

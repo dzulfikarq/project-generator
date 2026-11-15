@@ -113,6 +113,21 @@ const allowedEnvironmentOverrides = new Set([
   'UV_PYTHON_NO_REGISTRY',
   'PYTHONNOUSERSITE',
   'PYTHONDONTWRITEBYTECODE',
+  'COMPOSER_HOME',
+  'COMPOSER_CACHE_DIR',
+  'COMPOSER_DISABLE_XDEBUG_WARN',
+  'APP_ENV',
+  'APP_KEY',
+  'APP_DEBUG',
+  'DB_CONNECTION',
+  'DB_HOST',
+  'DB_PORT',
+  'DB_DATABASE',
+  'DB_USERNAME',
+  'DB_PASSWORD',
+  'CACHE_STORE',
+  'QUEUE_CONNECTION',
+  'SESSION_DRIVER',
 ])
 
 export async function startSafeProcess(options: SafeProcessOptions): Promise<RunningProcess> {

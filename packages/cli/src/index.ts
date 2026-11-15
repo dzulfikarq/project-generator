@@ -17,11 +17,11 @@ Usage:
   project-generator recovery apply --job-id <id> --action <cleanup|finalize> --confirm-job <id> [--json]
 
 Frontend recipes: FE-01 React + Vite + TypeScript + npm + CSS; FE-02 Next.js App Router + TypeScript + npm + Tailwind; FE-03 Vue + Vite + TypeScript + npm + CSS; FE-04 React + Vite + Bootstrap 5 CSS + npm; FE-05 Vue + Vite + Bootstrap 5 CSS + npm; FE-06 Nuxt 4 + npm + CSS; FE-07 Angular 21 + npm + SCSS; FE-08 React + Vite + SCSS + npm; FE-09 Vue + Vite + SCSS + npm; FE-10 React + Vite + Tailwind CSS 4 + npm; FE-11 Vue + Vite + Tailwind CSS 4 + npm.
-Backend recipes: BE-01 Node.js + TypeScript + Express + npm REST API; BE-02 Go + standard-library net/http + Go Modules; BE-06 Python + FastAPI + uv REST API. No database.
-All FE-01–FE-15, BE-01–BE-02, BE-06, and FM-01/FM-02 recipes remain planned until independent Windows acceptance and review. Normal generation refuses planned recipes.
+Backend recipes: BE-01 Express + npm; BE-02 Go net/http + Go Modules; BE-05 Laravel 12 + PHP/Composer + MySQL/Eloquent; BE-06 FastAPI + uv. Laravel does not provision or migrate a database.
+All FE-01–FE-15, BE-01, BE-02, BE-05, BE-06, and FM-01/FM-02 recipes remain planned until independent Windows acceptance and review. Normal generation refuses planned recipes.
 The development-only flag runs a planned recipe for evidence gathering; it does not mark that recipe tested.
 Optional Forma selections live in config.template; inspect the pinned catalog with catalog --json. Forma template combos FM-01/FM-02 are also planned and require the development-only flag. Private fetch uses Git for Windows' configured credential manager; config never accepts tokens.
-npm and uv installs may execute third-party lifecycle/build code and are not sandboxed; pass --allow-dependency-scripts only after reviewing the plan. BE-02 has no third-party dependencies or installation scripts. BE-06 requires user-managed Python 3.14 and uv; automatic Python downloads are disabled.`
+npm and uv installs may execute third-party lifecycle/build code and are not sandboxed; pass --allow-dependency-scripts only after reviewing the plan. BE-05 uses the same explicit consent gate because Composer downloads packages and Artisan/PHPUnit load third-party PHP code; Composer plugins and root scripts are disabled. BE-02 has no third-party dependencies. BE-06 requires user-managed Python 3.14 and uv; automatic Python downloads are disabled.`
 
 function option(args: string[], name: string): string | undefined {
   const index = args.indexOf(name)
@@ -82,6 +82,7 @@ function humanPlan(plan: ReturnType<typeof createPlan>): void {
   process.stdout.write(`Recipe ${plan.recipeId} (${plan.recipeStatus})\nTarget ${plan.targetPath}\n\n`)
   for (const [index, step] of plan.steps.entries()) process.stdout.write(`${index + 1}. ${step.readableSummary}\n`)
   process.stdout.write(`\nNetwork: ${plan.networkAccess.join(', ')}\nLifecycle scripts: ${plan.executesDependencyLifecycleScripts ? 'may execute third-party code' : 'none'}\n`)
+  process.stdout.write(`Dependency execution consent: ${plan.requiresDependencyConsent ? 'required' : 'not required'}\n`)
   process.stdout.write(`Execution: ${plan.executionAvailable ? 'available' : 'blocked until recipe is tested'}\n`)
 }
 

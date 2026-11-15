@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Version | Draft 0.1 — 2026-11-15 |
-| Status | **FE-03–FE-15 and standalone BE-01/BE-02/BE-06 bounded local evidence recorded; FE-01–FE-15/BE-01–BE-02/BE-06/FM-01/FM-02 remain PLAN; no recipe promoted or release-approved** |
+| Status | **FE-03–FE-15 and standalone BE-01/BE-02/BE-05/BE-06 bounded local evidence recorded; FE-01–FE-15/BE-01–BE-02/BE-05–BE-06/FM-01/FM-02 remain PLAN; no recipe promoted or release-approved** |
 | Main platform | Windows 11 |
 | Source of truth | This matrix + machine-readable adapter manifests + QA results |
 
-> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-15, BE-01–BE-02, BE-06, and FM-01/FM-02 have local implementation/evidence only, not independent acceptance or release approval; every recipe remains unavailable in normal generation.
+> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-15, BE-01–BE-02, BE-05–BE-06, and FM-01/FM-02 have local implementation/evidence only, not independent acceptance or release approval; every recipe remains unavailable in normal generation.
 
 ## 1. Status and test gates
 
@@ -44,7 +44,7 @@ The catalog can mention `PLAN`, but normal generation is enabled only for `TEST`
 | BE-FASTIFY | Fastify | Node.js / npm | Official starter or reviewed minimal TS scaffold | Drizzle or Prisma for compatible SQL | PLAN |
 | BE-GO | Go standard-library `net/http` (BE-02); Gin is separate candidate | Go >=1.22 / Go Modules | Reviewed standalone REST starter; no scaffold CLI | None in BE-02; database integrations remain separate proposed recipes | PLAN |
 | BE-GIN | Go + Gin | Go / Go Modules | `go mod init` + versioned starter | pgx/PostgreSQL, MySQL driver/GORM if specifically tested | PLAN |
-| BE-LARAVEL | Laravel | PHP / Composer; npm for frontend assets only | Composer/Laravel official scaffold | Eloquent + MySQL/PostgreSQL/SQLite | PLAN |
+| BE-LARAVEL | Laravel 12 (BE-05) | PHP >=8.2 / Composer >=2.2 | Official `laravel/laravel@12.12.2`; frontend assets omitted | Eloquent + MySQL configuration; connectivity unverified | PLAN |
 | BE-FASTAPI | FastAPI | Python 3.14.x / uv | Reviewed standalone FastAPI/Pydantic application skeleton; resolve `uv.lock` and verify artifact hashes | None in bounded BE-06; SQLAlchemy/database integration is separate unimplemented scope | PLAN |
 | BE-DJANGO | Django | Python / uv/pip | Official django-admin | Django ORM | FUT |
 | BE-SPRING | Spring Boot | Java / Maven or Gradle | Spring Initializr | JPA / Hibernate | FUT |
@@ -134,7 +134,7 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | BE-02 | Backend | None | Go standard-library `net/http` | None | N/A | Go Modules | Phase 05B standalone API; no external modules |
 | BE-03 | Backend | None | NestJS | PostgreSQL + Prisma | N/A | npm | V1 |
 | BE-04 | Backend | None | Go + Gin | PostgreSQL + pgx | N/A | Go Modules | V1 |
-| BE-05 | Backend | None | Laravel | MySQL + Eloquent | N/A | Composer (+ npm assets) | V1 |
+| BE-05 | Backend | None | Laravel | MySQL + Eloquent | N/A | Composer only; npm assets omitted | Phase 05C.3 |
 | BE-06 | Backend | None | FastAPI | None in Phase 05C.1; SQLAlchemy/database remains separate proposal | N/A | uv | Phase 05C.1 implementation; Phase 05C.2 bounded local CLI/native evidence; independent acceptance pending |
 | FS-01 | Fullstack | Vue Vite | Laravel | MySQL + Eloquent | Bootstrap | npm + Composer | V1 |
 | FS-02 | Fullstack | React Vite | Go Gin | PostgreSQL + pgx | Tailwind | npm + go | V1 |
@@ -155,6 +155,8 @@ Phase 04B uses official `create-nuxt@4.0.3`, Nuxt `4.6.4`, and immutable `nuxt/s
 Phase 04B.3 uses official `create-vite@9.3.4` / `create-vue@3.24.0` scaffolds for FE-12–FE-15. Fresh CLI and native Tauri evidence covers Yarn `4.18.1` with persistent `node-modules` config and pnpm `11.28.11` with persistent `hoisted` config, exactly one manager lockfile, generated docs/manifest, lint/typecheck/build/HTTP smoke, explicit lifecycle/planned consent, and planned status retention. All four remain `PLAN`; npm stays default and Forma remains npm-only. See [DEC-024](../decisions/DEC-024-phase-04b3-yarn-pnpm.md) and [Phase 04B.3 evidence](../qa/evidence/phase-04b3-yarn-pnpm.md).
 
 Phase 05C.1 adds BE-06 as standalone FastAPI/Pydantic/Uvicorn + uv with Python 3.14.x baseline, isolated `.venv`, `uv.lock`, API/docs/tests, and explicit unsandboxed build-code consent. Phase 05C.2 recorded bounded local provenance and passed CLI/native checks using isolated CPython 3.14.10 and uv 0.13.8, including lock integrity, install, Python checks, HTTP/OpenAPI/shutdown, cancellation, and collision checks. Direct package pins still need independent review; local evidence does not promote the recipe. See [DEC-027](../decisions/DEC-027-phase-05c1-fastapi.md), [Phase 05C.1 evidence](../qa/evidence/phase-05c1-fastapi.md), and [Phase 05C.2 evidence](../qa/evidence/phase-05c2-fastapi-toolchain-native.md). BE-06 remains PLAN and release-blocked.
+
+Phase 05C.3 adds BE-05 as standalone Laravel 12/PHP/Composer with MySQL/Eloquent configuration; official `laravel/laravel@12.12.2` scaffold, framework `12.72.0`, Composer lock/install, API validation, model/migration, PHPUnit, and JSON health/info checks passed bounded Windows CLI/native runs. Composer scripts/plugins are disabled; package code remains unsandboxed and requires explicit consent. MySQL connectivity is **BLOCKED**: no approved isolated database was available, and no DB connection or migration was attempted. The recipe remains PLAN pending independent review; see [DEC-028](../decisions/DEC-028-phase-05c3-laravel.md) and [Phase 05C.3 evidence](../qa/evidence/phase-05c3-laravel.md).
 
 **Important:** the fullstack recipe must produce a real, reachable example API endpoint and frontend call when that is part of its advertised output. Generating two unrelated folder trees is insufficient.
 

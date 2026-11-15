@@ -1,7 +1,7 @@
 import { inspectTarget } from './paths.js'
 import { packageManager } from './catalog.js'
 import { tmpdir } from 'node:os'
-import { resolveGoTool, resolveNpmTool, resolvePythonExecutable, resolveUvExecutable, supportsGo, supportsNpm, supportsNodeForAngular, supportsNodeForBackend, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue, supportsPython, supportsUv } from './toolchain.js'
+import { LARAVEL_REQUIRED_EXTENSIONS, resolveComposerPhar, resolveGoTool, resolveNpmTool, resolvePhpExecutable, resolvePythonExecutable, resolveUvExecutable, supportsComposer, supportsGo, supportsNpm, supportsNodeForAngular, supportsNodeForBackend, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue, supportsPhp, supportsPython, supportsUv } from './toolchain.js'
 import { runSafeProcess } from './runner.js'
 import type { DoctorReport, ProjectSelectionV1, ToolStatus } from './types.js'
 import { resolveSelection } from './resolver.js'
@@ -10,9 +10,11 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
   const resolved = resolveSelection(selection)
   const recipe = resolved.recipe
   const isGo = recipe.id === 'BE-02'
+  const isLaravel = recipe.id === 'BE-05'
   const isPython = recipe.id === 'BE-06'
+  const isPhp = isLaravel
   const nodeVersion = process.version.replace(/^v/, '')
-  const frameworkNodeSupported = recipe.backend
+  const frameworkNodeSupported = recipe.backend && !isPhp
     ? supportsNodeForBackend(nodeVersion)
     : recipe.frontend === 'frontend.vue-vite'
       ? supportsNodeForVue(nodeVersion)
@@ -20,15 +22,15 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
         : recipe.frontend === 'frontend.angular' ? supportsNodeForAngular(nodeVersion)
           : recipe.frontend === 'frontend.nextjs-app' ? supportsNodeForNext(nodeVersion) : supportsNodeForVite(nodeVersion)
   const nodeSupported = frameworkNodeSupported && (recipe.manager !== 'pnpm' || supportsNodeForPnpm(nodeVersion))
-  const node: ToolStatus | undefined = isGo || isPython ? undefined : {
+  const node: ToolStatus | undefined = isGo || isPython || isPhp ? undefined : {
     id: 'node',
     available: nodeSupported,
     version: nodeVersion,
     message: nodeSupported ? 'Node.js version satisfies pinned scaffold and package-manager requirements.' : `Node.js ${process.version} is outside this recipe's supported range.`,
   }
 
-  const npmTool = isGo || isPython ? undefined : await resolveNpmTool()
-  const npm: ToolStatus | undefined = isGo || isPython ? undefined : npmTool ? {
+  const npmTool = isGo || isPython || isPhp ? undefined : await resolveNpmTool()
+  const npm: ToolStatus | undefined = isGo || isPython || isPhp ? undefined : npmTool ? {
     id: 'npm',
     available: supportsNpm(npmTool.version),
     version: npmTool.version,
@@ -39,7 +41,7 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
     message: 'Trusted npm CLI was not found beside the active Node runtime.',
   }
 
-  const selectedManager = isGo || isPython || recipe.manager === 'npm' ? undefined : packageManager(recipe.manager)
+  const selectedManager = isGo || isPython || isPhp || recipe.manager === 'npm' ? undefined : packageManager(recipe.manager)
   const managerTool: ToolStatus | undefined = selectedManager ? {
     id: selectedManager.id === 'go-modules' ? 'go' : selectedManager.id,
     available: npm?.available === true && (selectedManager.id !== 'pnpm' || supportsNodeForPnpm(nodeVersion)),
@@ -156,6 +158,82 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
     }
   }
 
+  let php: ToolStatus | undefined
+  let composer: ToolStatus | undefined
+  if (isLaravel) {
+    const executable = await resolvePhpExecutable()
+    if (!executable) {
+      php = { id: 'php', available: false, message: 'PHP was not found on PATH. Install PHP 8.2 or newer with Laravel extensions, then rerun Doctor.' }
+      composer = { id: 'composer', available: false, message: 'Composer check requires a supported PHP executable.' }
+    } else {
+      const root = tmpdir()
+      let version: string | undefined
+      let missing: string[] = [...LARAVEL_REQUIRED_EXTENSIONS]
+      try {
+        const result = await runSafeProcess({
+          executablePath: executable.executablePath,
+          allowedExecutableRoot: executable.directory,
+          cwd: root,
+          allowedCwdRoot: root,
+          args: ['-r', 'echo json_encode([PHP_VERSION, get_loaded_extensions()], JSON_THROW_ON_ERROR);'],
+          homeDirectory: root,
+          tempDirectory: root,
+          extraPath: [executable.directory],
+          timeoutMs: 5_000,
+        })
+        const probe = JSON.parse(result.stdout.trim()) as [string, string[]]
+        version = probe[0]
+        const extensions = new Set(probe[1].map((extension) => extension.toLowerCase()))
+        missing = LARAVEL_REQUIRED_EXTENSIONS.filter((extension) => !extensions.has(extension))
+        php = {
+          id: 'php',
+          available: result.exitCode === 0 && supportsPhp(version) && missing.length === 0,
+          path: executable.executablePath,
+          version,
+          message: !supportsPhp(version) ? `PHP ${version} is unsupported; Laravel 12 requires PHP 8.2 or newer, below 9.0.`
+            : missing.length ? `PHP ${version} is missing Laravel/MySQL extensions: ${missing.join(', ')}.`
+              : `PHP ${version} and required Laravel/MySQL extensions are available (including pdo_mysql).`,
+        }
+      } catch {
+        php = { id: 'php', available: false, path: executable.executablePath, message: 'PHP was found but its version/extensions could not be verified by the Windows supervisor.' }
+      }
+
+      const phar = await resolveComposerPhar()
+      if (!phar) {
+        composer = { id: 'composer', available: false, message: 'composer.phar was not found on PATH. Install Composer for the current user, then rerun Doctor.' }
+      } else if (!version || !supportsPhp(version) || missing.length > 0) {
+        composer = { id: 'composer', available: false, path: phar.pharPath, message: 'Composer checks require PHP 8.2+ with the required Laravel/MySQL extensions.' }
+      } else {
+        try {
+          const result = await runSafeProcess({
+            executablePath: executable.executablePath,
+            allowedExecutableRoot: executable.directory,
+            cwd: root,
+            allowedCwdRoot: root,
+            args: [phar.pharPath, '--version'],
+            homeDirectory: root,
+            tempDirectory: root,
+            extraPath: [executable.directory],
+            timeoutMs: 5_000,
+          })
+          const composerVersion = /^Composer version (\d+\.\d+\.\d+)\b/m.exec(`${result.stdout}\n${result.stderr}`)?.[1]
+          const supported = result.exitCode === 0 && composerVersion !== undefined && supportsComposer(composerVersion)
+          composer = {
+            id: 'composer',
+            available: supported,
+            path: phar.pharPath,
+            ...(composerVersion ? { version: composerVersion } : {}),
+            message: supported ? `Composer ${composerVersion} satisfies the Composer 2.2+ requirement; generation disables plugins and scripts.`
+              : composerVersion ? `Composer ${composerVersion} is unsupported; Composer 2.2 or newer is required.`
+                : 'Composer was found but its version could not be verified with the selected PHP runtime.',
+          }
+        } catch {
+          composer = { id: 'composer', available: false, path: phar.pharPath, message: 'Composer was found but could not run through the Windows supervisor.' }
+        }
+      }
+    }
+  }
+
   let target: DoctorReport['target']
   try {
     const inspected = await inspectTarget(selection.project.parentDirectory, selection.project.name)
@@ -170,7 +248,7 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
   }
 
   const windows = process.platform === 'win32'
-  const tools: ToolStatus[] = [...(node ? [node] : []), ...(npm ? [npm] : []), ...(managerTool ? [managerTool] : []), ...(go ? [go] : []), ...(python ? [python] : []), ...(uv ? [uv] : []), {
+  const tools: ToolStatus[] = [...(node ? [node] : []), ...(npm ? [npm] : []), ...(managerTool ? [managerTool] : []), ...(go ? [go] : []), ...(php ? [php] : []), ...(composer ? [composer] : []), ...(python ? [python] : []), ...(uv ? [uv] : []), {
     id: 'target',
     available: target.available && windows,
     message: windows ? target.message : 'Generation is supported on Windows only in Phase 01.',
@@ -178,7 +256,7 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
   return {
     schemaVersion: 1,
     platform: `${process.platform}-${process.arch}`,
-    ready: windows && (isGo ? Boolean(go?.available) : isPython ? Boolean(python?.available && uv?.available) : Boolean(node?.available && npm?.available && (!managerTool || managerTool.available))) && target.available,
+    ready: windows && (isGo ? Boolean(go?.available) : isLaravel ? Boolean(php?.available && composer?.available) : isPython ? Boolean(python?.available && uv?.available) : Boolean(node?.available && npm?.available && (!managerTool || managerTool.available))) && target.available,
     tools,
     target,
   }

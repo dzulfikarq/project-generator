@@ -152,7 +152,7 @@ export async function bindOwnedStageProjectIdentity(stage: OwnedStage, projectNa
   await nativeFs('--bind-stage-identity', requestFor(stage, projectName), 'bind')
 }
 
-export async function verifyOwnedStageProjectIdentity(stage: OwnedStage, projectName: string, modulePath?: string, manifestFile?: 'pyproject.toml'): Promise<void> {
+export async function verifyOwnedStageProjectIdentity(stage: OwnedStage, projectName: string, modulePath?: string, manifestFile?: 'composer.json' | 'pyproject.toml'): Promise<void> {
   if (!liveStages.has(stage)) throw stagingError('GEN_STAGING_LEFTOVER', 'scaffolding', 'Refused project identity verification without a live in-process staging record.', 'Inspect staging manually; do not clean an unverified path.')
   await nativeFs('--verify-scaffold-identity', requestFor(stage, projectName, modulePath, manifestFile), 'scaffold')
 }

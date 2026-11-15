@@ -8,7 +8,7 @@ import { createPlan } from '../src/plan.js'
 import { resolveSelection } from '../src/resolver.js'
 import { normalizeWindowsParent, resolveOutputPath } from '../src/paths.js'
 import { GeneratorError } from '../src/errors.js'
-import { supportsGo, supportsNodeForAngular, supportsNodeForBackend, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue, supportsNpm, supportsPython, supportsUv } from '../src/toolchain.js'
+import { supportsComposer, supportsGo, supportsNodeForAngular, supportsNodeForBackend, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue, supportsNpm, supportsPhp, supportsPython, supportsUv } from '../src/toolchain.js'
 import { defaultGoModulePath, isValidGoModulePath } from '../src/go-module.js'
 import { FORMA_COMMIT_SHA, isFormaCommit } from '../src/forma-catalog.js'
 import { runDoctor } from '../src/doctor.js'
@@ -158,7 +158,7 @@ test('accepts exact FE-01 through FE-15 combinations without filesystem access',
     assert.match(plan.steps.find((step) => step.id === 'install')?.readableSummary ?? '', new RegExp(`${manager}.*${lockfile}`))
   }
   assert.deepEqual(PACKAGE_MANAGERS.map(({ id, version }) => [id, version]), [
-    ['npm', '>=10.0.0'], ['yarn', '4.18.1'], ['pnpm', '11.28.11'], ['go-modules', 'Go 1.22+'], ['uv', '>=0.8.0'],
+    ['npm', '>=10.0.0'], ['yarn', '4.18.1'], ['pnpm', '11.28.11'], ['go-modules', 'Go 1.22+'], ['composer', '>=2.2.0'], ['uv', '>=0.8.0'],
   ])
   assert.ok(ADAPTERS.find(({ id }) => id === 'frontend.react-vite')?.packageManagers.includes('pnpm'))
   assert.ok(ADAPTERS.find(({ id }) => id === 'frontend.vue-vite')?.packageManagers.includes('yarn'))
@@ -326,6 +326,65 @@ test('BE-06 resolves standalone planned FastAPI with uv, Python 3.14, and locked
   assert.throws(() => createPlan(parseSelection({
     ...selection,
     frontend: { adapterId: 'frontend.react-vite', language: 'ts', manager: 'npm' },
+  })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+})
+
+test('BE-05 resolves standalone planned Laravel with Composer, MySQL/Eloquent, and explicit dependency consent', () => {
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'laravel-api', type: 'backend', parentDirectory: 'E:\\Projects' },
+    backend: { adapterId: 'backend.laravel' },
+    documentation: 'standard',
+    git: { initialize: false, initialCommit: false },
+  })
+  const resolved = resolveSelection(selection)
+  const plan = createPlan(selection)
+  const scaffold = plan.steps.find((step) => step.id === 'scaffold')
+  const install = plan.steps.find((step) => step.id === 'install')
+  assert.equal(resolved.recipe.id, 'BE-05')
+  assert.equal(resolved.recipe.status, 'planned')
+  assert.equal(resolved.recipe.backend, 'backend.laravel')
+  assert.equal(resolved.recipe.language, 'php')
+  assert.equal(resolved.recipe.manager, 'composer')
+  assert.equal(plan.executionAvailable, false)
+  assert.equal(plan.executesDependencyLifecycleScripts, false)
+  assert.equal(plan.requiresDependencyConsent, true)
+  assert.deepEqual(plan.networkAccess, ['https://repo.packagist.org/', 'https://api.github.com/', 'https://codeload.github.com/'])
+  assert.ok(plan.expectedWrites.includes('composer.json'))
+  assert.ok(plan.expectedWrites.includes('composer.lock'))
+  assert.ok(plan.expectedWrites.includes('database/migrations/*_create_project_notes_table.php'))
+  assert.ok(plan.expectedWrites.includes('tests/Feature/ApiTest.php'))
+  assert.equal(plan.expectedWrites.includes('.env'), false)
+  assert.equal(plan.expectedWrites.includes('package.json'), false)
+  assert.equal(plan.expectedWrites.includes('package-lock.json'), false)
+  assert.equal(scaffold?.action, 'run-pinned-cli')
+  assert.ok(scaffold?.sideEffects.some((effect) => effect.includes('--no-scripts --no-plugins')))
+  assert.equal(scaffold?.consentKind, 'network')
+  assert.equal(install?.ownerAdapterId, 'composer')
+  assert.ok(install?.readableSummary.includes('--no-scripts --no-plugins'))
+  assert.ok(install?.sideEffects.some((effect) => effect.includes('all root scripts are disabled for both update and install')))
+  assert.ok(plan.warnings.some((warning) => warning.includes('does not create a .env file')))
+  assert.equal(PACKAGE_MANAGERS.find((manager) => manager.id === 'composer')?.lockfile, 'composer.lock')
+  assert.ok(ADAPTERS.find((adapter) => adapter.id === 'backend.laravel')?.compatibleWith.includes('database.mysql'))
+  assert.equal(supportsPhp('8.2.0'), true)
+  assert.equal(supportsPhp('8.1.99'), false)
+  assert.equal(supportsPhp('9.0.0'), false)
+  assert.equal(supportsComposer('2.2.0'), true)
+  assert.equal(supportsComposer('2.1.99'), false)
+
+  for (const backend of [
+    { adapterId: 'backend.laravel', manager: 'npm' },
+    { adapterId: 'backend.laravel', manager: 'composer', modulePath: 'example.com/project' },
+  ]) {
+    assert.throws(() => createPlan(parseSelection({ ...selection, backend })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  }
+  assert.throws(() => createPlan(parseSelection({
+    ...selection,
+    frontend: { adapterId: 'frontend.react-vite', language: 'ts', manager: 'npm' },
+  })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  assert.throws(() => createPlan(parseSelection({
+    ...selection,
+    database: { adapterId: 'database.mysql', mode: 'existing-service' },
   })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
 })
 

@@ -59,3 +59,25 @@ test('BE-06 plan discloses uv lock resolution, isolated sync, network, and build
   assert.ok(plan.warnings.some((warning) => warning.includes('provisional')))
   assert.ok(plan.warnings.some((warning) => warning.includes('does not start the API')))
 })
+
+test('BE-05 plan separates Composer script suppression from explicit unsandboxed dependency consent', () => {
+  const plan = createPlan(parseSelection({
+    schemaVersion: 1,
+    project: { name: 'laravel-plan', type: 'backend', parentDirectory: 'C:\\Projects' },
+    backend: { adapterId: 'backend.laravel', manager: 'composer' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  }))
+  const scaffold = plan.steps.find((step) => step.id === 'scaffold')
+  const install = plan.steps.find((step) => step.id === 'install')
+  assert.equal(plan.recipeId, 'BE-05')
+  assert.equal(plan.recipeStatus, 'planned')
+  assert.equal(plan.executionAvailable, false)
+  assert.equal(plan.executesDependencyLifecycleScripts, false)
+  assert.equal(plan.requiresDependencyConsent, true)
+  assert.ok(scaffold?.sideEffects.some((effect) => effect.includes('--no-scripts --no-plugins --no-install')))
+  assert.ok(install?.sideEffects.some((effect) => effect.includes('disabled for both update and install')))
+  assert.ok(plan.networkAccess.includes('https://repo.packagist.org/'))
+  assert.ok(plan.warnings.some((warning) => warning.includes('without sandboxing')))
+  assert.ok(plan.warnings.some((warning) => warning.includes('does not create a .env file')))
+})

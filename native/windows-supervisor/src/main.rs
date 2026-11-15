@@ -2573,17 +2573,23 @@ mod windows {
             .project_identity
             .ok_or_else(|| fs_failure("stage_identity_unconfirmed", None))?;
         let project = open_verified_project(stage.stage_handle.raw(), project_name, expected)?;
-        let (manifest_name, go_module_path, python_project_name) = match (
+        let (manifest_name, go_module_path, python_project_name, composer_project_name) = match (
             request.module_path.as_deref(),
             request.manifest_file.as_deref(),
         ) {
             (Some(module_path), None) if !module_path.is_empty() && module_path.len() <= 512 => {
-                ("go.mod", Some(module_path), None)
+                ("go.mod", Some(module_path), None, None)
             }
             (Some(_), _) => return Err(fs_failure("scaffold_invalid", None)),
-            (None, Some("pyproject.toml")) => ("pyproject.toml", None, Some(project_name)),
+            (None, Some("pyproject.toml")) => ("pyproject.toml", None, Some(project_name), None),
+            (None, Some("composer.json")) => (
+                "composer.json",
+                None,
+                None,
+                Some(format!("forma/{project_name}")),
+            ),
             (None, Some(_)) => return Err(fs_failure("scaffold_invalid", None)),
-            (None, None) => ("package.json", None, None),
+            (None, None) => ("package.json", None, None, None),
         };
         let manifest = open_relative(
             project.raw(),
@@ -2649,6 +2655,14 @@ mod windows {
                 }
             }
             if !name_matches {
+                return Err(fs_failure("scaffold_invalid", None));
+            }
+        } else if let Some(package_name) = composer_project_name {
+            let manifest: serde_json::Value = serde_json::from_slice(&content)
+                .map_err(|_| fs_failure("scaffold_invalid", None))?;
+            if manifest.get("name").and_then(serde_json::Value::as_str)
+                != Some(package_name.as_str())
+            {
                 return Err(fs_failure("scaffold_invalid", None));
             }
         } else {
@@ -2776,6 +2790,7 @@ mod windows {
             ".tmp",
             ".npm-cache",
             ".uv-cache",
+            ".composer-cache",
             ".npmrc-user",
             ".npmrc-global",
         ] {

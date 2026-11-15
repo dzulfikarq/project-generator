@@ -12,12 +12,13 @@ export function resolveSelection(selection: ProjectSelectionV1): ResolvedSelecti
   if (project.type === 'backend') {
     const adapterId = selection.backend?.adapterId
     const isGo = adapterId === 'backend.go-net-http'
+    const isLaravel = adapterId === 'backend.laravel'
     const isPython = adapterId === 'backend.fastapi'
-    const manager = selection.backend?.manager ?? (isGo ? 'go-modules' : isPython ? 'uv' : 'npm')
-    const recipeId = isGo ? 'BE-02' : isPython ? 'BE-06' : 'BE-01'
-    if (!selection.backend || !['backend.express', 'backend.go-net-http', 'backend.fastapi'].includes(adapterId ?? '') || manager !== (isGo ? 'go-modules' : isPython ? 'uv' : 'npm')
+    const manager = selection.backend?.manager ?? (isGo ? 'go-modules' : isLaravel ? 'composer' : isPython ? 'uv' : 'npm')
+    const recipeId = isGo ? 'BE-02' : isLaravel ? 'BE-05' : isPython ? 'BE-06' : 'BE-01'
+    if (!selection.backend || !['backend.express', 'backend.go-net-http', 'backend.laravel', 'backend.fastapi'].includes(adapterId ?? '') || manager !== (isGo ? 'go-modules' : isLaravel ? 'composer' : isPython ? 'uv' : 'npm')
       || selection.frontend || selection.database || selection.styling || selection.template) {
-      throw incompatibleError('Backend recipes support only standalone Express + npm, Go net/http + Go Modules, or FastAPI + uv; frontend, database, and fullstack choices are unavailable.')
+      throw incompatibleError('Backend recipes support only standalone Express + npm, Go net/http + Go Modules, Laravel + Composer, or FastAPI + uv; frontend, separate database selections, and fullstack choices are unavailable.')
     }
     if (isGo) {
       const modulePath = selection.backend.modulePath ?? defaultGoModulePath(project.name)

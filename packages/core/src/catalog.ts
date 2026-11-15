@@ -22,6 +22,20 @@ const goRequirement = {
   reason: 'Go Modules and method-aware standard-library HTTP routing.',
 } as const
 
+const phpRequirement = {
+  executableId: 'php',
+  versionRange: '>=8.2.0,<9.0.0',
+  optional: false,
+  reason: 'Laravel 12 runtime, PHPUnit checks, and the MySQL PDO extension.',
+} as const
+
+const composerRequirement = {
+  executableId: 'composer',
+  versionRange: '>=2.2.0',
+  optional: false,
+  reason: 'Pinned Laravel scaffold and Composer lock/install commands.',
+} as const
+
 const pythonRequirement = {
   executableId: 'python',
   versionRange: '>=3.14,<3.15',
@@ -61,6 +75,7 @@ export const PACKAGE_MANAGERS: readonly PackageManagerManifestV1[] = [
     nodeVersionRange: '>=22.13.0',
   },
   { id: 'go-modules', version: 'Go 1.22+', },
+  { id: 'composer', version: '>=2.2.0', lockfile: 'composer.lock' },
   { id: 'uv', version: '>=0.8.0', lockfile: 'uv.lock' },
 ]
 
@@ -289,6 +304,30 @@ export const ADAPTERS: readonly AdapterManifestV1[] = [
     capabilities: ['python', 'fastapi', 'pydantic', 'uvicorn', 'pytest', 'uv-lockfile', 'rest-api', 'health-check', 'openapi', 'unit-tests', 'http-smoke', 'graceful-shutdown'],
     compatibleWith: [],
     incompatibleWith: ['frontend.*', 'database.*', 'fullstack.*'],
+    recipeEvidenceIds: [],
+  },
+  {
+    schemaVersion: 1,
+    id: 'backend.laravel',
+    adapterVersion: '0.1.0',
+    kind: 'backend',
+    displayName: 'Laravel',
+    supportState: 'planned',
+    supportedOS: ['windows'],
+    versionConstraints: {
+      php: '>=8.2.0,<9.0.0',
+      composer: '>=2.2.0',
+      laravel: '12.72.0',
+      laravelSkeleton: '12.12.2 (945f4e5a9fd3695dc0ee512f497c650fb82cfbb8)',
+      phpunit: '^11.5.50 (resolved exactly in composer.lock)',
+      mysql: 'MySQL 8+ (existing service; not provisioned)',
+      eloquent: 'Included with laravel/framework',
+    },
+    packageManagers: ['composer'],
+    prerequisites: [phpRequirement, composerRequirement],
+    capabilities: ['php', 'laravel', 'composer', 'composer-lockfile', 'mysql', 'pdo-mysql', 'eloquent', 'rest-api', 'request-validation', 'json-errors', 'phpunit', 'http-smoke'],
+    compatibleWith: ['database.mysql', 'data-access.eloquent-mysql'],
+    incompatibleWith: ['frontend.*', 'fullstack.*', 'authentication', 'docker'],
     recipeEvidenceIds: [],
   },
 ] as const
@@ -669,6 +708,23 @@ export const RECIPES: readonly RecipeManifestV1[] = [
     manager: 'go-modules',
     checks: ['go-module', 'go-fmt', 'go-vet', 'go-test', 'go-build', 'http-smoke', 'graceful-shutdown'],
     limitations: ['Standalone standard-library REST API; no frontend, database, ORM, authentication, or third-party dependency.', 'Go 1.22 or newer required; module path is configurable.'],
+    evidenceIds: [],
+  },
+  {
+    schemaVersion: 1,
+    id: 'BE-05',
+    status: 'planned',
+    platform: 'windows',
+    projectType: 'backend',
+    backend: 'backend.laravel',
+    language: 'php',
+    manager: 'composer',
+    checks: ['laravel-scaffold', 'composer-lock', 'composer-install', 'php-lint-bootstrap', 'php-lint-database', 'php-lint-filesystems', 'php-lint-routes', 'php-lint-model', 'php-lint-migration', 'php-lint-tests', 'artisan-version', 'artisan-route-list', 'phpunit', 'http-smoke'],
+    limitations: [
+      'Standalone Laravel API with MySQL/Eloquent configuration; no frontend, authentication, Docker, or fullstack composition.',
+      'Composer plugins and scripts are disabled during generation. No database is created and no migration is run.',
+      'A user-managed PHP 8.2+ runtime, Composer 2.2+, and PDO MySQL extension are required. Database integration needs an explicitly approved isolated MySQL test database.',
+    ],
     evidenceIds: [],
   },
   {

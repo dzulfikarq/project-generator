@@ -20,10 +20,25 @@ export interface PythonExecutable {
   directory: string
 }
 
+export interface PhpExecutable {
+  executablePath: string
+  directory: string
+}
+
 export interface UvExecutable {
   executablePath: string
   directory: string
 }
+
+export interface ComposerPhar {
+  pharPath: string
+  directory: string
+}
+
+export const LARAVEL_REQUIRED_EXTENSIONS = [
+  'ctype', 'curl', 'dom', 'fileinfo', 'filter', 'hash', 'mbstring', 'openssl',
+  'pcre', 'pdo', 'session', 'tokenizer', 'xml', 'pdo_mysql',
+] as const
 
 function versionParts(version: string): [number, number, number] | undefined {
   const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version.trim())
@@ -84,6 +99,15 @@ export function supportsUv(version: string): boolean {
   return atLeast(version, [0, 8, 0])
 }
 
+export function supportsPhp(version: string): boolean {
+  const parsed = versionParts(version)
+  return parsed !== undefined && parsed[0] === 8 && parsed[1] >= 2
+}
+
+export function supportsComposer(version: string): boolean {
+  return atLeast(version, [2, 2, 0])
+}
+
 async function resolvePathExecutable(fileName: string): Promise<{ executablePath: string; directory: string } | undefined> {
   for (const candidateDirectory of (process.env.PATH ?? '').split(win32.delimiter).filter(Boolean)) {
     const directory = candidateDirectory.replace(/^"(.*)"$/, '$1')
@@ -109,6 +133,29 @@ export async function resolvePythonExecutable(): Promise<PythonExecutable | unde
 
 export async function resolveUvExecutable(): Promise<UvExecutable | undefined> {
   return resolvePathExecutable('uv.exe')
+}
+
+export async function resolvePhpExecutable(): Promise<PhpExecutable | undefined> {
+  return resolvePathExecutable('php.exe')
+}
+
+export async function resolveComposerPhar(): Promise<ComposerPhar | undefined> {
+  for (const candidateDirectory of (process.env.PATH ?? '').split(win32.delimiter).filter(Boolean)) {
+    const directory = candidateDirectory.replace(/^"(.*)"$/, '$1')
+    const phar = resolve(directory, 'composer.phar')
+    try {
+      const [rootEntry, realDirectory, entry, realPhar] = await Promise.all([
+        lstat(directory), realpath(directory), lstat(phar), realpath(phar),
+      ])
+      const relativePath = win32.relative(realDirectory, realPhar)
+      if (!rootEntry.isDirectory() || rootEntry.isSymbolicLink() || !entry.isFile() || entry.isSymbolicLink()
+        || relativePath.startsWith('..') || win32.isAbsolute(relativePath)) continue
+      return { pharPath: realPhar, directory: realDirectory }
+    } catch {
+      // Ignore absent or inaccessible PATH entries.
+    }
+  }
+  return undefined
 }
 
 export async function resolveGoTool(): Promise<GoExecutable | undefined> {

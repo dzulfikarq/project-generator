@@ -22,9 +22,9 @@ import {
 
 type Page = 'home' | 'create' | 'frameworks' | 'templates' | 'projects' | 'environment' | 'settings' | 'generation' | 'result'
 type WizardStep = 'details' | 'stack' | 'design' | 'docs' | 'review'
-type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15' | 'BE-01' | 'BE-02' | 'BE-06'
+type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15' | 'BE-01' | 'BE-02' | 'BE-05' | 'BE-06'
 function isRecipeId(value: string): value is RecipeId {
-  return ['FE-01', 'FE-02', 'FE-03', 'FE-04', 'FE-05', 'FE-06', 'FE-07', 'FE-08', 'FE-09', 'FE-10', 'FE-11', 'FE-12', 'FE-13', 'FE-14', 'FE-15', 'BE-01', 'BE-02', 'BE-06'].includes(value)
+  return ['FE-01', 'FE-02', 'FE-03', 'FE-04', 'FE-05', 'FE-06', 'FE-07', 'FE-08', 'FE-09', 'FE-10', 'FE-11', 'FE-12', 'FE-13', 'FE-14', 'FE-15', 'BE-01', 'BE-02', 'BE-05', 'BE-06'].includes(value)
 }
 type Documentation = 'minimal' | 'standard' | 'full'
 type Selection = {
@@ -49,6 +49,7 @@ type Plan = {
   targetPath: string
   executionAvailable: boolean
   executesDependencyLifecycleScripts: boolean
+  requiresDependencyConsent: boolean
   expectedWrites: string[]
   networkAccess: string[]
   warnings: string[]
@@ -241,7 +242,7 @@ function App() {
     hasSelection: Boolean(selection),
     planAvailable: Boolean(plan),
     doctorReady: Boolean(doctor?.ready),
-    lifecycleConsent: consent || !Boolean(plan?.executesDependencyLifecycleScripts),
+    lifecycleConsent: consent || !Boolean(plan?.requiresDependencyConsent),
     executionAvailable: Boolean(plan?.executionAvailable),
     internalDevelopmentMode: canUsePlanned,
     allowPlanned,
@@ -651,12 +652,12 @@ function App() {
                       setManagerId(adapter.packageManagers[0] ?? 'npm')
                       invalidateReview()
                     }} aria-pressed={recipe?.backend === adapter.id}>
-                      <span className="select-card-top"><span className="framework-monogram">{adapter.id === 'backend.go-net-http' ? 'G' : adapter.id === 'backend.fastapi' ? 'F' : 'E'}</span><StatusPill tone="warn">{adapterRecipe?.status ?? 'Catalog only'}</StatusPill></span>
-                      <strong>{adapter.displayName}</strong><small>{adapterRecipe ? `${adapterRecipe.id} · ${adapter.id === 'backend.go-net-http' ? 'Go · Go Modules' : adapter.id === 'backend.fastapi' ? 'Python · uv' : 'TypeScript · npm'}` : 'No backend recipe is cataloged.'}</small>
+                       <span className="select-card-top"><span className="framework-monogram">{adapter.id === 'backend.go-net-http' ? 'G' : adapter.id === 'backend.laravel' ? 'L' : adapter.id === 'backend.fastapi' ? 'F' : 'E'}</span><StatusPill tone="warn">{adapterRecipe?.status ?? 'Catalog only'}</StatusPill></span>
+                       <strong>{adapter.displayName}</strong><small>{adapterRecipe ? `${adapterRecipe.id} · ${adapter.id === 'backend.go-net-http' ? 'Go · Go Modules' : adapter.id === 'backend.laravel' ? 'PHP · Composer' : adapter.id === 'backend.fastapi' ? 'Python · uv' : 'TypeScript · npm'}` : 'No backend recipe is cataloged.'}</small>
                     </button>
                   })}
                 </div></fieldset>
-                <div className="unsupported-grid"><UnsupportedGroup title="Database" description="BE-01, BE-02, and BE-06 are database-free. Database adapters are not implemented." entries={databaseAdapters.map((adapter) => adapter.displayName)} /><UnsupportedGroup title="Full-stack / mobile" description="Frontend-backend composition and mobile generation are outside this phase." entries={[]} /></div>
+                 <div className="unsupported-grid"><UnsupportedGroup title="Database" description="BE-05 includes MySQL/Eloquent configuration only; no database is provisioned or migrated. Separate database adapters are not selectable." entries={databaseAdapters.map((adapter) => adapter.displayName)} /><UnsupportedGroup title="Full-stack / mobile" description="Frontend-backend composition and mobile generation are outside this phase." entries={[]} /></div>
               </>}
               <div className="wizard-actions"><button className="button secondary-button" disabled={busy} onClick={() => setStep('details')}>Back</button><button className="button primary-button" disabled={projectType === 'frontend' ? !selectedFrontend || busy : !selectedBackend || busy} onClick={() => setStep('design')}>Choose tools <span aria-hidden="true">→</span></button></div>
             </section>}
@@ -667,7 +668,7 @@ function App() {
               {projectType === 'backend' ? selectedBackend?.id === 'backend.go-net-http' ? <>
                 <div className="template-style-note"><strong>Go · Standard Library net/http · Go Modules</strong><span>Go 1.22+ standalone REST API. No third-party dependencies, go.sum, npm, or automatic server startup.</span></div>
                 <div className="field"><label className="field-label" htmlFor="go-module-path">Go module path</label><input id="go-module-path" className="text-input mono-input" disabled={busy} value={modulePath} maxLength={512} autoComplete="off" aria-invalid={Boolean(modulePathError)} aria-describedby={modulePathError ? 'go-module-path-error' : 'go-module-path-help'} onChange={(event) => { setModulePath(event.target.value); invalidateReview() }} />{modulePathError ? <p id="go-module-path-error" className="field-error">{modulePathError}</p> : <p id="go-module-path-help" className="field-help">Used in go.mod and internal package imports.</p>}</div>
-              </> : selectedBackend?.id === 'backend.fastapi' ? <div className="template-style-note"><strong>Python · FastAPI · Pydantic · Uvicorn · uv</strong><span>Python 3.14.x and uv 0.8+ required. Pins: FastAPI {selectedBackend.versionConstraints.fastapi?.split(' ')[0]}, Pydantic {selectedBackend.versionConstraints.pydantic?.split(' ')[0]}, Uvicorn {selectedBackend.versionConstraints.uvicorn?.split(' ')[0]}, pytest {selectedBackend.versionConstraints.pytest?.split(' ')[0]}. uv.lock and project-local .venv; no automatic Python download or server startup.</span></div> : <div className="template-style-note"><strong>Express · TypeScript · npm</strong><span>Node.js standalone REST API. npm is required for BE-01.</span></div> : <>
+              </> : selectedBackend?.id === 'backend.laravel' ? <div className="template-style-note"><strong>PHP · Laravel 12 · Composer · MySQL/Eloquent</strong><span>PHP 8.2+ with pdo_mysql and Composer 2.2+ required. Composer scripts/plugins stay disabled. Includes API validation, PHPUnit tests, model, and manual migration; no .env, database provisioning, or automatic migration.</span></div> : selectedBackend?.id === 'backend.fastapi' ? <div className="template-style-note"><strong>Python · FastAPI · Pydantic · Uvicorn · uv</strong><span>Python 3.14.x and uv 0.8+ required. Pins: FastAPI {selectedBackend.versionConstraints.fastapi?.split(' ')[0]}, Pydantic {selectedBackend.versionConstraints.pydantic?.split(' ')[0]}, Uvicorn {selectedBackend.versionConstraints.uvicorn?.split(' ')[0]}, pytest {selectedBackend.versionConstraints.pytest?.split(' ')[0]}. uv.lock and project-local .venv; no automatic Python download or server startup.</span></div> : <div className="template-style-note"><strong>Express · TypeScript · npm</strong><span>Node.js standalone REST API. npm is required for BE-01.</span></div> : <>
               {!templateId ? <fieldset className="choice-fieldset"><legend>Styling</legend><div className="compact-choice-grid">
                  {stylingAdapters.filter((adapter) => !['styling.scss', 'styling.tailwind'].includes(adapter.id) || adapter.compatibleWith.includes(frontendId)).map((adapter) => {
                   const compatible = adapter.compatibleWith.includes(frontendId)
@@ -740,7 +741,7 @@ function App() {
               {busy && <div className="inline-loading" role="status"><span className="spinner" /> Resolving read-only plan and checking prerequisites…</div>}
               {!busy && !plan && <div className="review-empty"><p>{commandError ? 'Review could not be completed.' : 'Resolve the configuration to load current plan and environment checks.'}</p><button className="button secondary-button" disabled={!selection} onClick={() => void loadReview()}>Resolve plan and run checks</button></div>}
               {plan && <>
-                <div className="stack-summary"><div><small>PROJECT</small><strong>{projectName}</strong><code>{plan.targetPath}</code></div><div><small>STACK</small><strong>{projectType === 'backend' ? `${selectedBackend?.displayName ?? 'Express'} REST API` : `${selectedFrontend?.displayName ?? frontendId} + ${activeTemplate ? 'Forma-managed styling' : stylingAdapters.find((adapter) => adapter.id === stylingId)?.displayName ?? stylingId}`}</strong><span>{plan.recipeId} · {plan.recipeId === 'BE-02' ? 'Go' : plan.recipeId === 'BE-06' ? 'Python' : 'TypeScript'} · {managerId} · {documentation} docs</span>{plan.recipeId === 'BE-02' && <code>Module: {modulePath}</code>}</div>{activeTemplate && <div><small>FORMA TEMPLATE</small><strong>{activeTemplate.name}</strong><span>{selectedVariant?.name ?? activeTemplate.variants.find((variant) => variant.default)?.name ?? 'Default'} variant · planned integration</span></div>}</div>
+                 <div className="stack-summary"><div><small>PROJECT</small><strong>{projectName}</strong><code>{plan.targetPath}</code></div><div><small>STACK</small><strong>{projectType === 'backend' ? `${selectedBackend?.displayName ?? 'Express'} REST API` : `${selectedFrontend?.displayName ?? frontendId} + ${activeTemplate ? 'Forma-managed styling' : stylingAdapters.find((adapter) => adapter.id === stylingId)?.displayName ?? stylingId}`}</strong><span>{plan.recipeId} · {plan.recipeId === 'BE-02' ? 'Go' : plan.recipeId === 'BE-05' ? 'PHP' : plan.recipeId === 'BE-06' ? 'Python' : 'TypeScript'} · {managerId} · {documentation} docs</span>{plan.recipeId === 'BE-02' && <code>Module: {modulePath}</code>}</div>{activeTemplate && <div><small>FORMA TEMPLATE</small><strong>{activeTemplate.name}</strong><span>{selectedVariant?.name ?? activeTemplate.variants.find((variant) => variant.default)?.name ?? 'Default'} variant · planned integration</span></div>}</div>
 
                 <div className="review-section"><div className="review-section-heading"><div><span className="review-icon" aria-hidden="true">✓</span><h3>Environment checks</h3></div><StatusPill tone={doctor?.ready ? 'good' : 'bad'}>{doctor?.ready ? 'READY' : 'BLOCKED'}</StatusPill></div>
                   {doctor?.tools.filter((tool) => tool.id !== 'target').map((tool) => <div className="doctor-row" key={tool.id}><span className={tool.available ? 'check-state ok' : 'check-state missing'} aria-hidden="true">{tool.available ? '✓' : '!'}</span><div><strong>{tool.id}{tool.version ? ` · ${tool.version}` : ''}</strong><small>{tool.message}</small></div><span className={tool.available ? 'doctor-status ok' : 'doctor-status missing'}>{tool.available ? 'Ready' : 'Required'}</span></div>)}
@@ -758,13 +759,13 @@ function App() {
                 </div>
 
                 {plan.warnings.length > 0 && <div className="risk-box"><strong>Risks and limitations</strong><ul>{plan.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div>}
-                {plan.executesDependencyLifecycleScripts ? <div className="consent-box"><p className="eyebrow">YOUR APPROVAL REQUIRED</p><strong>Dependency install can execute third-party code without a sandbox.</strong><p>{managerId} installation can execute package-build or lifecycle code with your Windows user permissions. Process supervision does not sandbox that code. Network access and generated validation commands are listed above.</p>
-                  <label className="check-line"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>I understand and consent to third-party dependency build/lifecycle code running unsandboxed for this generation.</span></label>
-                </div> : <div className="template-style-note"><strong>No dependency lifecycle scripts.</strong><span>Go Modules contains no external dependencies for this recipe. Generation runs Go checks locally with network access disabled.</span></div>}
+                {plan.requiresDependencyConsent ? <div className="consent-box"><p className="eyebrow">YOUR APPROVAL REQUIRED</p><strong>{plan.executesDependencyLifecycleScripts ? 'Dependency install can execute third-party code without a sandbox.' : 'Dependency install and checks load third-party code without a sandbox.'}</strong><p>{plan.recipeId === 'BE-05' ? 'Composer downloads and installs PHP packages with scripts and plugins disabled. Artisan and PHPUnit checks still load package code with your Windows user permissions; process supervision does not sandbox that code.' : `${managerId} installation can execute package-build or lifecycle code with your Windows user permissions. Process supervision does not sandbox that code.`} Network access and generated validation commands are listed above.</p>
+                  <label className="check-line"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>I understand and consent to this unsandboxed third-party dependency execution for this generation.</span></label>
+                </div> : <div className="template-style-note"><strong>No third-party dependency installation.</strong><span>Go Modules contains no external dependencies for this recipe. Generation runs Go checks locally with network access disabled.</span></div>}
                 {canUsePlanned && !plan.executionAvailable && <label className="internal-consent"><input type="checkbox" checked={allowPlanned} onChange={(event) => setAllowPlanned(event.target.checked)} /><span><strong>Internal evidence run only:</strong> allow this planned recipe. Recipe remains unavailable in normal builds and is not promoted.</span></label>}
                 {!plan.executionAvailable && !canUsePlanned && <div className="blocked-callout"><strong>Generation unavailable in normal builds.</strong><span>This recipe remains planned pending independent acceptance and review.</span></div>}
                 <div className="wizard-actions"><button className="button secondary-button" disabled={busy} onClick={() => { setConsent(false); setStep('docs') }}>Back to setup</button><button className="button primary-button" disabled={!canGenerate} onClick={() => void startGeneration()}>{busy ? 'Starting…' : 'Create project'} <span aria-hidden="true">→</span></button></div>
-                {plan.executesDependencyLifecycleScripts && !consent && <p className="footer-hint">Generation stays blocked until you affirm the lifecycle-script consent above.</p>}
+                 {plan.requiresDependencyConsent && !consent && <p className="footer-hint">Generation stays blocked until you affirm the dependency-execution consent above.</p>}
               </>}
             </section>}
           </div>
@@ -782,7 +783,7 @@ function App() {
             <button className="button secondary-button" disabled={!adapterRecipe || busy} onClick={() => startWizardForFramework(adapter.id)}>{adapterRecipe ? 'Configure project' : 'Unavailable'}</button>
           </article>
         })}</div>
-           <p className="catalog-pin">FE-01 through FE-15, BE-01–BE-02, and BE-06 remain planned. Normal generation remains blocked pending independent acceptance.</p>
+            <p className="catalog-pin">FE-01 through FE-15 and BE-01, BE-02, BE-05, and BE-06 remain planned. Normal generation remains blocked pending independent acceptance.</p>
       </section>}
 
       {page === 'templates' && <section className="page-content" aria-labelledby="templates-title">
@@ -863,7 +864,7 @@ function App() {
         {recovery !== null && <RecoveryDetails value={recovery} />}
       </section>}
 
-      <footer className="app-footer"><span>FormaForge · Project Generator</span><span>Local development · FE-01–FE-15 / BE-01–BE-02 / BE-06 / FM-01 / FM-02 remain planned · no release approval</span></footer>
+      <footer className="app-footer"><span>FormaForge · Project Generator</span><span>Local development · FE-01–FE-15 / BE-01–BE-02 / BE-05–BE-06 / FM-01 / FM-02 remain planned · no release approval</span></footer>
     </main>
   </div>
 }
@@ -878,7 +879,7 @@ function UnsupportedGroup({ title, description, entries }: { title: string; desc
 
 function ProjectList({ projects, vscodeAvailable, onOpen }: { projects: ProjectRecord[]; vscodeAvailable: boolean; onOpen: (path: string, command: 'open_project_folder' | 'open_project_in_vscode') => void }) {
   return <div className="project-list">{projects.map((project) => <article className="project-row" key={`${project.path}-${project.createdAt}`}>
-    <div className="project-type-mark" aria-hidden="true">{project.recipeId === 'BE-02' ? 'G' : project.recipeId === 'BE-06' ? 'F' : project.recipeId === 'FE-02' ? 'N' : project.recipeId === 'FE-06' ? 'U' : project.recipeId === 'FE-07' ? 'A' : ['FE-03', 'FE-05', 'FE-09', 'FE-11', 'FE-13', 'FE-15'].includes(project.recipeId) ? 'V' : 'R'}</div><div className="project-row-main"><strong>{project.name}</strong><code>{project.path}</code><div className="project-row-meta"><span>{project.recipeId}</span><span>·</span><span>{new Date(project.createdAt).toLocaleString()}</span></div></div>
+    <div className="project-type-mark" aria-hidden="true">{project.recipeId === 'BE-02' ? 'G' : project.recipeId === 'BE-05' ? 'L' : project.recipeId === 'BE-06' ? 'F' : project.recipeId === 'FE-02' ? 'N' : project.recipeId === 'FE-06' ? 'U' : project.recipeId === 'FE-07' ? 'A' : ['FE-03', 'FE-05', 'FE-09', 'FE-11', 'FE-13', 'FE-15'].includes(project.recipeId) ? 'V' : 'R'}</div><div className="project-row-main"><strong>{project.name}</strong><code>{project.path}</code><div className="project-row-meta"><span>{project.recipeId}</span><span>·</span><span>{new Date(project.createdAt).toLocaleString()}</span></div></div>
     <div className="project-row-status"><StatusPill tone={project.status === 'completed' ? 'good' : 'warn'}>{project.status === 'completed' ? 'Checks passed' : 'Cleanup attention'}</StatusPill><div className="project-row-actions"><button className="button small-button secondary-button" onClick={() => onOpen(project.path, 'open_project_folder')}>Open folder</button>{vscodeAvailable && <button className="button small-button quiet-button" onClick={() => onOpen(project.path, 'open_project_in_vscode')}>VS Code</button>}</div></div>
   </article>)}</div>
 }
