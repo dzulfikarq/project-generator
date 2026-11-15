@@ -8,6 +8,13 @@ if (process.platform !== 'win32') throw new Error('Phase 05C.1 release-policy ch
 const root = join(process.env.LOCALAPPDATA ?? win32.join(homedir(), 'AppData', 'Local'), 'Temp', 'opencode')
 const parent = await mkdtemp(join(root, 'phase-05c1-release-policy-'))
 const cases = [
+  ['BE-03', 'nest.json', {
+    schemaVersion: 1,
+    project: { name: 'planned-nest-api', parentDirectory: parent, type: 'backend' },
+    backend: { adapterId: 'backend.nestjs', manager: 'npm' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  }],
   ['BE-02', 'go.json', {
     schemaVersion: 1,
     project: { name: 'planned-go-api', parentDirectory: parent, type: 'backend' },
@@ -52,7 +59,7 @@ try {
     assert.equal(events.some((event) => event.stageId === 'staging'), false, `${recipeId}: ${result.stdout}`)
   }
   assert.deepEqual((await readdir(parent)).sort(), cases.map(([, configName]) => configName).sort())
-  console.log('Release policy blocked planned BE-02, BE-05, and BE-06 before staging despite runtime override attempts.')
+  console.log('Release policy blocked planned BE-02, BE-03, BE-05, and BE-06 before staging despite runtime override attempts.')
 } finally {
   for (const jobLog of jobLogs) await rm(dirname(jobLog), { recursive: true, force: true })
   await rm(parent, { recursive: true, force: true })

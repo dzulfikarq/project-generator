@@ -8,6 +8,7 @@ import { GeneratorError, asGeneratorError } from './errors.js'
 import { ALLOW_PLANNED_RECIPE_GENERATION } from './build-policy.js'
 import { packageManager, packageManagerConfiguration } from './catalog.js'
 import { writeBackendStarter } from './backend-starter.js'
+import { writeNestBackendStarter } from './nest-backend-starter.js'
 import { writeFastApiBackendStarter } from './fastapi-backend-starter.js'
 import { verifyUvLockfile, writeFastApiProjectDocs, writeFastApiProjectManifest } from './fastapi-project-docs.js'
 import { writeLaravelBackendStarter, LARAVEL_PINS } from './laravel-backend-starter.js'
@@ -770,10 +771,11 @@ async function servedBackendSmoke(
   dirs: { home: string; temp: string },
   signal: AbortSignal | undefined,
   log: JobLog,
+  isNest = false,
 ): Promise<ValidationOutcome> {
   const port = await freePort()
   const running = await startNodeProcess({
-    scriptPath: win32.join(projectPath, 'dist', 'server.js'),
+    scriptPath: win32.join(projectPath, 'dist', isNest ? 'main.js' : 'server.js'),
     allowedScriptRoot: projectPath,
     cwd: projectPath,
     allowedCwdRoot: stage.path,
@@ -793,7 +795,7 @@ async function servedBackendSmoke(
         const info = await fetch(`http://127.0.0.1:${port}/api/info`, { signal: AbortSignal.timeout(800) })
         const infoBody = await info.json() as { name?: string; version?: string; environment?: string }
         if (health.status === 200 && healthBody.status === 'ok' && info.status === 200
-          && infoBody.name === 'BE-01 Express API' && infoBody.version === '0.1.0' && infoBody.environment === 'test') {
+          && infoBody.name === (isNest ? 'BE-03 NestJS API' : 'BE-01 Express API') && infoBody.version === '0.1.0' && infoBody.environment === 'test') {
           outcome = { id: 'http-smoke', status: 'pass', message: 'Built API returned valid JSON from /health and /api/info.', exitCode: 0 }
           break
         }
@@ -1067,7 +1069,7 @@ async function executeScaffold(
     allowedScriptRoot: dirs.tools,
     cwd: stage.path,
     allowedCwdRoot: stage.path,
-    args: scaffoldPin.packageName === '@angular/cli'
+    args: scaffoldPin.packageName === '@angular/cli' || scaffoldPin.packageName === '@nestjs/cli'
       ? ['new', resolved.selection.project.name, ...(resolved.recipe.scaffoldArgs ?? [])]
       : [resolved.selection.project.name, ...(resolved.recipe.scaffoldArgs ?? [])],
     homeDirectory: dirs.home,
@@ -1088,6 +1090,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
   const resolved = resolveSelection(selection)
   selection = resolved.selection
   const isGo = resolved.recipe.id === 'BE-02'
+  const isNest = resolved.recipe.id === 'BE-03'
   const isLaravel = resolved.recipe.id === 'BE-05'
   const isPython = resolved.recipe.id === 'BE-06'
   const isForma = Boolean(selection.template)
@@ -1180,6 +1183,9 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       starterFiles = await writeFastApiBackendStarter(stage, selection.project.name)
     } else if (isGo) {
       starterFiles = await writeGoBackendStarter(stage, selection.project.name, selection.backend!.modulePath!)
+    } else if (isNest) {
+      await executeScaffold(stage, resolved, npmTool!.cliPath, dirs, log, options.signal)
+      starterFiles = await writeNestBackendStarter(stage, selection.project.name, resolved.recipe.dependencies ?? [])
     } else if (resolved.recipe.projectType === 'backend') {
       starterFiles = await writeBackendStarter(stage, selection.project.name, resolved.recipe.dependencies ?? [])
     } else {
@@ -1207,7 +1213,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       if (error instanceof GeneratorError) throw error
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
-    const generatedFiles = [...starterFiles, ...(isGo || isPython || isLaravel ? [] : await configureRecipeDependencies(stage, resolved))]
+    const generatedFiles = [...starterFiles, ...(isGo || isPython || isLaravel || isNest ? [] : await configureRecipeDependencies(stage, resolved))]
     const managerConfig = packageManagerConfiguration(resolved.recipe.manager)
     if (managerConfig) {
       const projectPrefix = `${win32.basename(projectPath)}/`
@@ -1346,7 +1352,16 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       validations.push(moduleOutcome)
       emitValidation(emit, moduleOutcome, recipeOwnerId)
     }
-    const checks: { id: string; path?: string; args: string[] }[] = isLaravel
+    const checks: { id: string; path?: string; args: string[] }[] = isNest
+      ? [
+        { id: 'typecheck', path: win32.join(projectPath, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['--project', 'tsconfig.json', '--noEmit'] },
+        { id: 'lint', path: win32.join(projectPath, 'node_modules', 'eslint', 'bin', 'eslint.js'), args: ['src', 'test'] },
+        { id: 'unit-tests', path: win32.join(projectPath, 'node_modules', 'jest', 'bin', 'jest.js'), args: ['--runInBand'] },
+        { id: 'e2e-tests', path: win32.join(projectPath, 'node_modules', 'jest', 'bin', 'jest.js'), args: ['--config', 'test/jest-e2e.json', '--runInBand', '--testPathIgnorePatterns', 'shutdown.e2e-spec.ts'] },
+        { id: 'graceful-shutdown', path: win32.join(projectPath, 'node_modules', 'jest', 'bin', 'jest.js'), args: ['--config', 'test/jest-e2e.json', '--runInBand', '--runTestsByPath', 'test/shutdown.e2e-spec.ts'] },
+        { id: 'build', path: win32.join(projectPath, 'node_modules', '@nestjs', 'cli', 'bin', 'nest.js'), args: ['build'] },
+      ]
+      : isLaravel
       ? [
         { id: 'php-lint-bootstrap', args: ['-l', 'bootstrap/app.php'] },
         { id: 'php-lint-database', args: ['-l', 'config/database.php'] },
@@ -1466,7 +1481,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       : [isGo
         ? await servedGoBackendSmoke(projectPath, stage, dirs, goTool!, selection.project.name, options.signal, log)
         : resolved.recipe.projectType === 'backend'
-          ? await servedBackendSmoke(projectPath, stage, dirs, options.signal, log)
+          ? await servedBackendSmoke(projectPath, stage, dirs, options.signal, log, isNest)
           : await servedPageSmoke(projectPath, stage, dirs, resolved.recipe.frontend!, options.signal, log)]
     validations.push(...smokeOutcomes)
     for (const smoke of smokeOutcomes) emitValidation(emit, smoke, recipeOwnerId)

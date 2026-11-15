@@ -215,6 +215,56 @@ test('BE-01 resolves standalone Express and pins every direct dependency', () =>
   }
 })
 
+test('BE-03 resolves standalone NestJS with pinned official CLI/framework and Jest scaffold', () => {
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'nest-api', type: 'backend', parentDirectory: 'E:\\Projects' },
+    backend: { adapterId: 'backend.nestjs' },
+    documentation: 'standard',
+    git: { initialize: false, initialCommit: false },
+  })
+  const resolved = resolveSelection(selection)
+  const plan = createPlan(selection)
+  const scaffold = plan.steps.find((step) => step.id === 'scaffold')
+  const install = plan.steps.find((step) => step.id === 'install')
+  assert.equal(resolved.recipe.id, 'BE-03')
+  assert.equal(resolved.recipe.status, 'planned')
+  assert.equal(resolved.recipe.backend, 'backend.nestjs')
+  assert.equal(resolved.recipe.manager, 'npm')
+  assert.deepEqual([resolved.recipe.scaffold?.packageName, resolved.recipe.scaffold?.version], ['@nestjs/cli', '11.0.24'])
+  assert.deepEqual(resolved.recipe.scaffoldArgs, ['--skip-install', '--skip-git', '--strict', '--package-manager', 'npm'])
+  assert.equal(resolved.recipe.dependencies?.length, 21)
+  assert.ok(resolved.recipe.dependencies?.every(({ integrity }) => integrity.startsWith('sha512-')))
+  assert.equal(plan.executionAvailable, false)
+  assert.equal(plan.executesDependencyLifecycleScripts, true)
+  assert.equal(plan.requiresDependencyConsent, true)
+  assert.deepEqual(plan.networkAccess, ['https://registry.npmjs.org/'])
+  assert.equal(scaffold?.action, 'run-pinned-cli')
+  assert.equal(scaffold?.consentKind, 'network')
+  assert.ok(scaffold?.readableSummary.includes('--skip-install'))
+  assert.ok(scaffold?.sideEffects.some((effect) => effect.includes('No Observe prompt')))
+  assert.equal(install?.ownerAdapterId, 'npm')
+  assert.ok(install?.sideEffects.some((effect) => effect.includes('only after explicit consent')))
+  for (const path of ['nest-cli.json', 'tsconfig.json', 'src/api-exception.filter.ts', 'test/jest-e2e.json', 'test/shutdown.e2e-spec.ts', 'package-lock.json']) {
+    assert.ok(plan.expectedWrites.includes(path), path)
+  }
+  assert.match(plan.steps.find((step) => step.id === 'validate')?.readableSummary ?? '', /Jest unit\/e2e.*HTTP smoke/s)
+  assert.ok(plan.warnings.some((warning) => warning.includes('not sandboxed')))
+  assert.equal(supportsNodeForBackend('22.12.99'), false)
+  assert.equal(supportsNodeForBackend('22.13.0'), true)
+
+  for (const backend of [
+    { adapterId: 'backend.nestjs', manager: 'yarn' },
+    { adapterId: 'backend.nestjs', manager: 'npm', modulePath: 'example.com/nest-api' },
+  ]) {
+    assert.throws(() => createPlan(parseSelection({ ...selection, backend })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  }
+  assert.throws(() => createPlan(parseSelection({
+    ...selection,
+    database: { adapterId: 'database.postgresql', mode: 'existing-service' },
+  })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+})
+
 test('BE-02 resolves standalone Go net/http with Go Modules and validates module paths', () => {
   const selection = parseSelection({
     schemaVersion: 1,

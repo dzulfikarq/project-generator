@@ -60,6 +60,32 @@ test('BE-06 plan discloses uv lock resolution, isolated sync, network, and build
   assert.ok(plan.warnings.some((warning) => warning.includes('does not start the API')))
 })
 
+test('BE-03 plan discloses pinned Nest scaffold, npm network, lifecycle consent, and Jest checks', () => {
+  const plan = createPlan(parseSelection({
+    schemaVersion: 1,
+    project: { name: 'nest-plan', type: 'backend', parentDirectory: 'C:\\Projects' },
+    backend: { adapterId: 'backend.nestjs', manager: 'npm' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  }))
+  const scaffold = plan.steps.find((step) => step.id === 'scaffold')
+  const install = plan.steps.find((step) => step.id === 'install')
+  assert.equal(plan.recipeId, 'BE-03')
+  assert.equal(plan.recipeStatus, 'planned')
+  assert.equal(plan.executionAvailable, false)
+  assert.equal(plan.executesDependencyLifecycleScripts, true)
+  assert.equal(plan.requiresDependencyConsent, true)
+  assert.equal(scaffold?.action, 'run-pinned-cli')
+  assert.equal(scaffold?.consentKind, 'network')
+  assert.ok(scaffold?.readableSummary.includes('Nest CLI 11.0.24'))
+  assert.equal(install?.ownerAdapterId, 'npm')
+  assert.ok(install?.sideEffects.some((effect) => effect.includes('only after explicit consent')))
+  assert.ok(plan.expectedWrites.includes('package-lock.json'))
+  assert.ok(plan.expectedWrites.includes('test/app.e2e-spec.ts'))
+  assert.ok(plan.networkAccess.includes('https://registry.npmjs.org/'))
+  assert.ok(plan.warnings.some((warning) => warning.includes('lifecycle scripts') && warning.includes('not sandboxed')))
+})
+
 test('BE-05 plan separates Composer script suppression from explicit unsandboxed dependency consent', () => {
   const plan = createPlan(parseSelection({
     schemaVersion: 1,

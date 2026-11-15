@@ -121,6 +121,8 @@ enum DesktopRecipeId {
     Be01,
     #[serde(rename = "BE-02")]
     Be02,
+    #[serde(rename = "BE-03")]
+    Be03,
     #[serde(rename = "BE-05")]
     Be05,
     #[serde(rename = "BE-06")]
@@ -156,6 +158,19 @@ impl DesktopSelectionV1 {
                     "type": "backend"
                 },
                 "backend": { "adapterId": "backend.express", "manager": "npm" },
+                "documentation": self.documentation.as_str(),
+                "git": { "initialize": false, "initialCommit": false }
+            });
+        }
+        if matches!(self.recipe_id, DesktopRecipeId::Be03) {
+            return json!({
+                "schemaVersion": 1,
+                "project": {
+                    "name": self.project_name,
+                    "parentDirectory": self.parent_directory,
+                    "type": "backend"
+                },
+                "backend": { "adapterId": "backend.nestjs", "manager": "npm" },
                 "documentation": self.documentation.as_str(),
                 "git": { "initialize": false, "initialCommit": false }
             });
@@ -222,6 +237,7 @@ impl DesktopSelectionV1 {
             DesktopRecipeId::Fe15 => ("frontend.vue-vite", "styling.css", "pnpm"),
             DesktopRecipeId::Be01
             | DesktopRecipeId::Be02
+            | DesktopRecipeId::Be03
             | DesktopRecipeId::Be05
             | DesktopRecipeId::Be06 => {
                 unreachable!("backend selection returned above")
@@ -308,6 +324,7 @@ impl DesktopSelectionV1 {
             self.recipe_id,
             DesktopRecipeId::Be01
                 | DesktopRecipeId::Be02
+                | DesktopRecipeId::Be03
                 | DesktopRecipeId::Be05
                 | DesktopRecipeId::Be06
         ) && (self.template_id.is_some() || self.template_variant_id.is_some())
@@ -1571,6 +1588,22 @@ mod tests {
         assert_eq!(backend["backend"]["manager"], "npm");
         assert!(backend.get("frontend").is_none());
         assert!(backend.get("styling").is_none());
+
+        let nest_backend = DesktopSelectionV1 {
+            project_name: "demo-api".into(),
+            parent_directory: "C:\\Projects".into(),
+            recipe_id: DesktopRecipeId::Be03,
+            documentation: DesktopDocumentationV1::Standard,
+            template_id: None,
+            template_variant_id: None,
+            module_path: None,
+        }
+        .to_core_json("");
+        assert_eq!(nest_backend["project"]["type"], "backend");
+        assert_eq!(nest_backend["backend"]["adapterId"], "backend.nestjs");
+        assert_eq!(nest_backend["backend"]["manager"], "npm");
+        assert!(nest_backend.get("frontend").is_none());
+        assert!(nest_backend.get("styling").is_none());
 
         let go_backend = DesktopSelectionV1 {
             project_name: "demo-api".into(),

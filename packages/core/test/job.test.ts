@@ -61,6 +61,29 @@ test('production generation blocks planned BE-02 before staging or destination w
   }
 })
 
+test('production generation blocks planned BE-03 before staging or destination writes', async () => {
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-planned-nest-'))
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'planned-nest-api', type: 'backend', parentDirectory: parent },
+    backend: { adapterId: 'backend.nestjs', manager: 'npm' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  })
+  let logFile = ''
+  try {
+    const result = await generateProject(selection)
+    logFile = result.logFile ?? ''
+    assert.equal(result.status, 'failed')
+    assert.equal(result.error?.code, 'GEN_RECIPE_UNTESTED')
+    await assert.rejects(access(win32.join(parent, 'planned-nest-api')))
+    assert.deepEqual(await readdir(parent), [])
+  } finally {
+    await rm(parent, { recursive: true, force: true })
+    if (logFile) await rm(dirname(logFile), { recursive: true, force: true })
+  }
+})
+
 test('production generation blocks planned BE-06 before staging or destination writes', async () => {
   const parent = await mkdtemp(win32.join(tmpdir(), 'pg-planned-fastapi-'))
   const selection = parseSelection({
@@ -125,6 +148,29 @@ test('BE-06 development generation requires explicit third-party dependency cons
     assert.equal(result.status, 'failed')
     assert.equal(result.error?.code, 'GEN_DEPENDENCY_CONSENT_REQUIRED')
     await assert.rejects(access(win32.join(parent, 'fastapi-consent')))
+    assert.deepEqual(await readdir(parent), [])
+  } finally {
+    await rm(parent, { recursive: true, force: true })
+    if (logFile) await rm(dirname(logFile), { recursive: true, force: true })
+  }
+})
+
+test('BE-03 development generation requires explicit npm lifecycle consent before staging', { skip: !ALLOW_PLANNED_RECIPE_GENERATION }, async () => {
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-nest-consent-'))
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'nest-consent', type: 'backend', parentDirectory: parent },
+    backend: { adapterId: 'backend.nestjs', manager: 'npm' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  })
+  let logFile = ''
+  try {
+    const result = await generateProject(selection, { allowPlanned: true })
+    logFile = result.logFile ?? ''
+    assert.equal(result.status, 'failed')
+    assert.equal(result.error?.code, 'GEN_DEPENDENCY_CONSENT_REQUIRED')
+    await assert.rejects(access(win32.join(parent, 'nest-consent')))
     assert.deepEqual(await readdir(parent), [])
   } finally {
     await rm(parent, { recursive: true, force: true })

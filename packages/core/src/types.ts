@@ -1,9 +1,9 @@
 export type SupportState = 'cataloged' | 'planned' | 'experimental' | 'tested' | 'blocked' | 'retired'
 export type DocumentationMode = 'minimal' | 'standard' | 'full'
-export type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15' | 'BE-01' | 'BE-02' | 'BE-05' | 'BE-06' | 'FM-01' | 'FM-02'
+export type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15' | 'BE-01' | 'BE-02' | 'BE-03' | 'BE-05' | 'BE-06' | 'FM-01' | 'FM-02'
 export type StylingId = 'styling.css' | 'styling.tailwind' | 'styling.bootstrap' | 'styling.scss'
 export type FrontendId = 'frontend.react-vite' | 'frontend.nextjs-app' | 'frontend.vue-vite' | 'frontend.nuxt' | 'frontend.angular'
-export type BackendId = 'backend.express' | 'backend.go-net-http' | 'backend.laravel' | 'backend.fastapi'
+export type BackendId = 'backend.express' | 'backend.nestjs' | 'backend.go-net-http' | 'backend.laravel' | 'backend.fastapi'
 export type PackageManagerId = 'npm' | 'yarn' | 'pnpm' | 'go-modules' | 'composer' | 'uv'
 
 export interface ProjectSelectionV1 {
@@ -48,7 +48,7 @@ export interface AdapterManifestV1 {
 }
 
 export interface ScaffoldPin {
-  packageName: 'create-vite' | 'create-next-app' | 'create-vue' | 'create-nuxt' | '@angular/cli'
+  packageName: 'create-vite' | 'create-next-app' | 'create-vue' | 'create-nuxt' | '@angular/cli' | '@nestjs/cli'
   version: string
   integrity: string
   binPath: string

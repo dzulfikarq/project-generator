@@ -22,9 +22,9 @@ import {
 
 type Page = 'home' | 'create' | 'frameworks' | 'templates' | 'projects' | 'environment' | 'settings' | 'generation' | 'result'
 type WizardStep = 'details' | 'stack' | 'design' | 'docs' | 'review'
-type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15' | 'BE-01' | 'BE-02' | 'BE-05' | 'BE-06'
+type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15' | 'BE-01' | 'BE-02' | 'BE-03' | 'BE-05' | 'BE-06'
 function isRecipeId(value: string): value is RecipeId {
-  return ['FE-01', 'FE-02', 'FE-03', 'FE-04', 'FE-05', 'FE-06', 'FE-07', 'FE-08', 'FE-09', 'FE-10', 'FE-11', 'FE-12', 'FE-13', 'FE-14', 'FE-15', 'BE-01', 'BE-02', 'BE-05', 'BE-06'].includes(value)
+  return ['FE-01', 'FE-02', 'FE-03', 'FE-04', 'FE-05', 'FE-06', 'FE-07', 'FE-08', 'FE-09', 'FE-10', 'FE-11', 'FE-12', 'FE-13', 'FE-14', 'FE-15', 'BE-01', 'BE-02', 'BE-03', 'BE-05', 'BE-06'].includes(value)
 }
 type Documentation = 'minimal' | 'standard' | 'full'
 type Selection = {
@@ -652,8 +652,8 @@ function App() {
                       setManagerId(adapter.packageManagers[0] ?? 'npm')
                       invalidateReview()
                     }} aria-pressed={recipe?.backend === adapter.id}>
-                       <span className="select-card-top"><span className="framework-monogram">{adapter.id === 'backend.go-net-http' ? 'G' : adapter.id === 'backend.laravel' ? 'L' : adapter.id === 'backend.fastapi' ? 'F' : 'E'}</span><StatusPill tone="warn">{adapterRecipe?.status ?? 'Catalog only'}</StatusPill></span>
-                       <strong>{adapter.displayName}</strong><small>{adapterRecipe ? `${adapterRecipe.id} · ${adapter.id === 'backend.go-net-http' ? 'Go · Go Modules' : adapter.id === 'backend.laravel' ? 'PHP · Composer' : adapter.id === 'backend.fastapi' ? 'Python · uv' : 'TypeScript · npm'}` : 'No backend recipe is cataloged.'}</small>
+                        <span className="select-card-top"><span className="framework-monogram">{adapter.id === 'backend.go-net-http' ? 'G' : adapter.id === 'backend.laravel' ? 'L' : adapter.id === 'backend.fastapi' ? 'F' : adapter.id === 'backend.nestjs' ? 'N' : 'E'}</span><StatusPill tone="warn">{adapterRecipe?.status ?? 'Catalog only'}</StatusPill></span>
+                        <strong>{adapter.displayName}</strong><small>{adapterRecipe ? `${adapterRecipe.id} · ${adapter.id === 'backend.go-net-http' ? 'Go · Go Modules' : adapter.id === 'backend.laravel' ? 'PHP · Composer' : adapter.id === 'backend.fastapi' ? 'Python · uv' : 'TypeScript · npm'}` : 'No backend recipe is cataloged.'}</small>
                     </button>
                   })}
                 </div></fieldset>
@@ -668,7 +668,7 @@ function App() {
               {projectType === 'backend' ? selectedBackend?.id === 'backend.go-net-http' ? <>
                 <div className="template-style-note"><strong>Go · Standard Library net/http · Go Modules</strong><span>Go 1.22+ standalone REST API. No third-party dependencies, go.sum, npm, or automatic server startup.</span></div>
                 <div className="field"><label className="field-label" htmlFor="go-module-path">Go module path</label><input id="go-module-path" className="text-input mono-input" disabled={busy} value={modulePath} maxLength={512} autoComplete="off" aria-invalid={Boolean(modulePathError)} aria-describedby={modulePathError ? 'go-module-path-error' : 'go-module-path-help'} onChange={(event) => { setModulePath(event.target.value); invalidateReview() }} />{modulePathError ? <p id="go-module-path-error" className="field-error">{modulePathError}</p> : <p id="go-module-path-help" className="field-help">Used in go.mod and internal package imports.</p>}</div>
-              </> : selectedBackend?.id === 'backend.laravel' ? <div className="template-style-note"><strong>PHP · Laravel 12 · Composer · MySQL/Eloquent</strong><span>PHP 8.2+ with pdo_mysql and Composer 2.2+ required. Composer scripts/plugins stay disabled. Includes API validation, PHPUnit tests, model, and manual migration; no .env, database provisioning, or automatic migration.</span></div> : selectedBackend?.id === 'backend.fastapi' ? <div className="template-style-note"><strong>Python · FastAPI · Pydantic · Uvicorn · uv</strong><span>Python 3.14.x and uv 0.8+ required. Pins: FastAPI {selectedBackend.versionConstraints.fastapi?.split(' ')[0]}, Pydantic {selectedBackend.versionConstraints.pydantic?.split(' ')[0]}, Uvicorn {selectedBackend.versionConstraints.uvicorn?.split(' ')[0]}, pytest {selectedBackend.versionConstraints.pytest?.split(' ')[0]}. uv.lock and project-local .venv; no automatic Python download or server startup.</span></div> : <div className="template-style-note"><strong>Express · TypeScript · npm</strong><span>Node.js standalone REST API. npm is required for BE-01.</span></div> : <>
+               </> : selectedBackend?.id === 'backend.laravel' ? <div className="template-style-note"><strong>PHP · Laravel 12 · Composer · MySQL/Eloquent</strong><span>PHP 8.2+ with pdo_mysql and Composer 2.2+ required. Composer scripts/plugins stay disabled. Includes API validation, PHPUnit tests, model, and manual migration; no .env, database provisioning, or automatic migration.</span></div> : selectedBackend?.id === 'backend.fastapi' ? <div className="template-style-note"><strong>Python · FastAPI · Pydantic · Uvicorn · uv</strong><span>Python 3.14.x and uv 0.8+ required. Pins: FastAPI {selectedBackend.versionConstraints.fastapi?.split(' ')[0]}, Pydantic {selectedBackend.versionConstraints.pydantic?.split(' ')[0]}, Uvicorn {selectedBackend.versionConstraints.uvicorn?.split(' ')[0]}, pytest {selectedBackend.versionConstraints.pytest?.split(' ')[0]}. uv.lock and project-local .venv; no automatic Python download or server startup.</span></div> : selectedBackend?.id === 'backend.nestjs' ? <div className="template-style-note"><strong>NestJS 11 · TypeScript · npm · Jest</strong><span>Node.js 22.13+ and npm 10+ required. Uses integrity-pinned Nest CLI 11.0.24, CommonJS-compatible NodeNext output, Jest unit/e2e checks, JSON error handling, and graceful shutdown. No Observe integration; CLI --no-observe flag unsupported.</span></div> : <div className="template-style-note"><strong>Express · TypeScript · npm</strong><span>Node.js standalone REST API. npm is required for BE-01.</span></div> : <>
               {!templateId ? <fieldset className="choice-fieldset"><legend>Styling</legend><div className="compact-choice-grid">
                  {stylingAdapters.filter((adapter) => !['styling.scss', 'styling.tailwind'].includes(adapter.id) || adapter.compatibleWith.includes(frontendId)).map((adapter) => {
                   const compatible = adapter.compatibleWith.includes(frontendId)
@@ -783,7 +783,7 @@ function App() {
             <button className="button secondary-button" disabled={!adapterRecipe || busy} onClick={() => startWizardForFramework(adapter.id)}>{adapterRecipe ? 'Configure project' : 'Unavailable'}</button>
           </article>
         })}</div>
-            <p className="catalog-pin">FE-01 through FE-15 and BE-01, BE-02, BE-05, and BE-06 remain planned. Normal generation remains blocked pending independent acceptance.</p>
+             <p className="catalog-pin">FE-01 through FE-15 and BE-01, BE-02, BE-03, BE-05, and BE-06 remain planned. Normal generation remains blocked pending independent acceptance.</p>
       </section>}
 
       {page === 'templates' && <section className="page-content" aria-labelledby="templates-title">
@@ -864,7 +864,7 @@ function App() {
         {recovery !== null && <RecoveryDetails value={recovery} />}
       </section>}
 
-      <footer className="app-footer"><span>FormaForge · Project Generator</span><span>Local development · FE-01–FE-15 / BE-01–BE-02 / BE-05–BE-06 / FM-01 / FM-02 remain planned · no release approval</span></footer>
+      <footer className="app-footer"><span>FormaForge · Project Generator</span><span>Local development · FE-01–FE-15 / BE-01–BE-03 / BE-05–BE-06 / FM-01 / FM-02 remain planned · no release approval</span></footer>
     </main>
   </div>
 }
@@ -879,7 +879,7 @@ function UnsupportedGroup({ title, description, entries }: { title: string; desc
 
 function ProjectList({ projects, vscodeAvailable, onOpen }: { projects: ProjectRecord[]; vscodeAvailable: boolean; onOpen: (path: string, command: 'open_project_folder' | 'open_project_in_vscode') => void }) {
   return <div className="project-list">{projects.map((project) => <article className="project-row" key={`${project.path}-${project.createdAt}`}>
-    <div className="project-type-mark" aria-hidden="true">{project.recipeId === 'BE-02' ? 'G' : project.recipeId === 'BE-05' ? 'L' : project.recipeId === 'BE-06' ? 'F' : project.recipeId === 'FE-02' ? 'N' : project.recipeId === 'FE-06' ? 'U' : project.recipeId === 'FE-07' ? 'A' : ['FE-03', 'FE-05', 'FE-09', 'FE-11', 'FE-13', 'FE-15'].includes(project.recipeId) ? 'V' : 'R'}</div><div className="project-row-main"><strong>{project.name}</strong><code>{project.path}</code><div className="project-row-meta"><span>{project.recipeId}</span><span>·</span><span>{new Date(project.createdAt).toLocaleString()}</span></div></div>
+    <div className="project-type-mark" aria-hidden="true">{project.recipeId === 'BE-02' ? 'G' : project.recipeId === 'BE-03' ? 'N' : project.recipeId === 'BE-05' ? 'L' : project.recipeId === 'BE-06' ? 'F' : project.recipeId === 'FE-02' ? 'N' : project.recipeId === 'FE-06' ? 'U' : project.recipeId === 'FE-07' ? 'A' : ['FE-03', 'FE-05', 'FE-09', 'FE-11', 'FE-13', 'FE-15'].includes(project.recipeId) ? 'V' : 'R'}</div><div className="project-row-main"><strong>{project.name}</strong><code>{project.path}</code><div className="project-row-meta"><span>{project.recipeId}</span><span>·</span><span>{new Date(project.createdAt).toLocaleString()}</span></div></div>
     <div className="project-row-status"><StatusPill tone={project.status === 'completed' ? 'good' : 'warn'}>{project.status === 'completed' ? 'Checks passed' : 'Cleanup attention'}</StatusPill><div className="project-row-actions"><button className="button small-button secondary-button" onClick={() => onOpen(project.path, 'open_project_folder')}>Open folder</button>{vscodeAvailable && <button className="button small-button quiet-button" onClick={() => onOpen(project.path, 'open_project_in_vscode')}>VS Code</button>}</div></div>
   </article>)}</div>
 }

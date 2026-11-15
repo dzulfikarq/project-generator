@@ -2,12 +2,12 @@
 
 | Field | Value |
 |---|---|
-| Version | Draft 0.1 — 2026-11-15 |
-| Status | **FE-03–FE-15 and standalone BE-01/BE-02/BE-05/BE-06 bounded local evidence recorded; FE-01–FE-15/BE-01–BE-02/BE-05–BE-06/FM-01/FM-02 remain PLAN; no recipe promoted or release-approved** |
+| Version | Draft 0.1 — 2026-11-16 |
+| Status | **FE-03–FE-15 and standalone BE-01/BE-02/BE-03/BE-05/BE-06 bounded local evidence recorded; FE-01–FE-15/BE-01–BE-03/BE-05–BE-06/FM-01/FM-02 remain PLAN; no recipe promoted or release-approved** |
 | Main platform | Windows 11 |
 | Source of truth | This matrix + machine-readable adapter manifests + QA results |
 
-> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-15, BE-01–BE-02, BE-06, and FM-01/FM-02 have local implementation/evidence only. BE-05 also has a bounded independent review of its CLI/native and isolated MySQL evidence (**PASS**); this is not recipe promotion or release approval. Every recipe remains unavailable in normal generation.
+> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-15, BE-01–BE-03, BE-06, and FM-01/FM-02 have local implementation/evidence only. BE-05 also has a bounded independent review of its CLI/native and isolated MySQL evidence (**PASS**); this is not recipe promotion or release approval. Every recipe remains unavailable in normal generation.
 
 ## 1. Status and test gates
 
@@ -40,7 +40,7 @@ The catalog can mention `PLAN`, but normal generation is enabled only for `TEST`
 | ID | Backend | Runtime and manager | Scaffolding strategy | Example data integration | State |
 |---|---|---|---|---|---|
 | BE-EXPRESS | Express | Node.js / npm | Reviewed minimal TS scaffold + official dependencies | None in bounded BE-01; database integrations remain separate proposed recipes | PLAN |
-| BE-NEST | NestJS | Node.js / npm | Nest CLI `new` (pinned) | Prisma/PostgreSQL or MySQL; Mongo requires separate verified driver | PLAN |
+| BE-NEST | NestJS | Node.js `>=22.13` / npm `>=10` | Official Nest CLI `11.0.24`; Nest framework `11.2.10`; CommonJS-compatible NodeNext + Jest scaffold | None in bounded standalone BE-03; database recipes remain separate proposed scope | PLAN |
 | BE-FASTIFY | Fastify | Node.js / npm | Official starter or reviewed minimal TS scaffold | Drizzle or Prisma for compatible SQL | PLAN |
 | BE-GO | Go standard-library `net/http` (BE-02); Gin is separate candidate | Go >=1.22 / Go Modules | Reviewed standalone REST starter; no scaffold CLI | None in BE-02; database integrations remain separate proposed recipes | PLAN |
 | BE-GIN | Go + Gin | Go / Go Modules | `go mod init` + versioned starter | pgx/PostgreSQL, MySQL driver/GORM if specifically tested | PLAN |
@@ -132,7 +132,7 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | FE-15 | Frontend | Vue 3 + Vite | None | None | Plain CSS | pnpm `11.28.11` (`hoisted`) | Phase 04B.3 |
 | BE-01 | Backend | None | Express | None | N/A | npm | Phase 05A standalone API; DB excluded |
 | BE-02 | Backend | None | Go standard-library `net/http` | None | N/A | Go Modules | Phase 05B standalone API; no external modules |
-| BE-03 | Backend | None | NestJS | PostgreSQL + Prisma | N/A | npm | V1 |
+| BE-03 | Backend | None | NestJS | None in Phase 05D.1; PostgreSQL + Prisma remains a separate proposed recipe | N/A | npm | Phase 05D.1 standalone API |
 | BE-04 | Backend | None | Go + Gin | PostgreSQL + pgx | N/A | Go Modules | V1 |
 | BE-05 | Backend | None | Laravel | MySQL + Eloquent | N/A | Composer only; npm assets omitted | Phase 05C.3 |
 | BE-06 | Backend | None | FastAPI | None in Phase 05C.1; SQLAlchemy/database remains separate proposal | N/A | uv | Phase 05C.1 implementation; Phase 05C.2 bounded local CLI/native evidence; independent acceptance pending |
@@ -157,6 +157,8 @@ Phase 04B.3 uses official `create-vite@9.3.4` / `create-vue@3.24.0` scaffolds fo
 Phase 05C.1 adds BE-06 as standalone FastAPI/Pydantic/Uvicorn + uv with Python 3.14.x baseline, isolated `.venv`, `uv.lock`, API/docs/tests, and explicit unsandboxed build-code consent. Phase 05C.2 recorded bounded local provenance and passed CLI/native checks using isolated CPython 3.14.10 and uv 0.13.8, including lock integrity, install, Python checks, HTTP/OpenAPI/shutdown, cancellation, and collision checks. Direct package pins still need independent review; local evidence does not promote the recipe. See [DEC-027](../decisions/DEC-027-phase-05c1-fastapi.md), [Phase 05C.1 evidence](../qa/evidence/phase-05c1-fastapi.md), and [Phase 05C.2 evidence](../qa/evidence/phase-05c2-fastapi-toolchain-native.md). BE-06 remains PLAN and release-blocked.
 
 Phase 05C.3 adds BE-05 as standalone Laravel 12/PHP/Composer with MySQL/Eloquent configuration. Bounded Windows CLI/native and isolated database acceptance passed using vendor-verified portable MySQL 8.4.13 bound only to `127.0.0.1:3307`: explicit migration passed; temporary PHPUnit integration passed 4 tests/22 assertions, including Eloquent create/read/update/delete; invalid-credential and unavailable-DB checks, schema isolation, and cleanup passed. Generation created no `.env`, schema, or migration. Composer scripts/plugins are disabled; package code remains unsandboxed and requires explicit consent. Bounded independent review of this evidence: **PASS**; Phase 05C development scope is closed. Acceptance/review does not promote the recipe or approve release: BE-05 remains `PLAN` and blocked in normal/release generation. See [DEC-028](../decisions/DEC-028-phase-05c3-laravel.md) and [Phase 05C.3 evidence](../qa/evidence/phase-05c3-laravel.md).
+
+Phase 05D.1 adds BE-03 as standalone NestJS 11/TypeScript/npm using integrity-pinned Nest CLI `11.0.24`, framework packages `11.2.10`, Node `>=22.13`, Jest 30 + ts-jest `29.4.15`, and CommonJS-compatible NodeNext output. Windows CLI/native acceptance passed scaffold, dependency/lock integrity, typecheck, lint, unit/e2e, build, HTTP, cancellation (CLI), consent, history/open, and collision checks. No DB/ORM/auth/Docker/fullstack/Observe integration. Evidence is local and pending independent review; BE-03 remains `PLAN`, normal/release generation remains blocked. See [DEC-029](../decisions/DEC-029-phase-05d1-nestjs.md) and [Phase 05D.1 evidence](../qa/evidence/phase-05d1-nestjs.md).
 
 **Important:** the fullstack recipe must produce a real, reachable example API endpoint and frontend call when that is part of its advertised output. Generating two unrelated folder trees is insufficient.
 
