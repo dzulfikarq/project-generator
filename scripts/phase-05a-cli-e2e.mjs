@@ -58,7 +58,7 @@ async function cleanJobLogs() {
 }
 
 async function runCancelled(configPath) {
-  const child = spawn(process.execPath, [cli, 'generate', '--config', configPath, '--jsonl', '--development-allow-planned', '--desktop-control'], {
+  const child = spawn(process.execPath, [cli, 'generate', '--config', configPath, '--jsonl', '--development-allow-planned', '--allow-dependency-scripts', '--desktop-control'], {
     cwd: root,
     env: environment,
     windowsHide: true,
@@ -191,7 +191,7 @@ try {
   await runCancelled(cancelPath)
   await cleanJobLogs()
 
-  const generated = invoke(['generate', '--config', configPath, '--jsonl', '--development-allow-planned'])
+  const generated = invoke(['generate', '--config', configPath, '--jsonl', '--development-allow-planned', '--allow-dependency-scripts'])
   keepJobLog(generated.stderr)
   assert.equal(generated.status, 0, `${generated.stderr}\n${generated.stdout}`)
   const generatedEvents = events(generated.stdout)
@@ -241,7 +241,7 @@ try {
   await writeFile(sentinelPath, 'do not overwrite\n')
   const collisionConfig = join(parent, 'collision.json')
   await writeFile(collisionConfig, JSON.stringify(selection('collision-api'), null, 2))
-  const collision = invoke(['generate', '--config', collisionConfig, '--jsonl', '--development-allow-planned'])
+  const collision = invoke(['generate', '--config', collisionConfig, '--jsonl', '--development-allow-planned', '--allow-dependency-scripts'])
   keepJobLog(collision.stderr)
   assert.equal(collision.status, 6, `${collision.stderr}\n${collision.stdout}`)
   assert.ok(events(collision.stdout).some((event) => event.code === 'GEN_PATH_EXISTS'))

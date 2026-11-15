@@ -8,6 +8,8 @@ import { GeneratorError, asGeneratorError } from './errors.js'
 import { ALLOW_PLANNED_RECIPE_GENERATION } from './build-policy.js'
 import { packageManager, packageManagerConfiguration } from './catalog.js'
 import { writeBackendStarter } from './backend-starter.js'
+import { writeFastApiBackendStarter } from './fastapi-backend-starter.js'
+import { verifyUvLockfile, writeFastApiProjectDocs, writeFastApiProjectManifest } from './fastapi-project-docs.js'
 import { writeGoBackendStarter } from './go-backend-starter.js'
 import { writeGoProjectDocs, writeGoProjectManifest } from './go-project-docs.js'
 import { runDoctor } from './doctor.js'
@@ -15,7 +17,7 @@ import { createPlan } from './plan.js'
 import { writeProjectDocs, writeProjectManifest } from './project-docs.js'
 import { runNodeProcess, runSafeProcess, startNodeProcess, startSafeProcess, type ProcessResult, type SafeProcessOptions } from './runner.js'
 import { bindOwnedStageProjectIdentity, createOwnedStage, cleanupOwnedStage, cleanupStageSupportFiles, markOwnedStageGenerating, mutateOwnedStage, moveDirectoryNoReplace, verifyOwnedStageProjectIdentity, type OwnedStage } from './staging.js'
-import { resolveGoTool, resolveNpmTool, supportsGo, supportsNpm, type GoTool, type NpmTool } from './toolchain.js'
+import { resolveGoTool, resolveNpmTool, resolvePythonExecutable, resolveUvExecutable, supportsGo, supportsNpm, supportsPython, supportsUv, type GoTool, type NpmTool, type PythonExecutable, type UvExecutable } from './toolchain.js'
 import { assertGenerationAllowed } from './native-supervisor.js'
 import { resolveSelection } from './resolver.js'
 import { installFormaTemplate, type FormaInstallEvidence } from './forma.js'
@@ -23,6 +25,7 @@ import type { DoctorReport, JobEventV1, JobStatus, PackageManagerManifestV1, Pro
 
 export interface GenerateOptions {
   allowPlanned?: boolean
+  allowDependencyScripts?: boolean
   signal?: AbortSignal
   onEvent?: (event: JobEventV1) => void
 }
@@ -119,6 +122,14 @@ function preflightError(report: DoctorReport): GeneratorError {
     return userError('GEN_PLATFORM_UNSUPPORTED', 'preflight', 'Phase 01 generation is supported on Windows only.', 'Run generation on Windows.')
   }
   if (go) return userError('GEN_TOOL_MISSING', 'preflight', 'Go toolchain preflight did not pass.', 'Review Doctor output and install a supported Go SDK.')
+  const python = report.tools.find((tool) => tool.id === 'python')
+  if (python && !python.available) {
+    return userError(python.version ? 'GEN_TOOL_UNSUPPORTED' : 'GEN_TOOL_MISSING', 'preflight', python.message, 'Install a user-managed Python 3.14.x runtime, add python.exe to PATH, then rerun Doctor. Automatic runtime downloads are disabled.')
+  }
+  const uv = report.tools.find((tool) => tool.id === 'uv')
+  if (uv && !uv.available) {
+    return userError(uv.version ? 'GEN_TOOL_UNSUPPORTED' : 'GEN_TOOL_MISSING', 'preflight', uv.message, 'Install uv using its official user-managed installer, add uv.exe to PATH, then rerun Doctor.')
+  }
   const node = report.tools.find((tool) => tool.id === 'node')
   const npm = report.tools.find((tool) => tool.id === 'npm')
   if (!node?.available) {
@@ -148,13 +159,14 @@ function throwIfCancelled(signal: AbortSignal | undefined, stage: StageId): void
   if (signal?.aborted) throw userError('GEN_CANCELLED', stage, 'Generation was cancelled.', 'Retry from the beginning at a new destination.')
 }
 
-async function prepareDirectories(stage: OwnedStage): Promise<{ tools: string; home: string; temp: string; cache: string; goCache: string; goModCache: string; userConfig: string; globalConfig: string }> {
+async function prepareDirectories(stage: OwnedStage): Promise<{ tools: string; home: string; temp: string; cache: string; goCache: string; goModCache: string; uvCache: string; userConfig: string; globalConfig: string }> {
   const tools = win32.join(stage.path, '.tools')
   const home = win32.join(stage.path, '.home')
   const temp = win32.join(stage.path, '.tmp')
   const cache = win32.join(stage.path, '.npm-cache')
   const goCache = win32.join(stage.path, '.go-cache')
   const goModCache = win32.join(stage.path, '.go-mod-cache')
+  const uvCache = win32.join(stage.path, '.uv-cache')
   const userConfig = win32.join(stage.path, '.npmrc-user')
   const globalConfig = win32.join(stage.path, '.npmrc-global')
   await mutateOwnedStage(stage, [
@@ -165,11 +177,12 @@ async function prepareDirectories(stage: OwnedStage): Promise<{ tools: string; h
     '.npm-cache',
     '.go-cache',
     '.go-mod-cache',
+    '.uv-cache',
   ], [
     { path: '.npmrc-user', content: 'registry=https://registry.npmjs.org/\n' },
     { path: '.npmrc-global', content: 'registry=https://registry.npmjs.org/\n' },
   ])
-  return { tools, home, temp, cache, goCache, goModCache, userConfig, globalConfig }
+  return { tools, home, temp, cache, goCache, goModCache, uvCache, userConfig, globalConfig }
 }
 
 function npmArguments(userConfig: string, globalConfig: string, cache: string, commandArgs: readonly string[]): string[] {
@@ -264,6 +277,42 @@ async function runGo(
     timeoutMs,
   })
   log.process(label, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
+  return result
+}
+
+async function runUv(
+  args: readonly string[],
+  cwd: string,
+  stage: OwnedStage,
+  uv: UvExecutable,
+  python: PythonExecutable,
+  dirs: { home: string; temp: string; uvCache: string },
+  log: JobLog,
+  label: string,
+  signal?: AbortSignal,
+): Promise<ProcessResult> {
+  const result = await runSafeProcess({
+    executablePath: uv.executablePath,
+    allowedExecutableRoot: uv.directory,
+    cwd,
+    allowedCwdRoot: stage.path,
+    args,
+    homeDirectory: dirs.home,
+    tempDirectory: dirs.temp,
+    extraPath: [uv.directory, python.directory],
+    environment: {
+      UV_NO_CONFIG: '1',
+      UV_INDEX_URL: 'https://pypi.org/simple',
+      UV_CACHE_DIR: dirs.uvCache,
+      UV_PROJECT_ENVIRONMENT: win32.join(cwd, '.venv'),
+      UV_PYTHON_DOWNLOADS: 'never',
+      PYTHONNOUSERSITE: '1',
+      PYTHONDONTWRITEBYTECODE: '1',
+    },
+    ...(signal ? { signal } : {}),
+    timeoutMs: 10 * 60 * 1000,
+  })
+  log.process(label, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, dirs.uvCache, tmpdir()])
   return result
 }
 
@@ -753,6 +802,77 @@ async function servedGoBackendSmoke(
   return outcome
 }
 
+async function servedFastApiSmoke(
+  projectPath: string,
+  stage: OwnedStage,
+  dirs: { home: string; temp: string; uvCache: string },
+  uv: UvExecutable,
+  python: PythonExecutable,
+  signal: AbortSignal | undefined,
+  log: JobLog,
+): Promise<ValidationOutcome[]> {
+  const port = await freePort()
+  const running = await startSafeProcess({
+    executablePath: uv.executablePath,
+    allowedExecutableRoot: uv.directory,
+    cwd: projectPath,
+    allowedCwdRoot: stage.path,
+    args: ['run', '--locked', '--no-sync', '--python', python.executablePath, 'python', '-m', 'app'],
+    homeDirectory: dirs.home,
+    tempDirectory: dirs.temp,
+    extraPath: [uv.directory, python.directory],
+    environment: {
+      UV_NO_CONFIG: '1',
+      UV_INDEX_URL: 'https://pypi.org/simple',
+      UV_CACHE_DIR: dirs.uvCache,
+      UV_PROJECT_ENVIRONMENT: win32.join(projectPath, '.venv'),
+      UV_PYTHON_DOWNLOADS: 'never',
+      PYTHONNOUSERSITE: '1',
+      PYTHONDONTWRITEBYTECODE: '1',
+      HOST: '127.0.0.1',
+      PORT: String(port),
+    },
+    ...(signal ? { signal } : {}),
+  })
+  let apiPassed = false
+  let openApiPassed = false
+  const smokeTimeout = AbortSignal.timeout(15_000)
+  const requestSignal = (): AbortSignal => AbortSignal.any([smokeTimeout, AbortSignal.timeout(800)])
+  try {
+    for (let attempt = 0; attempt < 30 && !smokeTimeout.aborted; attempt += 1) {
+      throwIfCancelled(signal, 'validating')
+      try {
+        const health = await fetch(`http://127.0.0.1:${port}/health`, { signal: requestSignal() })
+        const healthBody = await health.json() as { status?: string }
+        const info = await fetch(`http://127.0.0.1:${port}/api/info`, { signal: requestSignal() })
+        const infoBody = await info.json() as { name?: string; version?: string }
+        const docs = await fetch(`http://127.0.0.1:${port}/docs`, { signal: requestSignal() })
+        const docsBody = await docs.text()
+        const openapi = await fetch(`http://127.0.0.1:${port}/openapi.json`, { signal: requestSignal() })
+        const openapiBody = await openapi.json() as { paths?: Record<string, unknown> }
+        apiPassed = health.status === 200 && healthBody.status === 'ok'
+          && info.status === 200 && infoBody.name === `${win32.basename(projectPath)} API` && infoBody.version === '0.1.0'
+        openApiPassed = Boolean(docs.status === 200 && docs.headers.get('content-type')?.includes('text/html') && /swagger-ui/i.test(docsBody)
+          && openapi.status === 200 && openapiBody.paths?.['/health'] && openapiBody.paths?.['/api/info'])
+        if (apiPassed && openApiPassed) break
+      } catch {
+        // Keep probing until bounded smoke-test timeout; response bodies stay local.
+        if (smokeTimeout.aborted) break
+      }
+      if (!smokeTimeout.aborted) await new Promise((resolveWait) => setTimeout(resolveWait, 500))
+    }
+  } finally {
+    await running.stop()
+    const result = await running.result.catch(() => undefined)
+    if (result) log.process('fastapi-http-smoke-server', result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, dirs.uvCache, tmpdir()])
+  }
+  if (!apiPassed || !openApiPassed) throw userError('GEN_VALIDATE_FAILED', 'validating', 'FastAPI did not return expected health, info, Swagger UI, or OpenAPI responses within 15 seconds.', 'Review the local redacted job log and retry with the generated locked environment.')
+  return [
+    { id: 'http-smoke', status: 'pass', message: 'FastAPI returned valid JSON from /health and /api/info.', exitCode: 0 },
+    { id: 'openapi', status: 'pass', message: 'Swagger UI and OpenAPI schema expose the generated routes.', exitCode: 0 },
+  ]
+}
+
 async function verifyGeneratedStyling(projectPath: string, recipe: RecipeManifestV1): Promise<ValidationOutcome | undefined> {
   const viteScss = recipe.styling === 'styling.scss'
     && (recipe.frontend === 'frontend.react-vite' || recipe.frontend === 'frontend.vue-vite')
@@ -833,6 +953,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
   const resolved = resolveSelection(selection)
   selection = resolved.selection
   const isGo = resolved.recipe.id === 'BE-02'
+  const isPython = resolved.recipe.id === 'BE-06'
   const isForma = Boolean(selection.template)
   const recipeOwnerId = resolved.recipe.backend ?? resolved.recipe.frontend ?? 'core'
   const eventOwner = (id: StageId): string => stageOwner(id, recipeOwnerId, resolved.recipe.manager, isForma)
@@ -841,14 +962,21 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
   let formaEvidence: FormaInstallEvidence | undefined
   let npmTool: NpmTool | undefined
   let goTool: GoTool | undefined
+  let pythonExecutable: PythonExecutable | undefined
+  let uvExecutable: UvExecutable | undefined
+  let pythonVersion: string | undefined
+  let uvVersion: string | undefined
 
   emit({ type: 'job-started', stageOwner: 'core', status: 'running', message: `Generation job ${jobId} started.` })
-  if (!isGo) emit({ type: 'warning', stageOwner: 'core', code: 'GEN_LIFECYCLE_SCRIPTS', message: `${resolved.recipe.manager} install can execute third-party lifecycle scripts; execution is not sandboxed.` })
+  if (!isGo) emit({ type: 'warning', stageOwner: 'core', code: 'GEN_LIFECYCLE_SCRIPTS', message: isPython ? 'uv sync can execute third-party package build code; execution is not sandboxed.' : `${resolved.recipe.manager} install can execute third-party lifecycle scripts; execution is not sandboxed.` })
   try {
     stageStart('preflight')
     throwIfCancelled(options.signal, currentStage)
     if (resolved.recipe.status !== 'tested' && !(ALLOW_PLANNED_RECIPE_GENERATION && options.allowPlanned && resolved.recipe.status === 'planned')) {
       throw userError('GEN_RECIPE_UNTESTED', 'preflight', `${resolved.recipe.id} is planned and disabled for normal generation.`, 'Use a tested recipe; development-only runs do not change recipe status.')
+    }
+    if (createPlan(selection).executesDependencyLifecycleScripts && !options.allowDependencyScripts) {
+      throw userError('GEN_DEPENDENCY_CONSENT_REQUIRED', 'preflight', 'Generation was not started because dependency installation can execute third-party code.', 'Review the plan and explicitly allow dependency scripts before generation.')
     }
     await assertGenerationAllowed()
     throwIfCancelled(options.signal, currentStage)
@@ -860,6 +988,17 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       if (!executable || !version) throw userError('GEN_TOOL_MISSING', 'preflight', 'Go SDK could not be resolved after Doctor verification.', 'Install Go 1.22 or newer, add its bin directory to PATH, and rerun Doctor.')
       if (!supportsGo(version)) throw userError('GEN_TOOL_UNSUPPORTED', 'preflight', `Go ${version} is below the required Go 1.22 minimum.`, 'Install Go 1.22 or newer and rerun Doctor.')
       goTool = { ...executable, version }
+    } else if (isPython) {
+      pythonExecutable = await resolvePythonExecutable()
+      uvExecutable = await resolveUvExecutable()
+      pythonVersion = doctor.tools.find((tool) => tool.id === 'python')?.version
+      uvVersion = doctor.tools.find((tool) => tool.id === 'uv')?.version
+      if (!pythonExecutable || !pythonVersion || !supportsPython(pythonVersion)) {
+        throw userError('GEN_TOOL_UNSUPPORTED', 'preflight', 'Python 3.14.x could not be resolved after Doctor verification.', 'Install a user-managed Python 3.14.x runtime and rerun Doctor; automatic runtime downloads are disabled.')
+      }
+      if (!uvExecutable || !uvVersion || !supportsUv(uvVersion)) {
+        throw userError('GEN_TOOL_UNSUPPORTED', 'preflight', 'uv 0.8.0 or newer could not be resolved after Doctor verification.', 'Install a supported uv executable and rerun Doctor.')
+      }
     } else {
       npmTool = await resolveNpmTool()
       if (!npmTool || !supportsNpm(npmTool.version)) throw userError('GEN_TOOL_MISSING', 'preflight', 'Trusted npm CLI is missing or unsupported.', 'Install Node.js with npm 10 or newer and rerun doctor.')
@@ -880,6 +1019,8 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     let starterFiles: string[] = []
     if (selection.template) {
       formaEvidence = await installFormaTemplate(stage, selection.template, resolved.recipe.frontend!, selection.project.name, dirs, log, options.signal)
+    } else if (isPython) {
+      starterFiles = await writeFastApiBackendStarter(stage, selection.project.name)
     } else if (isGo) {
       starterFiles = await writeGoBackendStarter(stage, selection.project.name, selection.backend!.modulePath!)
     } else if (resolved.recipe.projectType === 'backend') {
@@ -894,8 +1035,8 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     }
     const projectPath = stage.childPath
     await bindOwnedStageProjectIdentity(stage, selection.project.name)
-    await verifyOwnedStageProjectIdentity(stage, selection.project.name, isGo ? selection.backend?.modulePath : undefined)
-    const identityOutcome: ValidationOutcome = { id: 'scaffold-identity', status: 'pass', message: isGo ? 'Generated module and project identity match the requested configuration.' : 'Generated package identity matches the requested name.' }
+    await verifyOwnedStageProjectIdentity(stage, selection.project.name, isGo ? selection.backend?.modulePath : undefined, isPython ? 'pyproject.toml' : undefined)
+    const identityOutcome: ValidationOutcome = { id: 'scaffold-identity', status: 'pass', message: isGo ? 'Generated module and project identity match the requested configuration.' : isPython ? 'Generated pyproject project name matches the requested project identity.' : 'Generated package identity matches the requested name.' }
     validations.push(identityOutcome)
     emit({ type: 'validation', stageId: 'scaffolding', stageOwner: eventOwner('scaffolding'), stageStatus: 'passed', message: identityOutcome.message })
     stageFinish('scaffolding', 'passed')
@@ -909,7 +1050,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       if (error instanceof GeneratorError) throw error
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
-    const generatedFiles = [...starterFiles, ...(isGo ? [] : await configureRecipeDependencies(stage, resolved))]
+    const generatedFiles = [...starterFiles, ...(isGo || isPython ? [] : await configureRecipeDependencies(stage, resolved))]
     const managerConfig = packageManagerConfiguration(resolved.recipe.manager)
     if (managerConfig) {
       const projectPrefix = `${win32.basename(projectPath)}/`
@@ -917,6 +1058,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       generatedFiles.push(...written.map((path) => path.slice(projectPrefix.length)))
     }
     if (isGo) generatedFiles.push(...await writeGoProjectDocs(stage, resolved, goTool!.version))
+    else if (isPython) generatedFiles.push(...await writeFastApiProjectDocs(stage, resolved, pythonVersion!, uvVersion!))
     else generatedFiles.push(...await writeProjectDocs(stage, resolved, process.version.replace(/^v/, ''), npmTool!, formaEvidence))
     if (formaEvidence) generatedFiles.push('FORMA-INSTALL.md', 'INSTALL.md', 'forma.install.json', 'forma-install-report.json')
     stageFinish('configuring', 'passed')
@@ -925,6 +1067,38 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     throwIfCancelled(options.signal, currentStage)
     if (isGo) {
       stageFinish('installing', 'skipped', 'No dependency installation required; Go standard library only.')
+    } else if (isPython) {
+      const lock = await runUv(['lock', '--python', pythonExecutable!.executablePath], projectPath, stage, uvExecutable!, pythonExecutable!, dirs, log, 'uv-lock', options.signal)
+      const lockOutcome = checkOutcome('uv-lock', lock)
+      validations.push(lockOutcome)
+      emitValidation(emit, lockOutcome, 'uv')
+      if (lock.exitCode !== 0) throw mappedProcessError('installing', lock)
+
+      let lockHash: string
+      try {
+        lockHash = await verifyUvLockfile(projectPath)
+      } catch {
+        throw userError('GEN_LOCKFILE_INTEGRITY', 'installing', 'uv.lock is missing pinned package versions or SHA-256 integrity hashes.', 'Review the generated uv.lock and retry with a supported uv version.')
+      }
+      const lockCheck = await runUv(['lock', '--check', '--python', pythonExecutable!.executablePath], projectPath, stage, uvExecutable!, pythonExecutable!, dirs, log, 'uv-lock-check', options.signal)
+      if (lockCheck.exitCode !== 0) throw mappedProcessError('installing', lockCheck)
+
+      const install = await runUv(['sync', '--locked', '--extra', 'test', '--python', pythonExecutable!.executablePath], projectPath, stage, uvExecutable!, pythonExecutable!, dirs, log, 'uv-locked-sync', options.signal)
+      const installOutcome = checkOutcome('dependency-install', install)
+      validations.push(installOutcome)
+      emitValidation(emit, installOutcome, 'uv')
+      if (install.exitCode !== 0) throw mappedProcessError('installing', install)
+
+      const integrity: ValidationOutcome = { id: 'dependency-integrity', status: 'pass', message: 'uv locked sync verified package artifact hashes against uv.lock.', exitCode: 0 }
+      validations.push(integrity)
+      emitValidation(emit, integrity, 'uv')
+      const finalLockHash = await verifyUvLockfile(projectPath)
+      if (finalLockHash !== lockHash) throw userError('GEN_LOCKFILE_INTEGRITY', 'installing', 'uv.lock changed during locked dependency installation.', 'Review the local redacted job log and retry.')
+      const lockIntegrity: ValidationOutcome = { id: 'lockfile-integrity', status: 'pass', message: `uv.lock pins exact direct versions and SHA-256 artifact hashes (lock SHA-256 ${lockHash}).`, exitCode: 0 }
+      validations.push(lockIntegrity)
+      emitValidation(emit, lockIntegrity, 'uv')
+      generatedFiles.push('uv.lock')
+      stageFinish('installing', 'passed')
     } else {
       // ponytail: clean Angular 21 scaffold crashes npm 10.9.8 Arborist; remove when ordinary install passes on pinned toolchain.
       const legacyPeerHandling = resolved.recipe.styling === 'styling.bootstrap' || resolved.recipe.frontend === 'frontend.angular'
@@ -976,7 +1150,13 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       validations.push(moduleOutcome)
       emitValidation(emit, moduleOutcome, recipeOwnerId)
     }
-    const checks: { id: string; path?: string; args: string[] }[] = isGo
+    const checks: { id: string; path?: string; args: string[] }[] = isPython
+      ? [
+        { id: 'python-syntax', args: ['run', '--locked', '--no-sync', '--extra', 'test', '--python', pythonExecutable!.executablePath, 'python', '-m', 'compileall', '-q', 'app', 'tests'] },
+        { id: 'pytest', args: ['run', '--locked', '--no-sync', '--extra', 'test', '--python', pythonExecutable!.executablePath, 'pytest', 'tests/test_health.py', 'tests/test_info.py'] },
+        { id: 'graceful-shutdown', args: ['run', '--locked', '--no-sync', '--extra', 'test', '--python', pythonExecutable!.executablePath, 'pytest', 'tests/test_shutdown.py'] },
+      ]
+      : isGo
       ? [
         { id: 'go-fmt', args: ['fmt', './...'] },
         { id: 'go-vet', args: ['vet', './...'] },
@@ -1025,7 +1205,9 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       ]
     for (const check of checks) {
       throwIfCancelled(options.signal, currentStage)
-      const result = isGo
+      const result = isPython
+        ? await runUv(check.args, projectPath, stage, uvExecutable!, pythonExecutable!, dirs, log, check.id, options.signal)
+        : isGo
         ? await runGo(check.args, projectPath, stage, goTool!, dirs, log, check.id, options.signal)
         : await runAppScript(check.path!, check.args, projectPath, stage, dirs, options.signal, log, check.id)
       const outcome = checkOutcome(check.id, result)
@@ -1044,17 +1226,20 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       emitValidation(emit, lint, recipeOwnerId)
     }
     throwIfCancelled(options.signal, currentStage)
-    const smoke = isGo
-      ? await servedGoBackendSmoke(projectPath, stage, dirs, goTool!, selection.project.name, options.signal, log)
-      : resolved.recipe.projectType === 'backend'
-      ? await servedBackendSmoke(projectPath, stage, dirs, options.signal, log)
-      : await servedPageSmoke(projectPath, stage, dirs, resolved.recipe.frontend!, options.signal, log)
-    validations.push(smoke)
-    emitValidation(emit, smoke, recipeOwnerId)
+    const smokeOutcomes = isPython
+      ? await servedFastApiSmoke(projectPath, stage, dirs, uvExecutable!, pythonExecutable!, options.signal, log)
+      : [isGo
+        ? await servedGoBackendSmoke(projectPath, stage, dirs, goTool!, selection.project.name, options.signal, log)
+        : resolved.recipe.projectType === 'backend'
+          ? await servedBackendSmoke(projectPath, stage, dirs, options.signal, log)
+          : await servedPageSmoke(projectPath, stage, dirs, resolved.recipe.frontend!, options.signal, log)]
+    validations.push(...smokeOutcomes)
+    for (const smoke of smokeOutcomes) emitValidation(emit, smoke, recipeOwnerId)
     const allPassed = validations.every((item) => item.status === 'pass'
       || (selection.template !== undefined && item.id === 'lint' && item.status === 'skipped'))
     if (!allPassed) throw userError('GEN_VALIDATE_FAILED', 'validating', 'One or more required checks did not pass.', 'Review the local redacted job log and retry.')
     if (isGo) await writeGoProjectManifest(stage, resolved, goTool!.version, validations, generatedFiles)
+    else if (isPython) await writeFastApiProjectManifest(stage, resolved, pythonVersion!, uvVersion!, await verifyUvLockfile(projectPath), validations, generatedFiles)
     else await writeProjectManifest(stage, resolved, process.version.replace(/^v/, ''), npmTool!, validations, generatedFiles, formaEvidence)
     stageFinish('validating', 'passed')
 

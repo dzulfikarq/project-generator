@@ -121,6 +121,8 @@ mod windows {
         project_name: Option<String>,
         #[serde(default)]
         module_path: Option<String>,
+        #[serde(default)]
+        manifest_file: Option<String>,
         target_path: Option<String>,
         journal_root_path: String,
         transaction_nonce: String,
@@ -2571,12 +2573,17 @@ mod windows {
             .project_identity
             .ok_or_else(|| fs_failure("stage_identity_unconfirmed", None))?;
         let project = open_verified_project(stage.stage_handle.raw(), project_name, expected)?;
-        let (manifest_name, go_module_path) = match request.module_path.as_deref() {
-            Some(module_path) if !module_path.is_empty() && module_path.len() <= 512 => {
-                ("go.mod", Some(module_path))
+        let (manifest_name, go_module_path, python_project_name) = match (
+            request.module_path.as_deref(),
+            request.manifest_file.as_deref(),
+        ) {
+            (Some(module_path), None) if !module_path.is_empty() && module_path.len() <= 512 => {
+                ("go.mod", Some(module_path), None)
             }
-            Some(_) => return Err(fs_failure("scaffold_invalid", None)),
-            None => ("package.json", None),
+            (Some(_), _) => return Err(fs_failure("scaffold_invalid", None)),
+            (None, Some("pyproject.toml")) => ("pyproject.toml", None, Some(project_name)),
+            (None, Some(_)) => return Err(fs_failure("scaffold_invalid", None)),
+            (None, None) => ("package.json", None, None),
         };
         let manifest = open_relative(
             project.raw(),
@@ -2625,6 +2632,23 @@ mod windows {
                 .next()
                 .unwrap_or_default();
             if first_line.strip_suffix(b"\r").unwrap_or(first_line) != expected.as_bytes() {
+                return Err(fs_failure("scaffold_invalid", None));
+            }
+        } else if let Some(project_name) = python_project_name {
+            let text =
+                std::str::from_utf8(&content).map_err(|_| fs_failure("scaffold_invalid", None))?;
+            let mut in_project = false;
+            let mut name_matches = false;
+            for line in text.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with('[') {
+                    in_project = trimmed == "[project]";
+                } else if in_project && trimmed == format!("name = \"{project_name}\"") {
+                    name_matches = true;
+                    break;
+                }
+            }
+            if !name_matches {
                 return Err(fs_failure("scaffold_invalid", None));
             }
         } else {
@@ -2751,6 +2775,7 @@ mod windows {
             ".home",
             ".tmp",
             ".npm-cache",
+            ".uv-cache",
             ".npmrc-user",
             ".npmrc-global",
         ] {
@@ -3521,6 +3546,7 @@ mod windows {
                 job_id: record.job_id.clone(),
                 project_name: Some(record.project_name.clone()),
                 module_path: None,
+                manifest_file: None,
                 target_path: Some(record.target_path.clone()),
                 journal_root_path: request.journal_root_path.clone(),
                 transaction_nonce: record.transaction_nonce.clone(),

@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Date | 2026-11-13 |
-| State | Phase 01 CLI, Phase 02 local Forma integration, bounded DEC-017 recovery, Phase 02.6 runtime PoC, Phase 03 internal UI MVP, Phase 04B.3 frontend evidence, Phase 05A BE-01 evidence, and Phase 05B BE-02 implementation/evidence present; formal release review not complete |
+| State | Phase 01 CLI, Phase 02 local Forma integration, bounded DEC-017 recovery, Phase 02.6 runtime PoC, Phase 03 internal UI MVP, Phase 04B.3 frontend evidence, Phase 05A/05B backend evidence, and Phase 05C.1 BE-06 implementation present; formal release review not complete |
 | Governance | See [`governance.md`](governance.md) |
 
 This project adopts EvoPilot's **decision accountability** pattern but uses standard English spelling (`decision`, `decisions`). A user-selected direction can be recorded as **Accepted Discovery** without implying implementation completion, test passage or formal release approval.
@@ -36,7 +36,8 @@ This project adopts EvoPilot's **decision accountability** pattern but uses stan
 | DEC-023 | Phase 04B.2 React/Vue Vite SCSS and Tailwind recipes | Implementation and bounded local acceptance complete; independent review pending | [DEC-023](DEC-023-phase-04b2-scss-tailwind.md), [Phase 04B.2 evidence](../qa/evidence/phase-04b2-scss-tailwind.md) | Phase 04B.3 GO for independent review only; keep FE-08–FE-11 planned; no scope expansion or release approval |
 | DEC-024 | Phase 04B.3 React/Vue Vite Yarn and pnpm recipes | Implementation and bounded local CLI/native acceptance complete; independent review pending | [DEC-024](DEC-024-phase-04b3-yarn-pnpm.md), [Phase 04B.3 evidence](../qa/evidence/phase-04b3-yarn-pnpm.md) | Keep FE-12–FE-15 planned; independent review only; npm remains default; no release approval |
 | DEC-025 | Phase 05A standalone Express REST API | User-authorized implementation and bounded local CLI/native acceptance complete; independent review pending | [DEC-025](DEC-025-phase-05a-express-rest-api.md), [Phase 05A evidence](../qa/evidence/phase-05a-express-rest-api.md) | Keep BE-01 planned; no DB/fullstack expansion or release approval |
-| DEC-026 | Phase 05B standalone Go REST API | User-authorized implementation, bounded Windows CLI/native acceptance, and final regressions complete; independent review pending | [DEC-026](DEC-026-phase-05b-go-net-http.md), [Phase 05B evidence](../qa/evidence/phase-05b-go-net-http.md) | Keep BE-02 planned; recommend Phase 05C evaluate Laravel and FastAPI separately; no release approval |
+| DEC-026 | Phase 05B standalone Go REST API | User-authorized implementation, bounded Windows CLI/native acceptance, and final regressions complete; independent review pending | [DEC-026](DEC-026-phase-05b-go-net-http.md), [Phase 05B evidence](../qa/evidence/phase-05b-go-net-http.md) | Keep BE-02 planned; DEC-027 covers FastAPI as a separate blocked slice; evaluate Laravel separately; no release approval |
+| DEC-027 | Phase 05C.1 standalone FastAPI REST API | User-authorized scoped implementation present; Python 3.14/uv acceptance blocked; independent review pending | [DEC-027](DEC-027-phase-05c1-fastapi.md), [Phase 05C.1 evidence](../qa/evidence/phase-05c1-fastapi.md) | Keep BE-06 planned; verify provisional pins and run approved Python 3.14/uv Windows E2E; recommend Laravel as separate evaluation; no release approval |
 
 ## Open items
 

@@ -22,4 +22,4 @@ Go's standard library provides the requested REST starter without dependency lif
 
 ## Phase gate
 
-**GO for independent BE-02 review only.** Keep BE-02 `planned`; promotion and public release remain **NO-GO** pending independent review and existing security/clean-machine gates. Recommend Phase 05C evaluate standalone Laravel and FastAPI recipes; no implementation authorization is implied.
+**GO for independent BE-02 review only.** Keep BE-02 `planned`; promotion and public release remain **NO-GO** pending independent review and existing security/clean-machine gates. The Phase 05B recommendation to evaluate FastAPI was later scoped by user authorization in [DEC-027](DEC-027-phase-05c1-fastapi.md); Laravel remains a separate recommendation, not authorized implementation scope.

@@ -8,7 +8,7 @@ import { createPlan } from '../src/plan.js'
 import { resolveSelection } from '../src/resolver.js'
 import { normalizeWindowsParent, resolveOutputPath } from '../src/paths.js'
 import { GeneratorError } from '../src/errors.js'
-import { supportsGo, supportsNodeForAngular, supportsNodeForBackend, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue, supportsNpm } from '../src/toolchain.js'
+import { supportsGo, supportsNodeForAngular, supportsNodeForBackend, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue, supportsNpm, supportsPython, supportsUv } from '../src/toolchain.js'
 import { defaultGoModulePath, isValidGoModulePath } from '../src/go-module.js'
 import { FORMA_COMMIT_SHA, isFormaCommit } from '../src/forma-catalog.js'
 import { runDoctor } from '../src/doctor.js'
@@ -158,7 +158,7 @@ test('accepts exact FE-01 through FE-15 combinations without filesystem access',
     assert.match(plan.steps.find((step) => step.id === 'install')?.readableSummary ?? '', new RegExp(`${manager}.*${lockfile}`))
   }
   assert.deepEqual(PACKAGE_MANAGERS.map(({ id, version }) => [id, version]), [
-    ['npm', '>=10.0.0'], ['yarn', '4.18.1'], ['pnpm', '11.28.11'], ['go-modules', 'Go 1.22+'],
+    ['npm', '>=10.0.0'], ['yarn', '4.18.1'], ['pnpm', '11.28.11'], ['go-modules', 'Go 1.22+'], ['uv', '>=0.8.0'],
   ])
   assert.ok(ADAPTERS.find(({ id }) => id === 'frontend.react-vite')?.packageManagers.includes('pnpm'))
   assert.ok(ADAPTERS.find(({ id }) => id === 'frontend.vue-vite')?.packageManagers.includes('yarn'))
@@ -276,6 +276,53 @@ test('BE-02 resolves standalone Go net/http with Go Modules and validates module
     ...selection,
     backend: { adapterId: 'backend.go-net-http', manager: 'npm', modulePath: 'github.com/example/sample-api' },
   })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  assert.throws(() => createPlan(parseSelection({
+    ...selection,
+    frontend: { adapterId: 'frontend.react-vite', language: 'ts', manager: 'npm' },
+  })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+})
+
+test('BE-06 resolves standalone planned FastAPI with uv, Python 3.14, and locked dependencies', () => {
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'sample-api', type: 'backend', parentDirectory: 'E:\\Projects' },
+    backend: { adapterId: 'backend.fastapi' },
+    documentation: 'standard',
+    git: { initialize: false, initialCommit: false },
+  })
+  const resolved = resolveSelection(selection)
+  const plan = createPlan(selection)
+  assert.equal(resolved.recipe.id, 'BE-06')
+  assert.equal(resolved.recipe.status, 'planned')
+  assert.equal(resolved.recipe.backend, 'backend.fastapi')
+  assert.equal(resolved.recipe.language, 'python')
+  assert.equal(resolved.recipe.manager, 'uv')
+  assert.equal(resolved.recipe.manager, 'uv')
+  assert.equal(plan.executionAvailable, false)
+  assert.equal(plan.executesDependencyLifecycleScripts, true)
+  assert.deepEqual(plan.networkAccess, ['https://pypi.org/', 'https://files.pythonhosted.org/'])
+  assert.ok(plan.expectedWrites.includes('pyproject.toml'))
+  assert.ok(plan.expectedWrites.includes('.python-version'))
+  assert.ok(plan.expectedWrites.includes('uv.lock'))
+  assert.ok(plan.expectedWrites.includes('app/api/routes/health.py'))
+  assert.ok(plan.expectedWrites.includes('tests/test_shutdown.py'))
+  assert.equal(plan.expectedWrites.includes('package.json'), false)
+  assert.equal(plan.steps.find((step) => step.id === 'install')?.ownerAdapterId, 'uv')
+  assert.match(plan.steps.find((step) => step.id === 'install')?.readableSummary ?? '', /uv sync --locked/)
+  assert.ok(ADAPTERS.find((adapter) => adapter.id === 'backend.fastapi')?.prerequisites.some((tool) => tool.executableId === 'python' && tool.versionRange === '>=3.14,<3.15'))
+  assert.equal(PACKAGE_MANAGERS.find((manager) => manager.id === 'uv')?.lockfile, 'uv.lock')
+  assert.equal(supportsPython('3.14.0'), true)
+  assert.equal(supportsPython('3.15.1'), false)
+  assert.equal(supportsPython('3.14.0rc1'), false)
+  assert.equal(supportsUv('0.8.0'), true)
+  assert.equal(supportsUv('0.7.9'), false)
+
+  for (const backend of [
+    { adapterId: 'backend.fastapi', manager: 'npm' },
+    { adapterId: 'backend.fastapi', manager: 'uv', modulePath: 'github.com/example/project' },
+  ]) {
+    assert.throws(() => createPlan(parseSelection({ ...selection, backend })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  }
   assert.throws(() => createPlan(parseSelection({
     ...selection,
     frontend: { adapterId: 'frontend.react-vite', language: 'ts', manager: 'npm' },

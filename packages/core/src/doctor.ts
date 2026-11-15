@@ -1,7 +1,7 @@
 import { inspectTarget } from './paths.js'
 import { packageManager } from './catalog.js'
 import { tmpdir } from 'node:os'
-import { resolveGoTool, resolveNpmTool, supportsGo, supportsNpm, supportsNodeForAngular, supportsNodeForBackend, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue } from './toolchain.js'
+import { resolveGoTool, resolveNpmTool, resolvePythonExecutable, resolveUvExecutable, supportsGo, supportsNpm, supportsNodeForAngular, supportsNodeForBackend, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue, supportsPython, supportsUv } from './toolchain.js'
 import { runSafeProcess } from './runner.js'
 import type { DoctorReport, ProjectSelectionV1, ToolStatus } from './types.js'
 import { resolveSelection } from './resolver.js'
@@ -10,6 +10,7 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
   const resolved = resolveSelection(selection)
   const recipe = resolved.recipe
   const isGo = recipe.id === 'BE-02'
+  const isPython = recipe.id === 'BE-06'
   const nodeVersion = process.version.replace(/^v/, '')
   const frameworkNodeSupported = recipe.backend
     ? supportsNodeForBackend(nodeVersion)
@@ -19,15 +20,15 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
         : recipe.frontend === 'frontend.angular' ? supportsNodeForAngular(nodeVersion)
           : recipe.frontend === 'frontend.nextjs-app' ? supportsNodeForNext(nodeVersion) : supportsNodeForVite(nodeVersion)
   const nodeSupported = frameworkNodeSupported && (recipe.manager !== 'pnpm' || supportsNodeForPnpm(nodeVersion))
-  const node: ToolStatus | undefined = isGo ? undefined : {
+  const node: ToolStatus | undefined = isGo || isPython ? undefined : {
     id: 'node',
     available: nodeSupported,
     version: nodeVersion,
     message: nodeSupported ? 'Node.js version satisfies pinned scaffold and package-manager requirements.' : `Node.js ${process.version} is outside this recipe's supported range.`,
   }
 
-  const npmTool = isGo ? undefined : await resolveNpmTool()
-  const npm: ToolStatus | undefined = isGo ? undefined : npmTool ? {
+  const npmTool = isGo || isPython ? undefined : await resolveNpmTool()
+  const npm: ToolStatus | undefined = isGo || isPython ? undefined : npmTool ? {
     id: 'npm',
     available: supportsNpm(npmTool.version),
     version: npmTool.version,
@@ -38,7 +39,7 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
     message: 'Trusted npm CLI was not found beside the active Node runtime.',
   }
 
-  const selectedManager = isGo || recipe.manager === 'npm' ? undefined : packageManager(recipe.manager)
+  const selectedManager = isGo || isPython || recipe.manager === 'npm' ? undefined : packageManager(recipe.manager)
   const managerTool: ToolStatus | undefined = selectedManager ? {
     id: selectedManager.id === 'go-modules' ? 'go' : selectedManager.id,
     available: npm?.available === true && (selectedManager.id !== 'pnpm' || supportsNodeForPnpm(nodeVersion)),
@@ -85,6 +86,76 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
     }
   }
 
+  let python: ToolStatus | undefined
+  let uv: ToolStatus | undefined
+  if (isPython) {
+    const executable = await resolvePythonExecutable()
+    if (!executable) {
+      python = { id: 'python', available: false, message: 'Python was not found on PATH. Install a user-managed Python 3.14 runtime, add python.exe to PATH, then rerun Doctor.' }
+    } else {
+      try {
+        const root = tmpdir()
+        const result = await runSafeProcess({
+          executablePath: executable.executablePath,
+          allowedExecutableRoot: executable.directory,
+          cwd: root,
+          allowedCwdRoot: root,
+          args: ['--version'],
+          homeDirectory: root,
+          tempDirectory: root,
+          extraPath: [executable.directory],
+          timeoutMs: 5_000,
+        })
+        const version = /^Python (\d+\.\d+\.\d+)\b/m.exec(`${result.stdout}\n${result.stderr}`)?.[1]
+        const supported = result.exitCode === 0 && version !== undefined && supportsPython(version)
+        python = {
+          id: 'python',
+          available: supported,
+          path: executable.executablePath,
+          ...(version ? { version } : {}),
+          message: supported ? `Python ${version} satisfies the 3.14 acceptance baseline.`
+            : version ? `Python ${version} is unsupported; Python 3.14.x is required. Automatic runtime downloads are disabled.`
+              : 'Python was found but its version could not be verified under the Windows process supervisor.',
+        }
+      } catch {
+        python = { id: 'python', available: false, path: executable.executablePath, message: 'Python was found but could not run under the Windows process supervisor.' }
+      }
+    }
+
+    const uvExecutable = await resolveUvExecutable()
+    if (!uvExecutable) {
+      uv = { id: 'uv', available: false, message: 'uv was not found on PATH. Install uv using its official user-managed installer, add uv.exe to PATH, then rerun Doctor.' }
+    } else {
+      try {
+        const root = tmpdir()
+        const result = await runSafeProcess({
+          executablePath: uvExecutable.executablePath,
+          allowedExecutableRoot: uvExecutable.directory,
+          cwd: root,
+          allowedCwdRoot: root,
+          args: ['--version'],
+          homeDirectory: root,
+          tempDirectory: root,
+          extraPath: [uvExecutable.directory],
+          timeoutMs: 5_000,
+        })
+        const version = /^uv (\d+\.\d+\.\d+)\b/m.exec(`${result.stdout}\n${result.stderr}`)?.[1]
+        const supported = result.exitCode === 0 && version !== undefined && supportsUv(version)
+        uv = {
+          id: 'uv',
+          available: supported,
+          path: uvExecutable.executablePath,
+          ...(version ? { version } : {}),
+          message: supported ? `uv ${version} satisfies the locked-project requirement (>=0.8.0).`
+            : version ? `uv ${version} is too old; uv 0.8.0 or newer is required.`
+              : 'uv was found but its version could not be verified under the Windows process supervisor.',
+        }
+      } catch {
+        uv = { id: 'uv', available: false, path: uvExecutable.executablePath, message: 'uv was found but could not run under the Windows process supervisor.' }
+      }
+    }
+  }
+
   let target: DoctorReport['target']
   try {
     const inspected = await inspectTarget(selection.project.parentDirectory, selection.project.name)
@@ -99,7 +170,7 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
   }
 
   const windows = process.platform === 'win32'
-  const tools: ToolStatus[] = [...(node ? [node] : []), ...(npm ? [npm] : []), ...(managerTool ? [managerTool] : []), ...(go ? [go] : []), {
+  const tools: ToolStatus[] = [...(node ? [node] : []), ...(npm ? [npm] : []), ...(managerTool ? [managerTool] : []), ...(go ? [go] : []), ...(python ? [python] : []), ...(uv ? [uv] : []), {
     id: 'target',
     available: target.available && windows,
     message: windows ? target.message : 'Generation is supported on Windows only in Phase 01.',
@@ -107,7 +178,7 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
   return {
     schemaVersion: 1,
     platform: `${process.platform}-${process.arch}`,
-    ready: windows && (isGo ? Boolean(go?.available) : Boolean(node?.available && npm?.available && (!managerTool || managerTool.available))) && target.available,
+    ready: windows && (isGo ? Boolean(go?.available) : isPython ? Boolean(python?.available && uv?.available) : Boolean(node?.available && npm?.available && (!managerTool || managerTool.available))) && target.available,
     tools,
     target,
   }

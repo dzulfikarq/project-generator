@@ -29,7 +29,7 @@ try {
       documentation: 'standard',
       git: { initialize: false, initialCommit: false },
     }))
-    const result = spawnSync(process.execPath, [cli, 'generate', '--config', configPath, '--jsonl', '--development-allow-planned'], {
+    const result = spawnSync(process.execPath, [cli, 'generate', '--config', configPath, '--jsonl', '--development-allow-planned', '--allow-dependency-scripts'], {
       cwd: root,
       encoding: 'utf8',
       windowsHide: true,

@@ -105,6 +105,13 @@ const allowedEnvironmentOverrides = new Set([
   'GOCACHE',
   'GOMODCACHE',
   'GOTMPDIR',
+  'UV_NO_CONFIG',
+  'UV_INDEX_URL',
+  'UV_CACHE_DIR',
+  'UV_PROJECT_ENVIRONMENT',
+  'UV_PYTHON_DOWNLOADS',
+  'PYTHONNOUSERSITE',
+  'PYTHONDONTWRITEBYTECODE',
 ])
 
 export async function startSafeProcess(options: SafeProcessOptions): Promise<RunningProcess> {

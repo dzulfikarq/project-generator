@@ -15,6 +15,16 @@ export interface GoTool extends GoExecutable {
   version: string
 }
 
+export interface PythonExecutable {
+  executablePath: string
+  directory: string
+}
+
+export interface UvExecutable {
+  executablePath: string
+  directory: string
+}
+
 function versionParts(version: string): [number, number, number] | undefined {
   const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version.trim())
   if (!match) return undefined
@@ -64,6 +74,41 @@ export function supportsNpm(version: string): boolean {
 
 export function supportsGo(version: string): boolean {
   return atLeast(version, [1, 22, 0])
+}
+
+export function supportsPython(version: string): boolean {
+  return /^3\.14\.\d+$/.test(version.trim())
+}
+
+export function supportsUv(version: string): boolean {
+  return atLeast(version, [0, 8, 0])
+}
+
+async function resolvePathExecutable(fileName: string): Promise<{ executablePath: string; directory: string } | undefined> {
+  for (const candidateDirectory of (process.env.PATH ?? '').split(win32.delimiter).filter(Boolean)) {
+    const directory = candidateDirectory.replace(/^"(.*)"$/, '$1')
+    const executable = resolve(directory, fileName)
+    try {
+      const [rootEntry, realDirectory, entry, realExecutable] = await Promise.all([
+        lstat(directory), realpath(directory), lstat(executable), realpath(executable),
+      ])
+      const relativePath = win32.relative(realDirectory, realExecutable)
+      if (!rootEntry.isDirectory() || rootEntry.isSymbolicLink() || !entry.isFile() || entry.isSymbolicLink()
+        || relativePath.startsWith('..') || win32.isAbsolute(relativePath)) continue
+      return { executablePath: realExecutable, directory: realDirectory }
+    } catch {
+      // Ignore absent or inaccessible PATH entries.
+    }
+  }
+  return undefined
+}
+
+export async function resolvePythonExecutable(): Promise<PythonExecutable | undefined> {
+  return resolvePathExecutable('python.exe')
+}
+
+export async function resolveUvExecutable(): Promise<UvExecutable | undefined> {
+  return resolvePathExecutable('uv.exe')
 }
 
 export async function resolveGoTool(): Promise<GoExecutable | undefined> {

@@ -10,6 +10,7 @@ export function createPlan(selection: ProjectSelectionV1): GenerationPlan {
   const isForma = Boolean(resolved.selection.template)
   const isBackend = recipe.projectType === 'backend'
   const isGo = recipe.id === 'BE-02'
+  const isPython = recipe.id === 'BE-06'
   const bootstrap = recipe.styling === 'styling.bootstrap'
   const viteScss = recipe.styling === 'styling.scss'
     && (recipe.frontend === 'frontend.react-vite' || recipe.frontend === 'frontend.vue-vite')
@@ -20,10 +21,13 @@ export function createPlan(selection: ProjectSelectionV1): GenerationPlan {
   const pinnedDependencies = recipe.dependencies?.map(({ packageName, version }) => `${packageName}@${version}`).join(', ')
   const scaffoldOutput = isForma ? `<Forma template ${resolved.selection.template!.templateId} files>`
     : isGo ? 'Reviewed standalone Go REST API starter files'
+    : isPython ? 'Reviewed standalone FastAPI starter files'
     : isBackend ? 'Reviewed BE-01 starter files'
       : isNuxt ? '<pinned official Nuxt starter files>'
       : isAngular ? '<pinned Angular CLI workspace files>' : '<pinned official framework scaffold files>'
-  const validationSummary = isGo
+  const validationSummary = isPython
+    ? 'Verify uv.lock and locked sync, compile Python sources, run pytest, then smoke-test /health, /api/info, /docs, OpenAPI, and graceful shutdown.'
+    : isGo
     ? 'Validate Go Modules, run go fmt, go vet, go test, go build, HTTP smoke for /health and /api/info, and graceful-shutdown tests.'
     : isBackend
     ? 'Run TypeScript typecheck, Node unit/integration tests, production build, HTTP smoke for /health and /api/info, and graceful-shutdown checks.'
@@ -32,7 +36,9 @@ export function createPlan(selection: ProjectSelectionV1): GenerationPlan {
     : isNuxt ? 'Run Nuxt typecheck with pinned TypeScript/vue-tsc, production build, and HTTP preview smoke; the official starter has no lint or unit-test script.'
       : isAngular ? 'Run Angular production build, unit tests, and HTTP server smoke; the official scaffold has no lint script.'
         : 'Run lint/typecheck/build and HTTP served-page smoke checks.'
-  const scaffoldSummary = isGo
+  const scaffoldSummary = isPython
+    ? 'Write the reviewed FastAPI/Pydantic starter into owned staging; resolve exact direct pins into uv.lock with uv and Python downloads disabled.'
+    : isGo
     ? 'Write a standard-library net/http REST API and Go Modules manifest into owned staging; no external dependencies.'
     : isBackend
     ? 'Write the reviewed TypeScript Express starter into owned staging; install only integrity-pinned npm dependencies.'
@@ -45,7 +51,7 @@ export function createPlan(selection: ProjectSelectionV1): GenerationPlan {
     recipeStatus: recipe.status,
     targetPath: resolved.outputPath,
     steps: [
-      { id: 'preflight', ownerAdapterId: 'core', phase: 'preflight', action: 'inspect', readableSummary: isGo ? 'Check Go 1.22+ and destination safety.' : `Check Node.js, npm bootstrap, pinned ${recipe.manager}${recipe.manager === 'npm' ? '' : ` ${manager.version}`}, and destination safety.`, sideEffects: [] },
+      { id: 'preflight', ownerAdapterId: 'core', phase: 'preflight', action: 'inspect', readableSummary: isPython ? 'Check Python 3.14, uv 0.8+, and destination safety; automatic runtime downloads are disabled.' : isGo ? 'Check Go 1.22+ and destination safety.' : `Check Node.js, npm bootstrap, pinned ${recipe.manager}${recipe.manager === 'npm' ? '' : ` ${manager.version}`}, and destination safety.`, sideEffects: [] },
       { id: 'staging', ownerAdapterId: 'core', phase: 'stage', action: 'create-owned-stage', readableSummary: 'Create generator-owned staging beside the destination.', sideEffects: ['Create temporary directory in destination parent.'] },
       { id: 'scaffold', ownerAdapterId: isForma ? 'template.forma' : recipe.backend ?? recipe.frontend ?? 'core', phase: 'scaffold', action: isBackend ? 'write-declared-files' : 'run-pinned-cli', readableSummary: scaffoldSummary, sideEffects: isForma
         ? ['Authenticated read-only fetch from the pinned private Forma repository when cache misses.', 'Export and verify the SHA-256 package manifest.', 'Install reviewed template files into owned staging.']
@@ -55,13 +61,13 @@ export function createPlan(selection: ProjectSelectionV1): GenerationPlan {
           ...(recipe.scaffold?.source ? [`Download the immutable ${recipe.scaffold.source.repository} starter commit.`] : []),
           'Run reviewed scaffold code.',
         ], ...(isBackend ? {} : { consentKind: 'network' as const }) },
-      { id: 'configure', ownerAdapterId: 'documentation', phase: 'configure', action: 'write-declared-files', readableSummary: `Configure ${isGo ? 'Go net/http REST API with Go Modules and no third-party dependencies' : isBackend ? `Express REST API with pinned dependencies ${pinnedDependencies}` : bootstrap ? `pinned Bootstrap ${pinnedDependencies?.replace(/^bootstrap@/, '')} CSS only` : viteScss ? `Dart Sass ${pinnedDependencies?.replace(/^sass@/, '')} with an imported SCSS starter` : viteTailwind ? `Tailwind CSS 4.3.5 with its official Vite plugin, automatic source detection, and utility-class starter` : `selected framework styling${pinnedDependencies ? ` and pinned dependencies ${pinnedDependencies}` : ''}`} and write truthful ${resolved.selection.documentation} documentation.`, sideEffects: ['Write declared files under staged project.'] },
-      { id: 'install', ownerAdapterId: recipe.manager, phase: 'install', action: isGo ? 'inspect' : 'install-dependencies', readableSummary: isGo ? 'Use Go Modules with standard-library packages only; no download, go.sum, or install script.' : `Install project dependencies with ${recipe.manager}${recipe.manager === 'npm' ? '' : ` ${manager.version}`}${manager.nodeLinker ? ` using the ${manager.nodeLinker} node_modules linker` : ''}${bootstrap ? ' using legacy peer handling to omit unused Bootstrap Popper' : isAngular ? ' using legacy peer handling for the Angular 21 dependency tree' : ''} and write ${manager.lockfile}.`, sideEffects: isGo ? ['No third-party dependency installation or network access.'] : ['Download project dependencies.', ...(manager.configFile ? [`Write ${manager.configFile} to keep the selected ${manager.nodeLinker} linker for future installs.`] : []), `Run ${recipe.manager} package lifecycle scripts only after explicit consent.`], ...(isGo ? {} : { consentKind: 'network' as const }) },
+      { id: 'configure', ownerAdapterId: 'documentation', phase: 'configure', action: 'write-declared-files', readableSummary: `Configure ${isPython ? 'Python FastAPI with Pydantic configuration and pinned dependencies' : isGo ? 'Go net/http REST API with Go Modules and no third-party dependencies' : isBackend ? `Express REST API with pinned dependencies ${pinnedDependencies}` : bootstrap ? `pinned Bootstrap ${pinnedDependencies?.replace(/^bootstrap@/, '')} CSS only` : viteScss ? `Dart Sass ${pinnedDependencies?.replace(/^sass@/, '')} with an imported SCSS starter` : viteTailwind ? `Tailwind CSS 4.3.5 with its official Vite plugin, automatic source detection, and utility-class starter` : `selected framework styling${pinnedDependencies ? ` and pinned dependencies ${pinnedDependencies}` : ''}`} and write truthful ${resolved.selection.documentation} documentation.`, sideEffects: ['Write declared files under staged project.'] },
+      { id: 'install', ownerAdapterId: recipe.manager, phase: 'install', action: isGo ? 'inspect' : 'install-dependencies', readableSummary: isPython ? 'Resolve exact Python pins into uv.lock, then run uv sync --locked --extra test in the project .venv; Python downloads are disabled.' : isGo ? 'Use Go Modules with standard-library packages only; no download, go.sum, or install script.' : `Install project dependencies with ${recipe.manager}${recipe.manager === 'npm' ? '' : ` ${manager.version}`}${manager.nodeLinker ? ` using the ${manager.nodeLinker} node_modules linker` : ''}${bootstrap ? ' using legacy peer handling to omit unused Bootstrap Popper' : isAngular ? ' using legacy peer handling for the Angular 21 dependency tree' : ''} and write ${manager.lockfile}.`, sideEffects: isGo ? ['No third-party dependency installation or network access.'] : isPython ? ['Download packages from PyPI and pythonhosted.org.', 'Create project-local .venv and uv.lock.', 'Execute third-party wheel/build code only after explicit consent.'] : ['Download project dependencies.', ...(manager.configFile ? [`Write ${manager.configFile} to keep the selected ${manager.nodeLinker} linker for later installs.`] : []), `Run ${recipe.manager} package lifecycle scripts only after explicit consent.`], ...(isGo ? {} : { consentKind: 'network' as const }) },
       { id: 'validate', ownerAdapterId: recipe.backend ?? recipe.frontend ?? 'core', phase: 'validate', action: 'run-check', readableSummary: validationSummary, sideEffects: ['Execute generated project checks in staging.', 'Write reproducibility manifest with observed check outcomes.'] },
       { id: 'finalize', ownerAdapterId: 'core', phase: 'finalize', action: 'commit-no-replace', readableSummary: 'Move validated project to destination only if destination remains absent.', sideEffects: ['Create final destination with Windows fail-if-exists rename.'] },
     ],
     expectedWrites: [scaffoldOutput,
-      ...(isGo ? ['go.mod', '.gitignore', '.env.example', 'cmd/server/main.go', 'internal/handlers/health.go', 'internal/handlers/info.go', 'internal/server/server.go', 'internal/server/server_test.go'] : isBackend ? ['package.json', 'tsconfig.json', '.gitignore', '.env.example', 'src/config.ts', 'src/app.ts', 'src/server.ts', 'test/backend.test.ts', 'test/shutdown.test.ts'] : []),
+      ...(isGo ? ['go.mod', '.gitignore', '.env.example', 'cmd/server/main.go', 'internal/handlers/health.go', 'internal/handlers/info.go', 'internal/server/server.go', 'internal/server/server_test.go'] : isPython ? ['app/__init__.py', 'app/__main__.py', 'app/main.py', 'app/api/__init__.py', 'app/api/routes/__init__.py', 'app/api/routes/health.py', 'app/api/routes/info.py', 'app/core/__init__.py', 'app/core/config.py', 'tests/test_health.py', 'tests/test_info.py', 'tests/test_shutdown.py', 'pyproject.toml', '.python-version', '.env.example', '.gitignore'] : isBackend ? ['package.json', 'tsconfig.json', '.gitignore', '.env.example', 'src/config.ts', 'src/app.ts', 'src/server.ts', 'test/backend.test.ts', 'test/shutdown.test.ts'] : []),
       ...(bootstrap ? ['package.json', 'index.html', 'src/project-generator-bootstrap.css', '.npmrc'] : []),
       ...(viteScss ? ['package.json', recipe.frontend === 'frontend.react-vite' ? 'src/main.tsx' : 'src/main.ts', recipe.frontend === 'frontend.react-vite' ? 'src/App.tsx' : 'src/App.vue', 'src/project-generator.scss'] : []),
       ...(viteTailwind ? ['package.json', 'vite.config.ts', recipe.frontend === 'frontend.react-vite' ? 'src/main.tsx' : 'src/main.ts', recipe.frontend === 'frontend.react-vite' ? 'src/App.tsx' : 'src/App.vue', 'src/project-generator-tailwind.css'] : []),
@@ -70,13 +76,13 @@ export function createPlan(selection: ProjectSelectionV1): GenerationPlan {
     networkAccess: [
       ...(isForma ? ['https://github.com (authenticated private Forma source; pinned commit)'] : []),
       ...(!isBackend && recipe.scaffold?.source ? ['https://api.github.com', 'https://codeload.github.com'] : []),
-      ...(!isGo ? ['https://registry.npmjs.org/'] : []),
+      ...(isPython ? ['https://pypi.org/', 'https://files.pythonhosted.org/'] : !isGo ? ['https://registry.npmjs.org/'] : []),
     ],
     executesDependencyLifecycleScripts: !isGo,
     executionAvailable: recipe.status === 'tested',
     warnings: [
       'Recipe remains planned until independent Windows evidence and review promote its status.',
-      ...(!isGo ? [`${recipe.manager} package lifecycle scripts may execute third-party code after consent; generation is not sandboxed.`, 'Generation installs dependencies from npm and needs network access unless package caches are available.'] : ['Generated API uses Go standard library only; generation runs no dependency installation and requests no network access.']),
+      ...(isPython ? ['Python dependency pins are provisional until Python 3.14 Windows lock/sync and HTTP acceptance pass.', 'uv installs may execute third-party package build code after consent; execution is not sandboxed.', 'Generation does not start the API after creating the project.'] : !isGo ? [`${recipe.manager} package lifecycle scripts may execute third-party code after consent; generation is not sandboxed.`, 'Generation installs dependencies from npm and needs network access unless package caches are available.'] : ['Generated API uses Go standard library only; generation runs no dependency installation and requests no network access.']),
       ...(isForma ? ['Forma source is read through the configured Git credential helper; no token is stored or copied to the project.', 'Forma templates own their styling; source integrity is verified but does not constitute a publisher signature.'] : []),
     ],
     ...(resolved.selection.template ? { template: { ...resolved.selection.template } } : {}),

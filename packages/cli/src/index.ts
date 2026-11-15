@@ -11,17 +11,17 @@ Usage:
   project-generator catalog --json
   project-generator plan --config <file> --json
   project-generator doctor --config <file> [--json]
-  project-generator generate --config <file> --jsonl${ALLOW_PLANNED_RECIPE_GENERATION ? ' [--development-allow-planned]' : ''} [--desktop-control]
+  project-generator generate --config <file> --jsonl [--allow-dependency-scripts]${ALLOW_PLANNED_RECIPE_GENERATION ? ' [--development-allow-planned]' : ''} [--desktop-control]
   project-generator inspect --output <folder> [--json]
   project-generator recovery inspect [--job-id <id>] [--json]
   project-generator recovery apply --job-id <id> --action <cleanup|finalize> --confirm-job <id> [--json]
 
 Frontend recipes: FE-01 React + Vite + TypeScript + npm + CSS; FE-02 Next.js App Router + TypeScript + npm + Tailwind; FE-03 Vue + Vite + TypeScript + npm + CSS; FE-04 React + Vite + Bootstrap 5 CSS + npm; FE-05 Vue + Vite + Bootstrap 5 CSS + npm; FE-06 Nuxt 4 + npm + CSS; FE-07 Angular 21 + npm + SCSS; FE-08 React + Vite + SCSS + npm; FE-09 Vue + Vite + SCSS + npm; FE-10 React + Vite + Tailwind CSS 4 + npm; FE-11 Vue + Vite + Tailwind CSS 4 + npm.
-Backend recipes: BE-01 Node.js + TypeScript + Express + npm REST API; BE-02 Go + standard-library net/http + Go Modules. No database.
-All FE-01–FE-15, BE-01–BE-02, and FM-01/FM-02 recipes remain planned until independent Windows acceptance and review. Normal generation refuses planned recipes.
+Backend recipes: BE-01 Node.js + TypeScript + Express + npm REST API; BE-02 Go + standard-library net/http + Go Modules; BE-06 Python + FastAPI + uv REST API. No database.
+All FE-01–FE-15, BE-01–BE-02, BE-06, and FM-01/FM-02 recipes remain planned until independent Windows acceptance and review. Normal generation refuses planned recipes.
 The development-only flag runs a planned recipe for evidence gathering; it does not mark that recipe tested.
 Optional Forma selections live in config.template; inspect the pinned catalog with catalog --json. Forma template combos FM-01/FM-02 are also planned and require the development-only flag. Private fetch uses Git for Windows' configured credential manager; config never accepts tokens.
-npm installs may execute third-party lifecycle scripts and are not sandboxed. BE-02 has no third-party dependencies or installation scripts.`
+npm and uv installs may execute third-party lifecycle/build code and are not sandboxed; pass --allow-dependency-scripts only after reviewing the plan. BE-02 has no third-party dependencies or installation scripts. BE-06 requires user-managed Python 3.14 and uv; automatic Python downloads are disabled.`
 
 function option(args: string[], name: string): string | undefined {
   const index = args.indexOf(name)
@@ -177,7 +177,7 @@ async function main(args: string[]): Promise<number> {
       if (flags.includes('--development-allow-planned') && !ALLOW_PLANNED_RECIPE_GENERATION) {
         throw new GeneratorError({ code: 'GEN_RECIPE_UNTESTED', stage: 'preflight', message: 'This release CLI does not permit the development-only planned-recipe override.', nextAction: 'Use a tested recipe; internal development builds are required for planned-recipe evidence runs.', targetModified: false })
       }
-      const switches = ['--jsonl', '--desktop-control']
+      const switches = ['--jsonl', '--desktop-control', '--allow-dependency-scripts']
       if (ALLOW_PLANNED_RECIPE_GENERATION) switches.push('--development-allow-planned')
       validateFlags(flags, ['--config'], switches)
       const configPath = option(flags, '--config')
@@ -199,6 +199,7 @@ async function main(args: string[]): Promise<number> {
       try {
         const result = await generateProject(selection, {
           allowPlanned,
+          allowDependencyScripts: flags.includes('--allow-dependency-scripts'),
           signal: controller.signal,
           onEvent: (event) => writeEvent(event as unknown as Record<string, unknown>),
         })

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, win32 } from 'node:path'
 import test, { type TestContext } from 'node:test'
 import { generateProject, redact } from '../src/job.js'
+import { ALLOW_PLANNED_RECIPE_GENERATION } from '../src/build-policy.js'
 import { callSupervisor } from '../src/native-supervisor.js'
 import { parseSelection } from '../src/schema.js'
 import { FORMA_COMMIT_SHA } from '../src/forma-catalog.js'
@@ -53,6 +54,54 @@ test('production generation blocks planned BE-02 before staging or destination w
     assert.equal(result.error?.code, 'GEN_RECIPE_UNTESTED')
     assert.ok(events.some((event) => event.code === 'GEN_RECIPE_UNTESTED'))
     await assert.rejects(access(win32.join(parent, 'planned-go-api')))
+    assert.deepEqual(await readdir(parent), [])
+  } finally {
+    await rm(parent, { recursive: true, force: true })
+    if (logFile) await rm(dirname(logFile), { recursive: true, force: true })
+  }
+})
+
+test('production generation blocks planned BE-06 before staging or destination writes', async () => {
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-planned-fastapi-'))
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'planned-fastapi-api', type: 'backend', parentDirectory: parent },
+    backend: { adapterId: 'backend.fastapi', manager: 'uv' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  })
+  const events: JobEventV1[] = []
+  let logFile = ''
+  try {
+    const result = await generateProject(selection, { onEvent: (event) => events.push(event) })
+    logFile = result.logFile ?? ''
+    assert.equal(result.status, 'failed')
+    assert.equal(result.error?.code, 'GEN_RECIPE_UNTESTED')
+    assert.ok(events.some((event) => event.code === 'GEN_RECIPE_UNTESTED'))
+    await assert.rejects(access(win32.join(parent, 'planned-fastapi-api')))
+    assert.deepEqual(await readdir(parent), [])
+  } finally {
+    await rm(parent, { recursive: true, force: true })
+    if (logFile) await rm(dirname(logFile), { recursive: true, force: true })
+  }
+})
+
+test('BE-06 development generation requires explicit third-party dependency consent before staging', { skip: !ALLOW_PLANNED_RECIPE_GENERATION }, async () => {
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-fastapi-consent-'))
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'fastapi-consent', type: 'backend', parentDirectory: parent },
+    backend: { adapterId: 'backend.fastapi', manager: 'uv' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  })
+  let logFile = ''
+  try {
+    const result = await generateProject(selection, { allowPlanned: true })
+    logFile = result.logFile ?? ''
+    assert.equal(result.status, 'failed')
+    assert.equal(result.error?.code, 'GEN_DEPENDENCY_CONSENT_REQUIRED')
+    await assert.rejects(access(win32.join(parent, 'fastapi-consent')))
     assert.deepEqual(await readdir(parent), [])
   } finally {
     await rm(parent, { recursive: true, force: true })

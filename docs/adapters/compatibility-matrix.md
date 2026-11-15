@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Version | Draft 0.1 — 2026-11-15 |
-| Status | **FE-03–FE-15, standalone BE-01, and BE-02 local native evidence recorded; FE-01–FE-15/BE-01–BE-02/FM-01/FM-02 remain PLAN pending independent review; no recipe promoted or release-approved** |
+| Status | **FE-03–FE-15 and standalone BE-01/BE-02 local evidence recorded; BE-06 implementation present but acceptance blocked; FE-01–FE-15/BE-01–BE-02/BE-06/FM-01/FM-02 remain PLAN; no recipe promoted or release-approved** |
 | Main platform | Windows 11 |
 | Source of truth | This matrix + machine-readable adapter manifests + QA results |
 
-> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-15, BE-01–BE-02, and FM-01/FM-02 have local implementation/evidence only, not independent acceptance or release approval; every recipe remains unavailable in normal generation.
+> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-15, BE-01–BE-02, BE-06, and FM-01/FM-02 have local implementation/evidence only, not independent acceptance or release approval; every recipe remains unavailable in normal generation.
 
 ## 1. Status and test gates
 
@@ -45,7 +45,7 @@ The catalog can mention `PLAN`, but normal generation is enabled only for `TEST`
 | BE-GO | Go standard-library `net/http` (BE-02); Gin is separate candidate | Go >=1.22 / Go Modules | Reviewed standalone REST starter; no scaffold CLI | None in BE-02; database integrations remain separate proposed recipes | PLAN |
 | BE-GIN | Go + Gin | Go / Go Modules | `go mod init` + versioned starter | pgx/PostgreSQL, MySQL driver/GORM if specifically tested | PLAN |
 | BE-LARAVEL | Laravel | PHP / Composer; npm for frontend assets only | Composer/Laravel official scaffold | Eloquent + MySQL/PostgreSQL/SQLite | PLAN |
-| BE-FASTAPI | FastAPI | Python / uv | `uv init` + `uv add` + reviewed application skeleton | SQLAlchemy + SQLite/PostgreSQL/MySQL; Mongo only via separate verified adapter | PLAN |
+| BE-FASTAPI | FastAPI | Python 3.14.x / uv | Reviewed standalone FastAPI/Pydantic application skeleton; resolve `uv.lock` and verify artifact hashes | None in bounded BE-06; SQLAlchemy/database integration is separate unimplemented scope | PLAN |
 | BE-DJANGO | Django | Python / uv/pip | Official django-admin | Django ORM | FUT |
 | BE-SPRING | Spring Boot | Java / Maven or Gradle | Spring Initializr | JPA / Hibernate | FUT |
 | BE-ASPNET | ASP.NET Core | .NET / NuGet | `dotnet new` | EF Core | FUT |
@@ -135,7 +135,7 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | BE-03 | Backend | None | NestJS | PostgreSQL + Prisma | N/A | npm | V1 |
 | BE-04 | Backend | None | Go + Gin | PostgreSQL + pgx | N/A | Go Modules | V1 |
 | BE-05 | Backend | None | Laravel | MySQL + Eloquent | N/A | Composer (+ npm assets) | V1 |
-| BE-06 | Backend | None | FastAPI | PostgreSQL + SQLAlchemy | N/A | uv | V1 |
+| BE-06 | Backend | None | FastAPI | None in Phase 05C.1; SQLAlchemy/database remains separate proposal | N/A | uv | Phase 05C.1 standalone API; acceptance blocked |
 | FS-01 | Fullstack | Vue Vite | Laravel | MySQL + Eloquent | Bootstrap | npm + Composer | V1 |
 | FS-02 | Fullstack | React Vite | Go Gin | PostgreSQL + pgx | Tailwind | npm + go | V1 |
 | FS-03 | Fullstack | Angular | NestJS | PostgreSQL + Prisma | Angular Material | npm | V1 |
@@ -153,6 +153,8 @@ Phase 04A pins and implementation evidence: [FE-03–FE-05 report](../qa/evidenc
 Phase 04B uses official `create-nuxt@4.0.3`, Nuxt `4.6.4`, and immutable `nuxt/starter` commit `db01806fcb37f2e369fb09443c72cac696b31548` for FE-06; FE-07 uses local `@angular/cli@21.2.30` and Angular core `21.2.26`. Fresh CLI and native Tauri acceptance, package/source pins, Angular npm workaround, release planned-gate checks, and bounded limitations: [Phase 04B report](../qa/evidence/phase-04b-nuxt-angular.md). Both recipes remain `PLAN`; no Forma support is asserted.
 
 Phase 04B.3 uses official `create-vite@9.3.4` / `create-vue@3.24.0` scaffolds for FE-12–FE-15. Fresh CLI and native Tauri evidence covers Yarn `4.18.1` with persistent `node-modules` config and pnpm `11.28.11` with persistent `hoisted` config, exactly one manager lockfile, generated docs/manifest, lint/typecheck/build/HTTP smoke, explicit lifecycle/planned consent, and planned status retention. All four remain `PLAN`; npm stays default and Forma remains npm-only. See [DEC-024](../decisions/DEC-024-phase-04b3-yarn-pnpm.md) and [Phase 04B.3 evidence](../qa/evidence/phase-04b3-yarn-pnpm.md).
+
+Phase 05C.1 adds BE-06 as standalone FastAPI/Pydantic/Uvicorn + uv with Python 3.14.x baseline, isolated `.venv`, `uv.lock`, API/docs/tests, and explicit unsandboxed build-code consent. Direct package pins remain provisional. Host Python 3.15.1 is unsupported and uv is absent; generated lock, locked installation, Python checks, HTTP smoke, native UI E2E, and pin compatibility remain NOT RUN/BLOCKED. See [DEC-027](../decisions/DEC-027-phase-05c1-fastapi.md) and [Phase 05C.1 evidence](../qa/evidence/phase-05c1-fastapi.md). BE-06 remains PLAN and release-blocked.
 
 **Important:** the fullstack recipe must produce a real, reachable example API endpoint and frontend call when that is part of its advertised output. Generating two unrelated folder trees is insufficient.
 

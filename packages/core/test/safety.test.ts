@@ -580,6 +580,27 @@ test('scaffold package identity is read through the bound native directory handl
   }
 })
 
+test('FastAPI project identity is verified from pyproject.toml through the bound native directory handle', { skip: process.platform !== 'win32' }, async (t) => {
+  if (await skipElevatedStageOperation(t)) return
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-python-scaffold-identity-'))
+  const stage = await createOwnedStage(parent, win32.join(parent, 'project'), 'project', 'python-scaffold-identity')
+  try {
+    await mkdir(stage.childPath)
+    await writeFile(win32.join(stage.childPath, 'pyproject.toml'), '[project]\nname = "project"\n')
+    await bindOwnedStageProjectIdentity(stage, 'project')
+    await verifyOwnedStageProjectIdentity(stage, 'project', undefined, 'pyproject.toml')
+    await writeFile(win32.join(stage.childPath, 'pyproject.toml'), '[project]\nname = "different-project"\n')
+    await assert.rejects(
+      verifyOwnedStageProjectIdentity(stage, 'project', undefined, 'pyproject.toml'),
+      (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_SCAFFOLD_INVALID',
+    )
+  } finally {
+    await cleanupOwnedStage(stage).catch(() => undefined)
+    await rm(parent, { recursive: true, force: true })
+    await removeJournalForTest(stage.journalRootPath, stage.jobId)
+  }
+})
+
 test('finalize rejects replaced ordinary project directory and retains stage marker', { skip: process.platform !== 'win32' }, async (t) => {
   if (await skipElevatedStageOperation(t)) return
   const parent = await mkdtemp(win32.join(tmpdir(), 'pg-project-identity-'))

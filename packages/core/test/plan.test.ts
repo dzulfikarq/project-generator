@@ -36,3 +36,24 @@ test('generation plan discloses selected-manager lifecycle execution after conse
     assert.ok(alternate.steps.find((step) => step.id === 'install')?.sideEffects.some((effect) => effect.includes('only after explicit consent')))
   }
 })
+
+test('BE-06 plan discloses uv lock resolution, isolated sync, network, and build-code consent', () => {
+  const plan = createPlan(parseSelection({
+    schemaVersion: 1,
+    project: { name: 'fastapi-plan', type: 'backend', parentDirectory: 'C:\\Projects' },
+    backend: { adapterId: 'backend.fastapi', manager: 'uv' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  }))
+  const install = plan.steps.find((step) => step.id === 'install')
+  assert.equal(plan.recipeId, 'BE-06')
+  assert.equal(plan.recipeStatus, 'planned')
+  assert.equal(plan.executionAvailable, false)
+  assert.equal(plan.executesDependencyLifecycleScripts, true)
+  assert.ok(plan.expectedWrites.includes('uv.lock'))
+  assert.ok(plan.networkAccess.includes('https://pypi.org/'))
+  assert.ok(install?.readableSummary.includes('uv sync --locked'))
+  assert.ok(install?.sideEffects.some((effect) => effect.includes('explicit consent')))
+  assert.ok(plan.warnings.some((warning) => warning.includes('provisional')))
+  assert.ok(plan.warnings.some((warning) => warning.includes('does not start the API')))
+})

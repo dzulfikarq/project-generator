@@ -27,7 +27,7 @@ function stagingError(code: string, stage: string, message: string, nextAction: 
   return new GeneratorError({ code, stage, message, nextAction, targetModified })
 }
 
-function requestFor(stage: OwnedStage, projectName = win32.basename(stage.targetPath), modulePath?: string): Record<string, string> {
+function requestFor(stage: OwnedStage, projectName = win32.basename(stage.targetPath), modulePath?: string, manifestFile?: string): Record<string, string> {
   return {
     jobId: stage.jobId,
     transactionNonce: stage.transactionNonce,
@@ -36,6 +36,7 @@ function requestFor(stage: OwnedStage, projectName = win32.basename(stage.target
     parentPath: stage.parentPath,
     projectName,
     ...(modulePath ? { modulePath } : {}),
+    ...(manifestFile ? { manifestFile } : {}),
     targetPath: stage.targetPath,
     sourcePath: stage.childPath,
   }
@@ -151,9 +152,9 @@ export async function bindOwnedStageProjectIdentity(stage: OwnedStage, projectNa
   await nativeFs('--bind-stage-identity', requestFor(stage, projectName), 'bind')
 }
 
-export async function verifyOwnedStageProjectIdentity(stage: OwnedStage, projectName: string, modulePath?: string): Promise<void> {
+export async function verifyOwnedStageProjectIdentity(stage: OwnedStage, projectName: string, modulePath?: string, manifestFile?: 'pyproject.toml'): Promise<void> {
   if (!liveStages.has(stage)) throw stagingError('GEN_STAGING_LEFTOVER', 'scaffolding', 'Refused project identity verification without a live in-process staging record.', 'Inspect staging manually; do not clean an unverified path.')
-  await nativeFs('--verify-scaffold-identity', requestFor(stage, projectName, modulePath), 'scaffold')
+  await nativeFs('--verify-scaffold-identity', requestFor(stage, projectName, modulePath, manifestFile), 'scaffold')
 }
 
 export async function mutateOwnedStage(stage: OwnedStage, directories: readonly string[], files: readonly OwnedStageFile[]): Promise<string[]> {

@@ -47,7 +47,7 @@ Application
     └── Privacy & Logs
 ```
 
-Phase 03 implements dashboard, catalog-driven project wizard, pinned Forma metadata gallery, read-only plan/doctor review, lifecycle consent, JSONL generation/cancellation/result surfaces, local generated-project metadata, theme/default-location settings, and fixed Folder/VS Code native actions. Phase 05A/05B add planned standalone Express/TypeScript/npm and Go `net/http`/Go Modules backend choices; BE-02 includes reviewed module-path validation and Go Doctor review. Neither adds a database. Other backend/database/fullstack adapters remain absent, and FE/BE/FM recipes remain planned. Browser/UI and native acceptance evidence is tracked separately; implementation presence alone is not a PASS.
+Phase 03 implements dashboard, catalog-driven project wizard, pinned Forma metadata gallery, read-only plan/doctor review, lifecycle consent, JSONL generation/cancellation/result surfaces, local generated-project metadata, theme/default-location settings, and fixed Folder/VS Code native actions. Phase 05A/05B add planned standalone Express/TypeScript/npm and Go `net/http`/Go Modules backend choices. Phase 05C.1 adds planned standalone FastAPI/Pydantic/Uvicorn + uv, Python/uv Doctor checks, and explicit dependency-build consent. BE-02 includes reviewed module-path validation; BE-06 uses Python 3.14.x and has no database/ORM/auth/fullstack. Python 3.14/uv native acceptance is blocked; implementation presence alone is not a PASS. Other backend/database/fullstack adapters remain absent, and FE/BE/FM recipes remain planned. Browser/UI and native acceptance evidence is tracked separately.
 
 ## 3. Layout and visual foundation
 

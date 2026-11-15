@@ -47,9 +47,10 @@ Architecture specification: [`ARCHITECTURE.md`](ARCHITECTURE.md). UX specificati
 
 - **Phase 05A local acceptance passed for BE-01 standalone Express + TypeScript + npm, no database.** CLI and Tauri flows passed pinned dependency integrity, tests/typecheck/build/HTTP/shutdown checks, consent, result/history/open actions, cancellation, and collision controls. BE-01 remains `planned`; see [DEC-025](decisions/DEC-025-phase-05a-express-rest-api.md) and [Phase 05A evidence](qa/evidence/phase-05a-express-rest-api.md).
 - **Phase 05B bounded local CLI/native acceptance and final regressions complete for BE-02 standalone Go `net/http` + Go Modules.** BE-02 remains planned.
-- Remaining breadth: NestJS, Fastify, Go Gin, Laravel, FastAPI adapters. Phase 05B reconciles the draft IDs: NestJS is BE-03, Go Gin BE-04, Laravel BE-05, and FastAPI BE-06.
+- **Phase 05C.1 BE-06 FastAPI implementation is present; recipe acceptance is BLOCKED.** This bounded slice is standalone FastAPI/Pydantic/Uvicorn + uv, no database/ORM/auth/fullstack. Host has Python 3.15.1, not Python 3.14 baseline, and no uv; lock/sync and native E2E were not run. Pins remain provisional. See [DEC-027](decisions/DEC-027-phase-05c1-fastapi.md) and [evidence](qa/evidence/phase-05c1-fastapi.md).
+- Remaining breadth: NestJS, Fastify, Go Gin, Laravel. Phase 05B reconciles the draft IDs: NestJS is BE-03, Go Gin BE-04, Laravel BE-05, and FastAPI BE-06.
 - DB drivers: PostgreSQL, MySQL/MariaDB, SQLite, MongoDB, with verified ORM pairings and real service checks.
-- **Phase 05A/05B gate: GO for independent BE-01/BE-02 review; NO-GO for promotion/release.** Recommend Phase 05C evaluate standalone Laravel and FastAPI backend recipes; do not add database/fullstack scope without separate authorization and evidence.
+- **Phase 05A/05B gate: GO for independent BE-01/BE-02 review; NO-GO for promotion/release.** BE-06 remains NO-GO for acceptance pending Python 3.14/uv E2E and independent review. Recommend Laravel as a separate bounded recipe evaluation; do not add database/fullstack scope without separate authorization and evidence.
 - Output: distinct backend-only recipes earning tested status; no DB readiness claims without available DB.
 
 ## Phase 6 — Fullstack composition

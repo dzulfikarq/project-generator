@@ -18,14 +18,14 @@ test('catalog emits local versioned JSON without network', () => {
     data: {
       adapters: { id: string; compatibleWith: string[]; incompatibleWith: string[] }[]
       packageManagers: { id: string; version: string; lockfile?: string }[]
-      recipes: { id: string; status: string; scaffold?: { packageName: string; version: string; integrity: string; source?: { commitSha: string } }; dependencies?: { packageName: string; version: string; integrity: string; scope?: string }[] }[]
+      recipes: { id: string; status: string; manager: string; checks: string[]; scaffold?: { packageName: string; version: string; integrity: string; source?: { commitSha: string } }; dependencies?: { packageName: string; version: string; integrity: string; scope?: string }[] }[]
     }
   }
   assert.equal(envelope.ok, true)
   assert.deepEqual(envelope.data.recipes.map(({ id, status }) => [id, status]), [
-    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'], ['FE-06', 'planned'], ['FE-07', 'planned'], ['FE-08', 'planned'], ['FE-09', 'planned'], ['FE-10', 'planned'], ['FE-11', 'planned'], ['FE-12', 'planned'], ['FE-13', 'planned'], ['FE-14', 'planned'], ['FE-15', 'planned'], ['BE-01', 'planned'], ['BE-02', 'planned'],
+    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'], ['FE-06', 'planned'], ['FE-07', 'planned'], ['FE-08', 'planned'], ['FE-09', 'planned'], ['FE-10', 'planned'], ['FE-11', 'planned'], ['FE-12', 'planned'], ['FE-13', 'planned'], ['FE-14', 'planned'], ['FE-15', 'planned'], ['BE-01', 'planned'], ['BE-02', 'planned'], ['BE-06', 'planned'],
   ])
-  assert.deepEqual(envelope.data.packageManagers.map(({ id, version }) => [id, version]), [['npm', '>=10.0.0'], ['yarn', '4.18.1'], ['pnpm', '11.28.11'], ['go-modules', 'Go 1.22+']])
+  assert.deepEqual(envelope.data.packageManagers.map(({ id, version }) => [id, version]), [['npm', '>=10.0.0'], ['yarn', '4.18.1'], ['pnpm', '11.28.11'], ['go-modules', 'Go 1.22+'], ['uv', '>=0.8.0']])
   const vue = envelope.data.recipes.find(({ id }) => id === 'FE-03')!
   assert.equal(vue.scaffold!.packageName, 'create-vue')
   assert.equal(vue.scaffold!.version, '3.24.0')
@@ -55,6 +55,10 @@ test('catalog emits local versioned JSON without network', () => {
     ['express', '5.1.0'], ['@types/express', '5.0.3'], ['@types/node', '22.20.5'], ['tsx', '4.20.5'], ['typescript', '5.9.3'],
   ])
   assert.ok(backend.dependencies?.every(({ integrity }) => integrity.startsWith('sha512-')))
+  const fastapi = envelope.data.recipes.find(({ id }) => id === 'BE-06')!
+  assert.equal(fastapi.manager, 'uv')
+  assert.equal(fastapi.status, 'planned')
+  assert.deepEqual(fastapi.checks, ['uv-lock', 'locked-sync', 'lockfile-integrity', 'python-syntax', 'pytest', 'http-smoke', 'openapi', 'graceful-shutdown'])
   const forma = envelope.data.adapters.find(({ id }) => id === 'template.forma')!
   assert.equal(forma.compatibleWith.includes('frontend.vue-vite'), false)
   const bootstrap = envelope.data.adapters.find(({ id }) => id === 'styling.bootstrap')!
@@ -235,7 +239,7 @@ test('internal CLI planned override reaches preflight while default generation s
     await writeFile(overrideConfig, JSON.stringify(config('occupied-project')))
     await writeFile(blockedConfig, JSON.stringify(config('blocked-project')))
 
-    const allowed = spawnSync(process.execPath, [cli, 'generate', '--config', overrideConfig, '--jsonl', '--development-allow-planned'], { encoding: 'utf8', windowsHide: true })
+    const allowed = spawnSync(process.execPath, [cli, 'generate', '--config', overrideConfig, '--jsonl', '--development-allow-planned', '--allow-dependency-scripts'], { encoding: 'utf8', windowsHide: true })
     assert.equal(allowed.status, 6, allowed.stderr)
     assert.ok(codes(allowed.stdout).includes('GEN_PATH_EXISTS'), allowed.stdout)
     await cleanupLog(allowed.stderr)

@@ -121,6 +121,8 @@ enum DesktopRecipeId {
     Be01,
     #[serde(rename = "BE-02")]
     Be02,
+    #[serde(rename = "BE-06")]
+    Be06,
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -174,6 +176,19 @@ impl DesktopSelectionV1 {
                 "git": { "initialize": false, "initialCommit": false }
             });
         }
+        if matches!(self.recipe_id, DesktopRecipeId::Be06) {
+            return json!({
+                "schemaVersion": 1,
+                "project": {
+                    "name": self.project_name,
+                    "parentDirectory": self.parent_directory,
+                    "type": "backend"
+                },
+                "backend": { "adapterId": "backend.fastapi", "manager": "uv" },
+                "documentation": self.documentation.as_str(),
+                "git": { "initialize": false, "initialCommit": false }
+            });
+        }
         let (frontend, styling, manager) = match self.recipe_id {
             DesktopRecipeId::Fe01 => ("frontend.react-vite", "styling.css", "npm"),
             DesktopRecipeId::Fe02 => ("frontend.nextjs-app", "styling.tailwind", "npm"),
@@ -190,7 +205,7 @@ impl DesktopSelectionV1 {
             DesktopRecipeId::Fe13 => ("frontend.vue-vite", "styling.css", "yarn"),
             DesktopRecipeId::Fe14 => ("frontend.react-vite", "styling.css", "pnpm"),
             DesktopRecipeId::Fe15 => ("frontend.vue-vite", "styling.css", "pnpm"),
-            DesktopRecipeId::Be01 | DesktopRecipeId::Be02 => {
+            DesktopRecipeId::Be01 | DesktopRecipeId::Be02 | DesktopRecipeId::Be06 => {
                 unreachable!("backend selection returned above")
             }
         };
@@ -1071,6 +1086,11 @@ async fn start_generation(
             } else {
                 Vec::new()
             })
+            .args(if lifecycle_consent {
+                vec!["--allow-dependency-scripts"]
+            } else {
+                Vec::new()
+            })
             .current_dir(root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -1545,6 +1565,20 @@ mod tests {
             go_backend["backend"]["modulePath"],
             "github.com/example/demo-api"
         );
+
+        let fastapi_backend = DesktopSelectionV1 {
+            project_name: "demo-api".into(),
+            parent_directory: "C:\\Projects".into(),
+            recipe_id: DesktopRecipeId::Be06,
+            documentation: DesktopDocumentationV1::Standard,
+            template_id: None,
+            template_variant_id: None,
+            module_path: None,
+        }
+        .to_core_json("");
+        assert_eq!(fastapi_backend["backend"]["adapterId"], "backend.fastapi");
+        assert_eq!(fastapi_backend["backend"]["manager"], "uv");
+        assert!(fastapi_backend.get("frontend").is_none());
 
         let standalone = DesktopSelectionV1 {
             project_name: "demo".into(),

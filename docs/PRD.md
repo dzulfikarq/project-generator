@@ -201,7 +201,7 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for component boundaries, Windows stagi
 - BE-03 NestJS + npm + PostgreSQL + Prisma.
 - BE-04 Go + Gin + PostgreSQL + pgx (Go Modules).
 - BE-05 Laravel + MySQL + Eloquent (Composer + npm for assets as relevant).
-- BE-06 FastAPI + PostgreSQL + SQLAlchemy (uv).
+- BE-06 target: FastAPI + PostgreSQL + SQLAlchemy (uv). Phase 05C.1 is narrower: standalone FastAPI API with no database/ORM; it does not implement or verify this database target.
 - FS-01 Vue + Laravel + MySQL.
 - FS-02 React + Go Gin + PostgreSQL.
 - FS-03 Angular + NestJS + PostgreSQL.

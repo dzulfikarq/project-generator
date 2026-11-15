@@ -22,6 +22,20 @@ const goRequirement = {
   reason: 'Go Modules and method-aware standard-library HTTP routing.',
 } as const
 
+const pythonRequirement = {
+  executableId: 'python',
+  versionRange: '>=3.14,<3.15',
+  optional: false,
+  reason: 'Acceptance baseline and generated project runtime.',
+} as const
+
+const uvRequirement = {
+  executableId: 'uv',
+  versionRange: '>=0.8.0',
+  optional: false,
+  reason: 'Creates and verifies uv.lock, isolated .venv, and locked dependencies.',
+} as const
+
 export const PACKAGE_MANAGERS: readonly PackageManagerManifestV1[] = [
   { id: 'npm', version: '>=10.0.0', lockfile: 'package-lock.json' },
   {
@@ -47,6 +61,7 @@ export const PACKAGE_MANAGERS: readonly PackageManagerManifestV1[] = [
     nodeVersionRange: '>=22.13.0',
   },
   { id: 'go-modules', version: 'Go 1.22+', },
+  { id: 'uv', version: '>=0.8.0', lockfile: 'uv.lock' },
 ]
 
 export function packageManager(id: PackageManagerId): PackageManagerManifestV1 {
@@ -248,6 +263,30 @@ export const ADAPTERS: readonly AdapterManifestV1[] = [
     packageManagers: ['go-modules'],
     prerequisites: [goRequirement],
     capabilities: ['go', 'standard-library-http', 'go-modules', 'rest-api', 'health-check', 'unit-tests', 'http-smoke', 'graceful-shutdown'],
+    compatibleWith: [],
+    incompatibleWith: ['frontend.*', 'database.*', 'fullstack.*'],
+    recipeEvidenceIds: [],
+  },
+  {
+    schemaVersion: 1,
+    id: 'backend.fastapi',
+    adapterVersion: '0.1.0',
+    kind: 'backend',
+    displayName: 'FastAPI',
+    supportState: 'planned',
+    supportedOS: ['windows'],
+    versionConstraints: {
+      python: '>=3.14,<3.15',
+      uv: '>=0.8.0',
+      fastapi: '0.163.0 (provisional; not runtime-verified)',
+      pydantic: '2.14.3 (provisional; not runtime-verified)',
+      uvicorn: '0.54.0 (provisional; not runtime-verified)',
+      pytest: '9.2.0 (provisional; not runtime-verified)',
+      httpx: '0.28.1 (provisional; not runtime-verified)',
+    },
+    packageManagers: ['uv'],
+    prerequisites: [pythonRequirement, uvRequirement],
+    capabilities: ['python', 'fastapi', 'pydantic', 'uvicorn', 'pytest', 'uv-lockfile', 'rest-api', 'health-check', 'openapi', 'unit-tests', 'http-smoke', 'graceful-shutdown'],
     compatibleWith: [],
     incompatibleWith: ['frontend.*', 'database.*', 'fullstack.*'],
     recipeEvidenceIds: [],
@@ -630,6 +669,22 @@ export const RECIPES: readonly RecipeManifestV1[] = [
     manager: 'go-modules',
     checks: ['go-module', 'go-fmt', 'go-vet', 'go-test', 'go-build', 'http-smoke', 'graceful-shutdown'],
     limitations: ['Standalone standard-library REST API; no frontend, database, ORM, authentication, or third-party dependency.', 'Go 1.22 or newer required; module path is configurable.'],
+    evidenceIds: [],
+  },
+  {
+    schemaVersion: 1,
+    id: 'BE-06',
+    status: 'planned',
+    platform: 'windows',
+    projectType: 'backend',
+    backend: 'backend.fastapi',
+    language: 'python',
+    manager: 'uv',
+    checks: ['uv-lock', 'locked-sync', 'lockfile-integrity', 'python-syntax', 'pytest', 'http-smoke', 'openapi', 'graceful-shutdown'],
+    limitations: [
+      'Standalone FastAPI REST API; no frontend, database, ORM, authentication, or automatic server startup.',
+      'Python 3.14 and uv are required. Dependency pins remain provisional until Python 3.14 Windows acceptance passes.',
+    ],
     evidenceIds: [],
   },
 ] as const

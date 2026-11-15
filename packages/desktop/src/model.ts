@@ -22,6 +22,7 @@ export type Adapter = {
   kind: string
   displayName: string
   supportState: string
+  versionConstraints: Record<string, string>
   packageManagers: string[]
   compatibleWith: string[]
   prerequisites: { executableId: string; versionRange: string; optional: boolean; reason: string }[]
