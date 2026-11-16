@@ -55,7 +55,7 @@ export function parseSelection(value: unknown): ProjectSelectionV1 {
   const database = optionalObject(root.database, 'database', ['adapterId', 'accessAdapterId', 'mode'], ['adapterId', 'mode'])
   if (database) {
     noUnknownStrings(database, 'database', ['adapterId', 'mode'], ['accessAdapterId'])
-    if (!['none', 'existing-service', 'docker-compose'].includes(database.mode as string)) throw configError('database.mode is unsupported.')
+    if (!['none', 'embedded', 'existing-service', 'docker-compose'].includes(database.mode as string)) throw configError('database.mode is unsupported.')
   }
 
   const styling = optionalObject(root.styling, 'styling', ['adapterId', 'uiLibraryId'], ['adapterId'])
@@ -93,7 +93,7 @@ export function parseSelection(value: unknown): ProjectSelectionV1 {
     } }),
     ...(database === undefined ? {} : { database: {
       adapterId: database.adapterId as string,
-      mode: database.mode as 'none' | 'existing-service' | 'docker-compose',
+      mode: database.mode as 'none' | 'embedded' | 'existing-service' | 'docker-compose',
       ...(database.accessAdapterId === undefined ? {} : { accessAdapterId: database.accessAdapterId as string }),
     } }),
     ...(styling === undefined ? {} : { styling: {

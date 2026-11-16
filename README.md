@@ -2,13 +2,13 @@
 
 | Field | Value |
 |---|---|
-| Status | **Phase 01 CLI + Phase 02 Forma + Phase 02.6 packaging PoC + Phase 03 internal UI MVP + Phase 03.5 UX polish + Phase 04A–04B.3 frontend evidence + Phase 05A–05D.2 bounded BE-01–BE-06 local evidence** — broader product acceptance remains partial; all FE/BE/FM recipes remain planned; no release approved |
+| Status | **Phase 01 CLI + Phase 02 Forma + Phase 02.6 packaging PoC + Phase 03 internal UI MVP + Phase 03.5 UX polish + Phase 04A–04B.3 frontend evidence + Phase 05A–05D.2 / 06A bounded BE-01–BE-07 local evidence** — broader product acceptance remains partial; all FE/BE/FM recipes remain planned; no release approved |
 | Version | 0.1.0 |
 | Date | 2026-11-16 |
 | Product | Universal Project Generator Desktop |
 | Target OS | Windows 11 first |
 | Documentation inspiration | EvoPilot (PRD ↔ design ↔ decision register ↔ QA evidence) |
-| Scope | CLI kernel, internal Tauri desktop UI/runtime PoC, planned frontend, standalone Express, Go `net/http` and Gin, NestJS, FastAPI, and Laravel API recipes, optional React/Next Forma templates; Laravel MySQL/Eloquent has bounded local evidence only, and fullstack remains unverified |
+| Scope | CLI kernel, internal Tauri desktop UI/runtime PoC, planned frontend, standalone Express, Express/SQLite/Drizzle, Go `net/http` and Gin, NestJS, FastAPI, and Laravel API recipes, optional React/Next Forma templates; database recipes remain planned, and fullstack remains unverified |
 
 Planning documents remain source for requirements and boundaries. Code and observed test evidence define implemented behavior. Phase 03 includes the FormaForge Forge Studio dashboard, catalog-driven wizard, metadata-only Forma gallery, review/Doctor, consent-gated job UI, results, local metadata history/settings, and fixed native open actions. Phase 03.5 fixes invalid typography declarations and a clipped dashboard empty-state action; native Windows UI runs completed FE-01/FE-02 generation, collision/error/retry, cancellation, history, and open actions using explicit internal consent. Phase 04A adds FE-03 Vue/Vite/CSS, FE-04 React/Vite/Bootstrap CSS, and FE-05 Vue/Vite/Bootstrap CSS through pinned official packages; fresh CLI and native desktop runs passed listed checks. Phase 04B adds planned Nuxt 4 and Angular 21 recipes through pinned official scaffolds; fresh non-elevated CLI and native Tauri runs passed listed checks, result/history open actions, and bounded safety checks. Phase 04B.2 adds React/Vue Vite SCSS via Sass 1.108.2 and Tailwind CSS 4 via the official Vite plugin 4.3.5. Phase 04B.3 adds FE-12–FE-15 React/Vue Vite + Plain CSS recipes with Yarn `4.18.1` or pnpm `11.28.11`; fresh CLI and native Tauri runs passed checks, while npm remains default. All FE recipes remain `planned` pending independent acceptance and review. Bootstrap JS/Popper and Forma outside React/Next remain excluded. Broader product acceptance remains partial. Desktop install/update/uninstall and both runtime package modes have same-host Windows 11 PoC evidence; no clean-machine proof or release approval exists. See [Phase 03.5 desktop acceptance](docs/qa/evidence/phase-03.5-final-desktop-acceptance.md), [Forge Studio verification](docs/qa/evidence/forge-studio-redesign.md), [Phase 04A acceptance](docs/qa/evidence/phase-04a-native-desktop-acceptance.md), [Phase 04B evidence](docs/qa/evidence/phase-04b-nuxt-angular.md), [Phase 04B.2 evidence](docs/qa/evidence/phase-04b2-scss-tailwind.md), and [Phase 04B.3 evidence](docs/qa/evidence/phase-04b3-yarn-pnpm.md).
 
@@ -37,6 +37,10 @@ BE-03 adds a standalone NestJS 11 / TypeScript / npm API from integrity-pinned o
 ## Phase 05D.2 status
 
 BE-04 adds a standalone Go + Gin `1.12.0` REST API using Go Modules (Go `>=1.25.0`), with pinned module graph and checksums. Windows CLI/native acceptance passed module integrity, Go formatting/vet/test/build, HTTP smoke, graceful shutdown, consent separation, cancellation cleanup, collision preservation, and UI result/history/open flows. No database, ORM, authentication, Docker, or fullstack. BE-04 remains `planned`; normal/release generation stays blocked. PostgreSQL/pgx remains separate proposed FS-02 scope. See [DEC-030](docs/decisions/DEC-030-phase-05d2-go-gin.md) and [Phase 05D.2 evidence](docs/qa/evidence/phase-05d2-go-gin.md).
+
+## Phase 06A status
+
+BE-07 adds separate Express + npm + SQLite + Drizzle starter, pinned `drizzle-orm@0.45.4`, `drizzle-kit@0.31.11`, `better-sqlite3@13.2.0`, and `tsx@4.21.0`. Windows CLI/native checks passed generated migrations, project checks, HTTP smoke, and isolated migration/CRUD. Generation never migrates the application DB; smoke uses `:memory:`. Cancellation, collision preservation, explicit consent, and release blocking passed. BE-01 remains Express with no database; BE-07 remains `planned`, independent review pending, and normal/release generation blocked. No database expansion or fullstack claim. See [DEC-031](docs/decisions/DEC-031-phase-06a-express-sqlite-drizzle.md) and [Phase 06A evidence](docs/qa/evidence/phase-06a-express-sqlite-drizzle.md).
 
 ## Developer setup
 

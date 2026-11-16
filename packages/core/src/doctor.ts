@@ -11,6 +11,7 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
   const recipe = resolved.recipe
   const isGo = recipe.id === 'BE-02'
   const isGin = recipe.id === 'BE-04'
+  const isDatabaseBackend = recipe.id === 'BE-07'
   const usesGo = isGo || isGin
   const isLaravel = recipe.id === 'BE-05'
   const isPython = recipe.id === 'BE-06'
@@ -28,7 +29,7 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
     id: 'node',
     available: nodeSupported,
     version: nodeVersion,
-    message: nodeSupported ? 'Node.js version satisfies pinned scaffold and package-manager requirements.' : `Node.js ${process.version} is outside this recipe's supported range.`,
+    message: nodeSupported ? isDatabaseBackend ? 'Node.js satisfies Express and native SQLite requirements; better-sqlite3 runtime compatibility is verified during explicit dependency installation.' : 'Node.js version satisfies pinned scaffold and package-manager requirements.' : `Node.js ${process.version} is outside this recipe's supported range.`,
   }
 
   const npmTool = usesGo || isPython || isPhp ? undefined : await resolveNpmTool()

@@ -1,4 +1,4 @@
-export { ADAPTERS, PACKAGE_MANAGERS, RECIPES, catalog } from './catalog.js'
+export { ADAPTERS, DATABASE_ADAPTERS, ORM_ADAPTERS, PACKAGE_MANAGERS, RECIPES, catalog, resolveBackendRecipe } from './catalog.js'
 export { ALLOW_PLANNED_RECIPE_GENERATION, BUILD_PROFILE } from './build-policy.js'
 export { GeneratorError, asGeneratorError } from './errors.js'
 export { runDoctor } from './doctor.js'

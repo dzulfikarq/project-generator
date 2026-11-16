@@ -155,6 +155,54 @@ test('production generation blocks planned BE-05 before staging or destination w
   }
 })
 
+test('production generation blocks planned BE-07 before staging or destination writes', async () => {
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-planned-sqlite-'))
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'planned-sqlite-api', type: 'backend', parentDirectory: parent },
+    backend: { adapterId: 'backend.express', manager: 'npm' },
+    database: { adapterId: 'database.sqlite', accessAdapterId: 'data-access.drizzle-sqlite', mode: 'embedded' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  })
+  let logFile = ''
+  try {
+    const result = await generateProject(selection)
+    logFile = result.logFile ?? ''
+    assert.equal(result.status, 'failed')
+    assert.equal(result.error?.code, 'GEN_RECIPE_UNTESTED')
+    await assert.rejects(access(win32.join(parent, 'planned-sqlite-api')))
+    assert.deepEqual(await readdir(parent), [])
+  } finally {
+    await rm(parent, { recursive: true, force: true })
+    if (logFile) await rm(dirname(logFile), { recursive: true, force: true })
+  }
+})
+
+test('BE-07 requires explicit unsandboxed npm consent before staging', { skip: !ALLOW_PLANNED_RECIPE_GENERATION }, async () => {
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-sqlite-consent-'))
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'sqlite-consent-api', type: 'backend', parentDirectory: parent },
+    backend: { adapterId: 'backend.express', manager: 'npm' },
+    database: { adapterId: 'database.sqlite', accessAdapterId: 'data-access.drizzle-sqlite', mode: 'embedded' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  })
+  let logFile = ''
+  try {
+    const result = await generateProject(selection, { allowPlanned: true })
+    logFile = result.logFile ?? ''
+    assert.equal(result.status, 'failed')
+    assert.equal(result.error?.code, 'GEN_DEPENDENCY_CONSENT_REQUIRED')
+    await assert.rejects(access(win32.join(parent, 'sqlite-consent-api')))
+    assert.deepEqual(await readdir(parent), [])
+  } finally {
+    await rm(parent, { recursive: true, force: true })
+    if (logFile) await rm(dirname(logFile), { recursive: true, force: true })
+  }
+})
+
 test('BE-06 development generation requires explicit third-party dependency consent before staging', { skip: !ALLOW_PLANNED_RECIPE_GENERATION }, async () => {
   const parent = await mkdtemp(win32.join(tmpdir(), 'pg-fastapi-consent-'))
   const selection = parseSelection({

@@ -202,6 +202,7 @@ try {
   assert.equal(manifest.recipeStatusAtCreation, 'planned')
   assert.equal(manifest.projectType, 'backend')
   assert.equal(manifest.packageManager, 'npm')
+  assert.equal(manifest.selectedAdapters.some(({ id }) => id.startsWith('database.') || id.startsWith('data-access.')), false)
   for (const check of ['dependency-install', 'dependency-integrity', 'lockfile-integrity', 'typecheck', 'unit-tests', 'graceful-shutdown', 'build', 'http-smoke']) {
     assert.equal(manifest.validation.find((item) => item.id === check)?.status, 'pass', check)
   }
@@ -209,6 +210,9 @@ try {
   assert.equal(packageJson.engines.node, '>=22.13.0')
   assert.deepEqual(Object.keys(packageJson.scripts).sort(), ['build', 'dev', 'start', 'test', 'typecheck'])
   assert.equal(packageJson.dependencies.express, '5.1.0')
+  assert.equal(packageJson.dependencies['better-sqlite3'], undefined)
+  assert.equal(packageJson.scripts['db:migrate'], undefined)
+  await assert.rejects(access(join(projectPath, 'data')))
   assert.equal(packageJson.devDependencies.typescript, '5.9.3')
   assert.equal(packageJson.devDependencies.tsx, '4.20.5')
   const lock = JSON.parse(await readFile(join(projectPath, 'package-lock.json'), 'utf8'))

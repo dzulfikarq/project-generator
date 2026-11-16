@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Date | 2026-11-13 |
-| State | Phase 01 CLI, Phase 02 local Forma integration, bounded DEC-017 recovery, Phase 02.6 runtime PoC, Phase 03 internal UI MVP, Phase 04B.3 frontend evidence, Phase 05A–05D.2 backend work; Phase 05C development scope closed after bounded independent BE-05 review; formal release review not complete |
+| State | Phase 01 CLI, Phase 02 local Forma integration, bounded DEC-017 recovery, Phase 02.6 runtime PoC, Phase 03 internal UI MVP, Phase 04B.3 frontend evidence, Phase 05A–05D.2 and Phase 06A backend work; Phase 05C development scope closed after bounded independent BE-05 review; formal release review not complete |
 | Governance | See [`governance.md`](governance.md) |
 
 This project adopts EvoPilot's **decision accountability** pattern but uses standard English spelling (`decision`, `decisions`). A user-selected direction can be recorded as **Accepted Discovery** without implying implementation completion, test passage or formal release approval.
@@ -42,6 +42,7 @@ This project adopts EvoPilot's **decision accountability** pattern but uses stan
 | DEC-028 | Phase 05C.3 standalone Laravel backend | Implementation and bounded CLI/native plus isolated MySQL/Eloquent acceptance complete; bounded independent evidence review PASS; Phase 05C development scope closed | [DEC-028](DEC-028-phase-05c3-laravel.md), [Phase 05C.3 evidence](../qa/evidence/phase-05c3-laravel.md) | Keep BE-05 planned; no automatic DB provisioning/migration, frontend build, recipe promotion, or release approval |
 | DEC-029 | Phase 05D.1 standalone NestJS backend | User-authorized implementation and bounded Windows CLI/native acceptance complete; independent review pending | [DEC-029](DEC-029-phase-05d1-nestjs.md), [Phase 05D.1 evidence](../qa/evidence/phase-05d1-nestjs.md) | Keep BE-03 planned; no database/ORM/auth/Docker/fullstack/Observe, recipe promotion, or release approval; see DEC-030 for BE-04 scope |
 | DEC-030 | Phase 05D.2 standalone Go Gin backend | User-authorized bounded implementation and Windows CLI/native acceptance complete; independent evidence review pending | [DEC-030](DEC-030-phase-05d2-go-gin.md), [Phase 05D.2 evidence](../qa/evidence/phase-05d2-go-gin.md) | BE-04 is Gin `v1.12.0` + Go Modules, Go >=1.25, no DB/auth; keep planned, no FS-02 scope change, promotion, or release approval |
+| DEC-031 | Phase 06A Express + SQLite + Drizzle backend | User-authorized bounded implementation and Windows CLI/native acceptance complete; independent evidence review pending | [DEC-031](DEC-031-phase-06a-express-sqlite-drizzle.md), [Phase 06A evidence](../qa/evidence/phase-06a-express-sqlite-drizzle.md) | Keep BE-07 planned and distinct from no-DB BE-01; generation writes SQL only, never applies app migrations; no database/fullstack expansion, promotion, or release approval |
 
 ## Open items
 

@@ -34,6 +34,8 @@ export type Recipe = {
   projectType?: string
   frontend?: string
   backend?: string
+  database?: string
+  dataAccess?: string
   styling?: string
   manager: string
   limitations: string[]
@@ -58,6 +60,8 @@ export type Template = {
 export type Catalog = {
   schemaVersion: number
   adapters: Adapter[]
+  databaseAdapters?: Adapter[]
+  ormAdapters?: Adapter[]
   packageManagers: { id: string; version: string; lockfile?: string; nodeLinker?: string }[]
   recipes: Recipe[]
   forma: {
@@ -65,6 +69,41 @@ export type Catalog = {
     integrations: { recipeId: string; frontend: string; status: string }[]
     templates: Template[]
   }
+}
+
+export type CompatibilityOption = { adapter: Adapter; enabled: boolean; reason: string }
+
+function databaseAdapters(catalog: Catalog): Adapter[] {
+  return catalog.databaseAdapters ?? catalog.adapters.filter((adapter) => adapter.kind === 'database')
+}
+
+function ormAdapters(catalog: Catalog): Adapter[] {
+  return catalog.ormAdapters ?? catalog.adapters.filter((adapter) => adapter.kind === 'data-access')
+}
+
+export function findBackendRecipe(catalog: Catalog | null, backendId: string, managerId: string, databaseId: string, ormId: string): Recipe | undefined {
+  return catalog?.recipes.find((recipe) => recipe.id.startsWith('BE-')
+    && recipe.backend === backendId
+    && recipe.manager === managerId
+    && (recipe.database ?? 'database.none') === databaseId
+    && (recipe.dataAccess ?? 'data-access.none') === ormId)
+}
+
+export function backendDatabaseOptions(catalog: Catalog | null, backendId: string, managerId: string): CompatibilityOption[] {
+  if (!catalog) return []
+  return databaseAdapters(catalog).map((adapter) => {
+    const enabled = catalog.recipes.some((recipe) => recipe.id.startsWith('BE-') && recipe.backend === backendId
+      && recipe.manager === managerId && (recipe.database ?? 'database.none') === adapter.id)
+    return { adapter, enabled, reason: enabled ? 'Exact recipe exists for this backend.' : adapter.supportState === 'cataloged' ? 'Catalog entry only; no exact recipe is implemented.' : 'No exact backend/database/ORM recipe exists.' }
+  })
+}
+
+export function backendOrmOptions(catalog: Catalog | null, backendId: string, managerId: string, databaseId: string): CompatibilityOption[] {
+  if (!catalog) return []
+  return ormAdapters(catalog).map((adapter) => {
+    const enabled = Boolean(findBackendRecipe(catalog, backendId, managerId, databaseId, adapter.id))
+    return { adapter, enabled, reason: enabled ? 'Exact recipe exists for this database.' : adapter.supportState === 'cataloged' ? 'Catalog entry only; no exact ORM recipe is implemented.' : 'No exact framework/database/ORM recipe exists.' }
+  })
 }
 
 export const STORAGE_KEY = 'project-generator.desktop.v1'

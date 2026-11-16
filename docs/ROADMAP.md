@@ -1,6 +1,6 @@
 # Roadmap — Project Generator Desktop V1
 
-Status: **Phase 01 bounded acceptance, Phase 02 local Forma integration/evidence, Phase 03 internal UI implementation, Phase 04A–04B.3 frontend evidence, Phase 05A–05D.1 BE-01–BE-03/BE-05/BE-06 bounded evidence present; Phase 05C development scope closed after bounded independent BE-05 review; broader acceptance remains partial, no recipe release-approved.** Date: 2026-11-16.
+Status: **Phase 01 bounded acceptance, Phase 02 local Forma integration/evidence, Phase 03 internal UI implementation, Phase 04A–04B.3 frontend evidence, Phase 05A–05D.2 and Phase 06A BE-01–BE-07 bounded local evidence present; Phase 05C development scope closed after bounded independent BE-05 review; broader acceptance remains partial, no recipe release-approved.** Date: 2026-11-16.
 
 ## Phase 0 — Specification and governance
 
@@ -55,6 +55,12 @@ Architecture specification: [`ARCHITECTURE.md`](ARCHITECTURE.md). UX specificati
 - DB drivers: PostgreSQL, MySQL/MariaDB, SQLite, MongoDB, with verified ORM pairings and real service checks.
 - **Phase 05A/05B gate: GO for independent BE-01/BE-02 review; NO-GO for promotion/release. Phase 05C.2 gate: GO for independent BE-06 review only; NO-GO for promotion/release. Phase 05C.3: GO for development closure after bounded independent BE-05 evidence review; NO-GO for promotion/release. Phase 05D.1: GO for independent BE-03 evidence review only; NO-GO for promotion/release. Phase 05D.2: GO for bounded BE-04 implementation/evidence only; NO-GO for recipe promotion/release.** No fullstack expansion; FS-02 remains separate proposed PostgreSQL/pgx scope.
 - Output: distinct backend-only recipes earning tested status; no DB readiness claims without available DB.
+
+## Phase 06A — Standalone Express + SQLite + Drizzle
+
+- Implemented BE-07 as a distinct Express/npm/SQLite/Drizzle recipe with pinned dependencies, generated schema/config/CRUD starter, and migration SQL. BE-01 remains Express with no database.
+- Bounded Windows CLI/native acceptance and release-policy verification passed. Migrations are never applied during generation or app startup; generator smoke uses `:memory:`, while migration/CRUD acceptance uses a disposable isolated database.
+- BE-07 remains `planned` and blocked in normal/release generation pending independent evidence review. No other database pairing, fullstack composition, recipe promotion, or release is approved. See [DEC-031](decisions/DEC-031-phase-06a-express-sqlite-drizzle.md) and [evidence](qa/evidence/phase-06a-express-sqlite-drizzle.md).
 
 ## Phase 6 — Fullstack composition
 

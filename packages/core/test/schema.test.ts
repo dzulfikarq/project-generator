@@ -12,7 +12,7 @@ import { supportsComposer, supportsGo, supportsGoGin, supportsNodeForAngular, su
 import { defaultGoModulePath, isValidGoModulePath } from '../src/go-module.js'
 import { FORMA_COMMIT_SHA, isFormaCommit } from '../src/forma-catalog.js'
 import { runDoctor } from '../src/doctor.js'
-import { ADAPTERS, PACKAGE_MANAGERS } from '../src/catalog.js'
+import { ADAPTERS, DATABASE_ADAPTERS, ORM_ADAPTERS, PACKAGE_MANAGERS, resolveBackendRecipe } from '../src/catalog.js'
 
 const reactConfig = {
   schemaVersion: 1,
@@ -99,6 +99,7 @@ test('accepts exact FE-01 through FE-15 combinations without filesystem access',
   const plan = createPlan(parseSelection(reactConfig))
   assert.equal(plan.recipeStatus, 'planned')
   assert.equal(plan.executionAvailable, false)
+  assert.equal(new Set(plan.expectedWrites).size, plan.expectedWrites.length)
   assert.equal(plan.targetPath, 'E:\\Projects\\sample-web')
   const bootstrapPlan = createPlan(parseSelection(vueBootstrapConfig))
   assert.ok(bootstrapPlan.expectedWrites.includes('src/project-generator-bootstrap.css'))
@@ -212,6 +213,64 @@ test('BE-01 resolves standalone Express and pins every direct dependency', () =>
     assert.throws(() => createPlan(parseSelection(invalid)), (error: unknown) => error instanceof GeneratorError
       && error.code === 'GEN_INCOMPATIBLE'
       && error.nextAction === 'Choose an explicitly cataloged recipe and remove unsupported choices.')
+  }
+})
+
+test('BE-07 resolves exact Express SQLite Drizzle tuple without changing BE-01', () => {
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'notes-api', type: 'backend', parentDirectory: 'E:\\Projects' },
+    backend: { adapterId: 'backend.express', manager: 'npm' },
+    database: { adapterId: 'database.sqlite', accessAdapterId: 'data-access.drizzle-sqlite', mode: 'embedded' },
+    documentation: 'standard',
+    git: { initialize: false, initialCommit: false },
+  })
+  const { recipe } = resolveSelection(selection)
+  const plan = createPlan(selection)
+  assert.equal(recipe.id, 'BE-07')
+  assert.equal(recipe.status, 'planned')
+  assert.equal(recipe.database, 'database.sqlite')
+  assert.equal(recipe.dataAccess, 'data-access.drizzle-sqlite')
+  assert.equal(recipe.manager, 'npm')
+  assert.deepEqual(recipe.dependencies?.map(({ packageName, version, scope }) => [packageName, version, scope]), [
+    ['express', '5.1.0', undefined],
+    ['drizzle-orm', '0.45.4', undefined],
+    ['better-sqlite3', '13.2.0', undefined],
+    ['@types/express', '5.0.3', 'devDependencies'],
+    ['@types/better-sqlite3', '9.6.0', 'devDependencies'],
+    ['@types/node', '22.20.5', 'devDependencies'],
+    ['tsx', '4.21.0', 'devDependencies'],
+    ['typescript', '5.9.3', 'devDependencies'],
+    ['drizzle-kit', '0.31.11', 'devDependencies'],
+    ['eslint', '9.18.0', 'devDependencies'],
+    ['@eslint/js', '9.18.0', 'devDependencies'],
+    ['globals', '17.0.0', 'devDependencies'],
+    ['typescript-eslint', '8.72.2', 'devDependencies'],
+  ])
+  assert.ok(recipe.dependencies?.every(({ integrity }) => integrity.startsWith('sha512-')))
+  assert.equal(plan.executionAvailable, false)
+  assert.equal(new Set(plan.expectedWrites).size, plan.expectedWrites.length)
+  for (const path of ['drizzle.config.ts', 'src/db/schema.ts', 'src/db/client.ts', 'src/db/notes.ts', 'test/database.test.ts', 'drizzle/*.sql']) assert.ok(plan.expectedWrites.includes(path), path)
+  assert.ok(!plan.expectedWrites.includes('data/notes.sqlite'))
+  assert.ok(plan.warnings.some((warning) => warning.includes('never applies migrations')))
+  assert.ok(plan.warnings.some((warning) => warning.includes('isolated temporary SQLite database')))
+  assert.ok(plan.networkAccess.includes('https://registry.npmjs.org/'))
+  assert.equal(plan.requiresDependencyConsent, true)
+  assert.equal(plan.requiresNetworkConsent, false)
+  assert.ok(DATABASE_ADAPTERS.some(({ id }) => id === 'database.sqlite'))
+  assert.ok(ORM_ADAPTERS.some(({ id }) => id === 'data-access.drizzle-sqlite'))
+  assert.equal(resolveBackendRecipe('backend.express', 'npm')?.id, 'BE-01')
+  assert.equal(resolveBackendRecipe('backend.express', 'npm', 'database.sqlite', 'data-access.drizzle-sqlite')?.id, 'BE-07')
+  assert.equal(resolveBackendRecipe('backend.express', 'npm', 'database.sqlite', 'data-access.none'), undefined)
+
+  for (const database of [
+    { adapterId: 'database.sqlite', accessAdapterId: 'data-access.none', mode: 'embedded' },
+    { adapterId: 'database.sqlite', mode: 'embedded' },
+    { adapterId: 'database.sqlite', accessAdapterId: 'data-access.drizzle-sqlite', mode: 'existing-service' },
+    { adapterId: 'database.postgresql', accessAdapterId: 'data-access.prisma-postgresql', mode: 'existing-service' },
+    { adapterId: 'database.none', accessAdapterId: 'data-access.drizzle-sqlite', mode: 'none' },
+  ]) {
+    assert.throws(() => createPlan(parseSelection({ ...selection, database })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
   }
 })
 

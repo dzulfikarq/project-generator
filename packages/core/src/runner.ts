@@ -92,6 +92,7 @@ const allowedEnvironmentOverrides = new Set([
   'HOST',
   'PORT',
   'NODE_ENV',
+  'DB_FILE',
   'YARN_ENABLE_SCRIPTS',
   'YARN_ENABLE_IMMUTABLE_INSTALLS',
   'YARN_NODE_LINKER',
@@ -137,7 +138,7 @@ export async function startSafeProcess(options: SafeProcessOptions): Promise<Run
   if (options.args.some((arg) => typeof arg !== 'string' || arg.includes('\0')) || options.args.join('').length > 28_000) {
     throw new GeneratorError({ code: 'GEN_RUNNER_BLOCKED', stage: 'process', message: 'Refused invalid process arguments.', nextAction: 'Use a valid generator config and retry.', targetModified: false })
   }
-  if (Object.entries(options.environment ?? {}).some(([key, value]) => !allowedEnvironmentOverrides.has(key) || value.includes('\0'))) {
+  if (Object.entries(options.environment ?? {}).some(([key, value]) => !allowedEnvironmentOverrides.has(key) || value.includes('\0') || (key === 'DB_FILE' && value !== ':memory:'))) {
     throw new GeneratorError({ code: 'GEN_RUNNER_BLOCKED', stage: 'process', message: 'Refused unreviewed process environment overrides.', nextAction: 'Use the pinned package-manager adapter and retry.', targetModified: false })
   }
   const scriptMode = options.scriptPath !== undefined && options.allowedScriptRoot !== undefined

@@ -17,13 +17,15 @@ test('catalog emits local versioned JSON without network', () => {
     ok: boolean
     data: {
       adapters: { id: string; compatibleWith: string[]; incompatibleWith: string[] }[]
+      databaseAdapters: { id: string; supportState: string }[]
+      ormAdapters: { id: string; supportState: string }[]
       packageManagers: { id: string; version: string; lockfile?: string }[]
-      recipes: { id: string; status: string; manager: string; backend?: string; checks: string[]; limitations: string[]; scaffold?: { packageName: string; version: string; integrity: string; source?: { commitSha: string } }; dependencies?: { packageName: string; version: string; integrity: string; scope?: string }[] }[]
+      recipes: { id: string; status: string; manager: string; backend?: string; database?: string; dataAccess?: string; checks: string[]; limitations: string[]; scaffold?: { packageName: string; version: string; integrity: string; source?: { commitSha: string } }; dependencies?: { packageName: string; version: string; integrity: string; scope?: string }[] }[]
     }
   }
   assert.equal(envelope.ok, true)
   assert.deepEqual(envelope.data.recipes.map(({ id, status }) => [id, status]), [
-    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'], ['FE-06', 'planned'], ['FE-07', 'planned'], ['FE-08', 'planned'], ['FE-09', 'planned'], ['FE-10', 'planned'], ['FE-11', 'planned'], ['FE-12', 'planned'], ['FE-13', 'planned'], ['FE-14', 'planned'], ['FE-15', 'planned'], ['BE-01', 'planned'], ['BE-03', 'planned'], ['BE-02', 'planned'], ['BE-04', 'planned'], ['BE-05', 'planned'], ['BE-06', 'planned'],
+    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'], ['FE-06', 'planned'], ['FE-07', 'planned'], ['FE-08', 'planned'], ['FE-09', 'planned'], ['FE-10', 'planned'], ['FE-11', 'planned'], ['FE-12', 'planned'], ['FE-13', 'planned'], ['FE-14', 'planned'], ['FE-15', 'planned'], ['BE-01', 'planned'], ['BE-07', 'planned'], ['BE-03', 'planned'], ['BE-02', 'planned'], ['BE-04', 'planned'], ['BE-05', 'planned'], ['BE-06', 'planned'],
   ])
   assert.deepEqual(envelope.data.packageManagers.map(({ id, version }) => [id, version]), [['npm', '>=10.0.0'], ['yarn', '4.18.1'], ['pnpm', '11.28.11'], ['go-modules', 'Go 1.22+'], ['composer', '>=2.2.0'], ['uv', '>=0.8.0']])
   const vue = envelope.data.recipes.find(({ id }) => id === 'FE-03')!
@@ -55,6 +57,18 @@ test('catalog emits local versioned JSON without network', () => {
     ['express', '5.1.0'], ['@types/express', '5.0.3'], ['@types/node', '22.20.5'], ['tsx', '4.20.5'], ['typescript', '5.9.3'],
   ])
   assert.ok(backend.dependencies?.every(({ integrity }) => integrity.startsWith('sha512-')))
+  assert.equal(backend.database, undefined)
+  const expressSqlite = envelope.data.recipes.find(({ id }) => id === 'BE-07')!
+  assert.equal(expressSqlite.backend, 'backend.express')
+  assert.equal(expressSqlite.database, 'database.sqlite')
+  assert.equal(expressSqlite.dataAccess, 'data-access.drizzle-sqlite')
+  assert.equal(expressSqlite.manager, 'npm')
+  assert.equal(expressSqlite.status, 'planned')
+  assert.ok(expressSqlite.dependencies?.some(({ packageName, version }) => packageName === 'better-sqlite3' && version === '13.2.0'))
+  assert.ok(expressSqlite.dependencies?.some(({ packageName, version }) => packageName === 'drizzle-kit' && version === '0.31.11'))
+  assert.ok(expressSqlite.dependencies?.every(({ integrity }) => integrity.startsWith('sha512-')))
+  assert.ok(envelope.data.databaseAdapters.some(({ id }) => id === 'database.sqlite'))
+  assert.ok(envelope.data.ormAdapters.some(({ id }) => id === 'data-access.drizzle-sqlite'))
   const nest = envelope.data.recipes.find(({ id }) => id === 'BE-03')!
   assert.equal(nest.scaffold?.packageName, '@nestjs/cli')
   assert.equal(nest.scaffold?.version, '11.0.24')

@@ -1,6 +1,6 @@
 import { win32 } from 'node:path'
 import { configError, incompatibleError } from './errors.js'
-import { RECIPES } from './catalog.js'
+import { RECIPES, resolveBackendRecipe } from './catalog.js'
 import { FORMA_COMMIT_SHA, formaTemplate, isFormaCommit } from './forma-catalog.js'
 import { defaultGoModulePath, isValidGoModulePath } from './go-module.js'
 import { resolveOutputPath } from './paths.js'
@@ -16,24 +16,31 @@ export function resolveSelection(selection: ProjectSelectionV1): ResolvedSelecti
     const isGoBackend = isGo || isGin
     const isLaravel = adapterId === 'backend.laravel'
     const isPython = adapterId === 'backend.fastapi'
-    const isNest = adapterId === 'backend.nestjs'
     const manager = selection.backend?.manager ?? (isGoBackend ? 'go-modules' : isLaravel ? 'composer' : isPython ? 'uv' : 'npm')
-    const recipeId = isGo ? 'BE-02' : isGin ? 'BE-04' : isLaravel ? 'BE-05' : isPython ? 'BE-06' : isNest ? 'BE-03' : 'BE-01'
     if (!selection.backend || !['backend.express', 'backend.nestjs', 'backend.go-net-http', 'backend.go-gin', 'backend.laravel', 'backend.fastapi'].includes(adapterId ?? '') || manager !== (isGoBackend ? 'go-modules' : isLaravel ? 'composer' : isPython ? 'uv' : 'npm')
-        || selection.frontend || selection.database || selection.styling || selection.template) {
-      throw incompatibleError('Backend recipes support only standalone Express/NestJS + npm, Go net/http or Gin + Go Modules, Laravel + Composer, or FastAPI + uv; frontend, separate database selections, and fullstack choices are unavailable.')
+        || selection.frontend || selection.styling || selection.template) {
+      throw incompatibleError('Backend recipes require an exact cataloged framework, database, ORM, and native package-manager recipe; frontend, styling, and fullstack choices are unavailable.')
     }
+    const databaseId = selection.database?.adapterId ?? (isLaravel ? 'database.mysql' : 'database.none')
+    const dataAccessId = selection.database?.accessAdapterId
+      ?? (selection.database ? databaseId === 'database.none' ? 'data-access.none' : '' : isLaravel ? 'data-access.eloquent-mysql' : 'data-access.none')
+    if (selection.database) {
+      const validMode = databaseId === 'database.none' ? selection.database.mode === 'none'
+        : databaseId === 'database.sqlite' ? selection.database.mode === 'embedded'
+          : selection.database.mode === 'existing-service'
+      if (!validMode || (databaseId === 'database.none' && dataAccessId !== 'data-access.none')) {
+        throw incompatibleError('Database mode and ORM selection do not match an exact cataloged backend recipe.')
+      }
+    }
+    const recipe = resolveBackendRecipe(adapterId!, manager, databaseId, dataAccessId)
+    if (!recipe) throw incompatibleError('Framework, database, ORM, and package manager do not match an exact cataloged backend recipe.')
     if (isGoBackend) {
       const modulePath = selection.backend.modulePath ?? defaultGoModulePath(project.name)
       if (!isValidGoModulePath(modulePath)) throw configError('backend.modulePath must be a valid lowercase Go module path such as github.com/user/project or example.com/project.')
       const normalized = { ...selection, backend: { ...selection.backend, modulePath } }
-      const recipe = RECIPES.find((candidate) => candidate.id === recipeId)
-      if (!recipe) throw incompatibleError('Selection does not match a cataloged backend recipe.')
       return { selection: Object.freeze(normalized), recipe, outputPath: win32.normalize(outputPath) }
     }
     if (selection.backend.modulePath !== undefined) throw incompatibleError('backend.modulePath is supported only by Go backend recipes.')
-    const recipe = RECIPES.find((candidate) => candidate.id === recipeId)
-    if (!recipe) throw incompatibleError('Selection does not match a cataloged backend recipe.')
     return { selection: Object.freeze(selection), recipe, outputPath: win32.normalize(outputPath) }
   }
   if (project.type !== 'frontend' || !selection.frontend || selection.backend) {

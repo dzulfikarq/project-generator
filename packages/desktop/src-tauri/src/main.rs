@@ -138,6 +138,8 @@ enum DesktopRecipeId {
     Be05,
     #[serde(rename = "BE-06")]
     Be06,
+    #[serde(rename = "BE-07")]
+    Be07,
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -234,6 +236,24 @@ impl DesktopSelectionV1 {
                 "git": { "initialize": false, "initialCommit": false }
             });
         }
+        if matches!(self.recipe_id, DesktopRecipeId::Be07) {
+            return json!({
+                "schemaVersion": 1,
+                "project": {
+                    "name": self.project_name,
+                    "parentDirectory": self.parent_directory,
+                    "type": "backend"
+                },
+                "backend": { "adapterId": "backend.express", "manager": "npm" },
+                "database": {
+                    "adapterId": "database.sqlite",
+                    "accessAdapterId": "data-access.drizzle-sqlite",
+                    "mode": "embedded"
+                },
+                "documentation": self.documentation.as_str(),
+                "git": { "initialize": false, "initialCommit": false }
+            });
+        }
         if matches!(self.recipe_id, DesktopRecipeId::Be05) {
             return json!({
                 "schemaVersion": 1,
@@ -268,7 +288,8 @@ impl DesktopSelectionV1 {
             | DesktopRecipeId::Be03
             | DesktopRecipeId::Be04
             | DesktopRecipeId::Be05
-            | DesktopRecipeId::Be06 => {
+            | DesktopRecipeId::Be06
+            | DesktopRecipeId::Be07 => {
                 unreachable!("backend selection returned above")
             }
         };
@@ -360,6 +381,7 @@ impl DesktopSelectionV1 {
                 | DesktopRecipeId::Be04
                 | DesktopRecipeId::Be05
                 | DesktopRecipeId::Be06
+                | DesktopRecipeId::Be07
         ) && (self.template_id.is_some() || self.template_variant_id.is_some())
         {
             return Err(error(
@@ -1710,6 +1732,26 @@ mod tests {
         assert_eq!(fastapi_backend["backend"]["adapterId"], "backend.fastapi");
         assert_eq!(fastapi_backend["backend"]["manager"], "uv");
         assert!(fastapi_backend.get("frontend").is_none());
+
+        let sqlite_backend = DesktopSelectionV1 {
+            project_name: "demo-api".into(),
+            parent_directory: "C:\\Projects".into(),
+            recipe_id: DesktopRecipeId::Be07,
+            documentation: DesktopDocumentationV1::Standard,
+            template_id: None,
+            template_variant_id: None,
+            module_path: None,
+        }
+        .to_core_json("");
+        assert_eq!(sqlite_backend["backend"]["adapterId"], "backend.express");
+        assert_eq!(sqlite_backend["backend"]["manager"], "npm");
+        assert_eq!(sqlite_backend["database"]["adapterId"], "database.sqlite");
+        assert_eq!(
+            sqlite_backend["database"]["accessAdapterId"],
+            "data-access.drizzle-sqlite"
+        );
+        assert_eq!(sqlite_backend["database"]["mode"], "embedded");
+        assert!(sqlite_backend.get("frontend").is_none());
 
         let standalone = DesktopSelectionV1 {
             project_name: "demo".into(),

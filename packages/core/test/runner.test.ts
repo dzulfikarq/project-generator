@@ -68,16 +68,18 @@ test('runner rejects unreviewed environment overrides before process start', { s
   const marker = win32.join(root, 'started')
   await writeFile(script, `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'started')`)
   try {
-    await assert.rejects(runNodeProcess({
-      scriptPath: script,
-      allowedScriptRoot: root,
-      cwd: root,
-      allowedCwdRoot: root,
-      args: [],
-      homeDirectory: root,
-      tempDirectory: root,
-      environment: { PATH: 'unreviewed' },
-    }), (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && error.code === 'GEN_RUNNER_BLOCKED')
+    for (const environment of [{ PATH: 'unreviewed' }, { DB_FILE: '../outside.sqlite' }, { DB_FILE: win32.join(root, 'app.sqlite') }]) {
+      await assert.rejects(runNodeProcess({
+        scriptPath: script,
+        allowedScriptRoot: root,
+        cwd: root,
+        allowedCwdRoot: root,
+        args: [],
+        homeDirectory: root,
+        tempDirectory: root,
+        environment,
+      }), (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && error.code === 'GEN_RUNNER_BLOCKED')
+    }
     await assert.rejects(access(marker))
   } finally {
     await rm(root, { recursive: true, force: true })

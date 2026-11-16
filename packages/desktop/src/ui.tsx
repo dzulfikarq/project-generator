@@ -2,10 +2,13 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Channel, invoke } from '@tauri-apps/api/core'
 import {
   canStartGeneration,
+  backendDatabaseOptions,
+  backendOrmOptions,
   documentationFiles,
   emptyPreferences,
   filterFormaTemplates,
   findFrameworkRecipe,
+  findBackendRecipe,
   findRecipe,
   formaMetadataCompatible,
   loadPreferences,
@@ -22,9 +25,9 @@ import {
 
 type Page = 'home' | 'create' | 'frameworks' | 'templates' | 'projects' | 'environment' | 'settings' | 'generation' | 'result'
 type WizardStep = 'details' | 'stack' | 'design' | 'docs' | 'review'
-type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15' | 'BE-01' | 'BE-02' | 'BE-03' | 'BE-04' | 'BE-05' | 'BE-06'
+type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15' | 'BE-01' | 'BE-02' | 'BE-03' | 'BE-04' | 'BE-05' | 'BE-06' | 'BE-07'
 function isRecipeId(value: string): value is RecipeId {
-  return ['FE-01', 'FE-02', 'FE-03', 'FE-04', 'FE-05', 'FE-06', 'FE-07', 'FE-08', 'FE-09', 'FE-10', 'FE-11', 'FE-12', 'FE-13', 'FE-14', 'FE-15', 'BE-01', 'BE-02', 'BE-03', 'BE-04', 'BE-05', 'BE-06'].includes(value)
+  return ['FE-01', 'FE-02', 'FE-03', 'FE-04', 'FE-05', 'FE-06', 'FE-07', 'FE-08', 'FE-09', 'FE-10', 'FE-11', 'FE-12', 'FE-13', 'FE-14', 'FE-15', 'BE-01', 'BE-02', 'BE-03', 'BE-04', 'BE-05', 'BE-06', 'BE-07'].includes(value)
 }
 type Documentation = 'minimal' | 'standard' | 'full'
 type Selection = {
@@ -170,6 +173,8 @@ function App() {
   const [parentDirectory, setParentDirectory] = useState('')
   const [projectType, setProjectType] = useState<'frontend' | 'backend'>('frontend')
   const [backendId, setBackendId] = useState('backend.express')
+  const [databaseId, setDatabaseId] = useState('database.none')
+  const [ormId, setOrmId] = useState('data-access.none')
   const [modulePath, setModulePath] = useState('example.com/my-project')
   const [frontendId, setFrontendId] = useState('frontend.react-vite')
   const [stylingId, setStylingId] = useState('styling.css')
@@ -202,19 +207,22 @@ function App() {
   const activeProjectRef = useRef<{ name: string; path: string; recipeId: string } | null>(null)
 
   const recipe = useMemo(() => projectType === 'backend'
-    ? catalog?.recipes.find((item) => item.id.startsWith('BE-') && item.backend === backendId && item.manager === managerId)
+    ? findBackendRecipe(catalog, backendId, managerId, databaseId, ormId)
     : templateId
       ? findFrameworkRecipe(catalog, frontendId, managerId)
-      : findRecipe(catalog, frontendId, stylingId, managerId), [catalog, frontendId, stylingId, managerId, templateId, projectType, backendId])
+    : findRecipe(catalog, frontendId, stylingId, managerId), [catalog, frontendId, stylingId, managerId, templateId, projectType, backendId, databaseId, ormId])
   const frontendAdapters = catalog?.adapters.filter((adapter) => adapter.kind === 'frontend') ?? []
   const stylingAdapters = catalog?.adapters.filter((adapter) => adapter.kind === 'styling') ?? []
   const backendAdapters = catalog?.adapters.filter((adapter) => adapter.kind === 'backend') ?? []
-  const databaseAdapters = catalog?.adapters.filter((adapter) => adapter.kind === 'database') ?? []
+  const databaseAdapters = catalog?.databaseAdapters ?? catalog?.adapters.filter((adapter) => adapter.kind === 'database') ?? []
+  const ormAdapters = catalog?.ormAdapters ?? catalog?.adapters.filter((adapter) => adapter.kind === 'data-access') ?? []
   const formaTemplates = catalog?.forma.templates ?? []
   const templateCategories = [...new Set(formaTemplates.map((template) => template.category))].sort()
   const filteredTemplates = filterFormaTemplates(formaTemplates, templateSearch, templateCategory, templateFramework)
   const selectedFrontend = projectType === 'frontend' ? frontendAdapters.find((adapter) => adapter.id === frontendId) : undefined
-  const selectedBackend = backendAdapters.find((adapter) => adapter.id === recipe?.backend)
+  const selectedBackend = backendAdapters.find((adapter) => adapter.id === backendId)
+  const databaseOptions = backendDatabaseOptions(catalog, backendId, managerId)
+  const ormOptions = backendOrmOptions(catalog, backendId, managerId, databaseId)
   const activeTemplate = catalog?.forma.templates.find((template) => template.id === templateId)
   const selectedVariant = activeTemplate?.variants.find((variant) => variant.id === templateVariantId)
   const nameError = validateProjectName(projectName)
@@ -300,6 +308,8 @@ function App() {
     setParentDirectory(preferences.defaultParentDirectory)
     setProjectType('frontend')
     setBackendId('backend.express')
+    setDatabaseId('database.none')
+    setOrmId('data-access.none')
     setFrontendId(defaultRecipe?.frontend ?? 'frontend.react-vite')
     setStylingId(defaultRecipe?.styling ?? 'styling.css')
     setManagerId(defaultRecipe?.manager ?? 'npm')
@@ -623,7 +633,14 @@ function App() {
                   setProjectType(type)
                   setTemplateId('')
                   setTemplateVariantId('')
-                  if (type === 'backend') { setManagerId(backendAdapters.find((adapter) => adapter.id === backendId)?.packageManagers[0] ?? 'npm'); setStylingId('') }
+                  if (type === 'backend' && projectType !== 'backend') {
+                    const adapter = backendAdapters.find((item) => item.id === backendId)
+                    const defaultRecipe = catalog?.recipes.find((item) => item.backend === backendId)
+                    setManagerId(defaultRecipe?.manager ?? adapter?.packageManagers[0] ?? 'npm')
+                    setDatabaseId(defaultRecipe?.database ?? 'database.none')
+                    setOrmId(defaultRecipe?.dataAccess ?? 'data-access.none')
+                    setStylingId('')
+                  }
                   else { setManagerId('npm'); setStylingId('styling.css') }
                   invalidateReview()
                 }}><span className="radio-dot" aria-hidden="true" /><span><strong>{type === 'frontend' ? 'Frontend' : 'Backend'}</strong><small>{type === 'frontend' ? 'Browser application recipes' : 'Standalone API recipes'}</small></span></button>)}
@@ -647,35 +664,72 @@ function App() {
               <div className="unsupported-grid">
                 <UnsupportedGroup title="Other frameworks" description="SvelteKit and other future frameworks are not in the packaged adapter catalog." entries={[]} />
                 <UnsupportedGroup title="Backend" description="Choose Backend to view standalone API recipes." entries={backendAdapters.map((adapter) => adapter.displayName)} />
-                <UnsupportedGroup title="Database" description="No database adapters or migration tools are implemented." entries={databaseAdapters.map((adapter) => adapter.displayName)} />
+                 <UnsupportedGroup title="Database" description="Database adapters appear only in exact standalone backend recipes; frontend/fullstack database composition is unavailable." entries={databaseAdapters.map((adapter) => adapter.displayName)} />
                 <UnsupportedGroup title="Full-stack / mobile" description="Outside current frontend-only generator scope." entries={[]} />
               </div>
               </> : <>
                 <fieldset className="choice-fieldset"><legend>Backend framework</legend><div className="choice-grid">
                   {backendAdapters.map((adapter) => {
-                    const adapterRecipe = catalog?.recipes.find((item) => item.id.startsWith('BE-') && item.backend === adapter.id)
-                    return <button type="button" key={adapter.id} className={`select-card ${recipe?.backend === adapter.id ? 'chosen' : ''}`} disabled={!adapterRecipe || busy} onClick={() => {
-                      setBackendId(adapter.id)
-                      setManagerId(adapter.packageManagers[0] ?? 'npm')
-                      invalidateReview()
-                    }} aria-pressed={recipe?.backend === adapter.id}>
+                     const adapterRecipe = catalog?.recipes.find((item) => item.id.startsWith('BE-') && item.backend === adapter.id)
+                      return <button type="button" key={adapter.id} className={`select-card ${backendId === adapter.id ? 'chosen' : ''}`} disabled={!adapterRecipe || busy} onClick={() => {
+                        const nextManager = adapter.packageManagers[0] ?? 'npm'
+                        const keepDatabase = backendDatabaseOptions(catalog, adapter.id, nextManager).some((option) => option.adapter.id === databaseId && option.enabled)
+                        const nextDatabase = keepDatabase ? databaseId : ''
+                        const keepOrm = backendOrmOptions(catalog, adapter.id, nextManager, nextDatabase).some((option) => option.adapter.id === ormId && option.enabled)
+                        setBackendId(adapter.id)
+                        setManagerId(nextManager)
+                        setDatabaseId(nextDatabase)
+                        setOrmId(keepOrm ? ormId : '')
+                        invalidateReview()
+                      }} aria-pressed={backendId === adapter.id}>
                         <span className="select-card-top"><span className="framework-monogram">{adapter.id === 'backend.go-net-http' || adapter.id === 'backend.go-gin' ? 'G' : adapter.id === 'backend.laravel' ? 'L' : adapter.id === 'backend.fastapi' ? 'F' : adapter.id === 'backend.nestjs' ? 'N' : 'E'}</span><StatusPill tone="warn">{adapterRecipe?.status ?? 'Catalog only'}</StatusPill></span>
-                        <strong>{adapter.displayName}</strong><small>{adapterRecipe ? `${adapterRecipe.id} · ${adapter.id === 'backend.go-net-http' || adapter.id === 'backend.go-gin' ? 'Go · Go Modules' : adapter.id === 'backend.laravel' ? 'PHP · Composer' : adapter.id === 'backend.fastapi' ? 'Python · uv' : 'TypeScript · npm'}` : 'No backend recipe is cataloged.'}</small>
+                         <strong>{adapter.displayName}</strong><small>{adapterRecipe ? `${catalog?.recipes.filter((item) => item.id.startsWith('BE-') && item.backend === adapter.id).map((item) => item.id).join(' · ')} · ${adapter.id === 'backend.go-net-http' || adapter.id === 'backend.go-gin' ? 'Go · Go Modules' : adapter.id === 'backend.laravel' ? 'PHP · Composer' : adapter.id === 'backend.fastapi' ? 'Python · uv' : 'TypeScript · npm'}` : 'No backend recipe is cataloged.'}</small>
                     </button>
                   })}
                 </div></fieldset>
-                 <div className="unsupported-grid"><UnsupportedGroup title="Database" description="BE-05 includes MySQL/Eloquent configuration only; no database is provisioned or migrated. Separate database adapters are not selectable." entries={databaseAdapters.map((adapter) => adapter.displayName)} /><UnsupportedGroup title="Full-stack / mobile" description="Frontend-backend composition and mobile generation are outside this phase." entries={[]} /></div>
+                 <div className="unsupported-grid"><UnsupportedGroup title="Full-stack / mobile" description="Frontend-backend composition and mobile generation are outside this phase." entries={[]} /></div>
               </>}
               <div className="wizard-actions"><button className="button secondary-button" disabled={busy} onClick={() => setStep('details')}>Back</button><button className="button primary-button" disabled={projectType === 'frontend' ? !selectedFrontend || busy : !selectedBackend || busy} onClick={() => setStep('design')}>Choose tools <span aria-hidden="true">→</span></button></div>
             </section>}
 
             {step === 'design' && <section className="wizard-card" aria-labelledby="design-title">
               <div className="section-title-row"><div><p className="eyebrow">03 · TOOLING</p><h2 id="design-title">{projectType === 'backend' ? 'Backend tools' : 'Styling and starting template'}</h2></div><StatusPill>Catalog-backed</StatusPill></div>
-              <p className="section-intro">{projectType === 'backend' ? 'Backend recipes use their native dependency manager. No styling, database, or frontend is added.' : 'Only combinations with an existing recipe can be selected. Framework changes never silently replace your styling choice.'}</p>
+               <p className="section-intro">{projectType === 'backend' ? 'Choose only exact cataloged backend, database, ORM, and native package-manager recipes. Unsupported combinations stay disabled.' : 'Only combinations with an existing recipe can be selected. Framework changes never silently replace your styling choice.'}</p>
+               {projectType === 'backend' && <>
+                 <fieldset className="choice-fieldset"><legend>Native package manager</legend><div className="variant-row"><label htmlFor="backend-manager">Package manager</label><select id="backend-manager" className="select-input" disabled={busy} value={managerId} onChange={(event) => {
+                   const nextManager = event.target.value
+                   setManagerId(nextManager)
+                   if (!backendDatabaseOptions(catalog, backendId, nextManager).some((option) => option.adapter.id === databaseId && option.enabled)) {
+                     setDatabaseId('')
+                     setOrmId('')
+                   } else if (!backendOrmOptions(catalog, backendId, nextManager, databaseId).some((option) => option.adapter.id === ormId && option.enabled)) {
+                     setOrmId('')
+                   }
+                   invalidateReview()
+                 }}>{(catalog?.packageManagers ?? []).map((manager) => {
+                   const enabled = Boolean(selectedBackend?.packageManagers.includes(manager.id))
+                   return <option key={manager.id} value={manager.id} disabled={!enabled}>{manager.id}{enabled ? ` · ${manager.version}` : ' · incompatible with framework'}</option>
+                 })}</select></div><p className="field-help">JavaScript uses npm; Go, PHP, and Python keep Go Modules, Composer, and uv.</p></fieldset>
+                 <fieldset className="choice-fieldset"><legend>Database</legend><div className="compact-choice-grid">
+                   {databaseOptions.map(({ adapter, enabled, reason }) => <button type="button" key={adapter.id} className={`compact-choice ${databaseId === adapter.id ? 'chosen' : ''}`} disabled={!enabled || busy} onClick={() => {
+                     setDatabaseId(adapter.id)
+                     const compatibleOrm = backendOrmOptions(catalog, backendId, managerId, adapter.id).some((option) => option.adapter.id === ormId && option.enabled)
+                     setOrmId(compatibleOrm ? ormId : adapter.id === 'database.none' ? 'data-access.none' : '')
+                     invalidateReview()
+                   }} aria-pressed={databaseId === adapter.id}>
+                     <span className="radio-dot" aria-hidden="true" /><span><strong>{adapter.displayName}</strong><small>{enabled ? adapter.id === 'database.sqlite' ? 'Embedded local SQLite file; no service or auto-migration.' : 'Exact backend recipe available.' : reason}</small></span>
+                   </button>)}
+                 </div>{!databaseOptions.some((option) => option.adapter.id === databaseId && option.enabled) && <p className="field-error">Choose an enabled database for this backend.</p>}</fieldset>
+                 <fieldset className="choice-fieldset"><legend>ORM / data access</legend><div className="compact-choice-grid">
+                   {ormOptions.map(({ adapter, enabled, reason }) => <button type="button" key={adapter.id} className={`compact-choice ${ormId === adapter.id ? 'chosen' : ''}`} disabled={!enabled || busy} onClick={() => { setOrmId(adapter.id); invalidateReview() }} aria-pressed={ormId === adapter.id}>
+                     <span className="radio-dot" aria-hidden="true" /><span><strong>{adapter.displayName}</strong><small>{enabled ? 'Exact framework/database recipe available.' : reason}</small></span>
+                   </button>)}
+                 </div>{!ormOptions.some((option) => option.adapter.id === ormId && option.enabled) && <p className="field-error">Choose an enabled ORM/data-access option. Framework changes clear incompatible selections.</p>}</fieldset>
+               </>}
               {projectType === 'backend' ? selectedBackend?.id === 'backend.go-net-http' || selectedBackend?.id === 'backend.go-gin' ? <>
-                <div className="template-style-note"><strong>{selectedBackend.id === 'backend.go-gin' ? 'Go · Gin 1.12.0 · Go Modules' : 'Go · Standard Library net/http · Go Modules'}</strong><span>{selectedBackend.id === 'backend.go-gin' ? 'Go 1.25+ standalone REST API with exact pinned module graph. Separate network consent required to download modules; no database, auth, or lifecycle scripts.' : 'Go 1.22+ standalone REST API. No third-party dependencies, go.sum, npm, or automatic server startup.'}</span></div>
+                 <div className="template-style-note"><strong>{selectedBackend.id === 'backend.go-gin' ? 'Go · Gin 1.12.0 · Go Modules' : 'Go · Standard Library net/http · Go Modules'}</strong><span>{selectedBackend.id === 'backend.go-gin' ? 'Go 1.25+ standalone REST API with exact pinned module graph. Separate network consent required to download modules; no database, auth, or lifecycle scripts.' : 'Go 1.22+ standalone REST API. No third-party dependencies, go.sum, npm, or automatic server startup.'}</span></div>
                 <div className="field"><label className="field-label" htmlFor="go-module-path">Go module path</label><input id="go-module-path" className="text-input mono-input" disabled={busy} value={modulePath} maxLength={512} autoComplete="off" aria-invalid={Boolean(modulePathError)} aria-describedby={modulePathError ? 'go-module-path-error' : 'go-module-path-help'} onChange={(event) => { setModulePath(event.target.value); invalidateReview() }} />{modulePathError ? <p id="go-module-path-error" className="field-error">{modulePathError}</p> : <p id="go-module-path-help" className="field-help">Used in go.mod and internal package imports.</p>}</div>
-               </> : selectedBackend?.id === 'backend.laravel' ? <div className="template-style-note"><strong>PHP · Laravel 12 · Composer · MySQL/Eloquent</strong><span>PHP 8.2+ with pdo_mysql and Composer 2.2+ required. Composer scripts/plugins stay disabled. Includes API validation, PHPUnit tests, model, and manual migration; no .env, database provisioning, or automatic migration.</span></div> : selectedBackend?.id === 'backend.fastapi' ? <div className="template-style-note"><strong>Python · FastAPI · Pydantic · Uvicorn · uv</strong><span>Python 3.14.x and uv 0.8+ required. Pins: FastAPI {selectedBackend.versionConstraints.fastapi?.split(' ')[0]}, Pydantic {selectedBackend.versionConstraints.pydantic?.split(' ')[0]}, Uvicorn {selectedBackend.versionConstraints.uvicorn?.split(' ')[0]}, pytest {selectedBackend.versionConstraints.pytest?.split(' ')[0]}. uv.lock and project-local .venv; no automatic Python download or server startup.</span></div> : selectedBackend?.id === 'backend.nestjs' ? <div className="template-style-note"><strong>NestJS 11 · TypeScript · npm · Jest</strong><span>Node.js 22.13+ and npm 10+ required. Uses integrity-pinned Nest CLI 11.0.24, CommonJS-compatible NodeNext output, Jest unit/e2e checks, JSON error handling, and graceful shutdown. No Observe integration; CLI --no-observe flag unsupported.</span></div> : <div className="template-style-note"><strong>Express · TypeScript · npm</strong><span>Node.js standalone REST API. npm is required for BE-01.</span></div> : <>
+                </> : selectedBackend?.id === 'backend.laravel' ? <div className="template-style-note"><strong>PHP · Laravel 12 · Composer · MySQL/Eloquent</strong><span>PHP 8.2+ with pdo_mysql and Composer 2.2+ required. Composer scripts/plugins stay disabled. Includes API validation, PHPUnit tests, model, and manual migration; no .env, database provisioning, or automatic migration.</span></div> : selectedBackend?.id === 'backend.fastapi' ? <div className="template-style-note"><strong>Python · FastAPI · Pydantic · Uvicorn · uv</strong><span>Python 3.14.x and uv 0.8+ required. Pins: FastAPI {selectedBackend.versionConstraints.fastapi?.split(' ')[0]}, Pydantic {selectedBackend.versionConstraints.pydantic?.split(' ')[0]}, Uvicorn {selectedBackend.versionConstraints.uvicorn?.split(' ')[0]}, pytest {selectedBackend.versionConstraints.pytest?.split(' ')[0]}. uv.lock and project-local .venv; no automatic Python download or server startup.</span></div> : selectedBackend?.id === 'backend.nestjs' ? <div className="template-style-note"><strong>NestJS 11 · TypeScript · npm · Jest</strong><span>Node.js 22.13+ and npm 10+ required. Uses integrity-pinned Nest CLI 11.0.24, CommonJS-compatible NodeNext output, Jest unit/e2e checks, JSON error handling, and graceful shutdown. No Observe integration; CLI --no-observe flag unsupported.</span></div> : selectedBackend?.id === 'backend.express' && databaseId === 'database.sqlite' ? <div className="template-style-note"><strong>Express · TypeScript · SQLite · Drizzle ORM</strong><span>SQLite stays in a project-local file. Generation writes migration SQL but never applies it; startup does not migrate. CRUD checks use an isolated temporary database.</span></div> : <div className="template-style-note"><strong>Express · TypeScript · npm</strong><span>Node.js standalone REST API. BE-01 remains no-database; BE-07 is a separate SQLite/Drizzle recipe.</span></div> : <>
               {!templateId ? <fieldset className="choice-fieldset"><legend>Styling</legend><div className="compact-choice-grid">
                  {stylingAdapters.filter((adapter) => !['styling.scss', 'styling.tailwind'].includes(adapter.id) || adapter.compatibleWith.includes(frontendId)).map((adapter) => {
                   const compatible = adapter.compatibleWith.includes(frontendId)
@@ -748,7 +802,7 @@ function App() {
               {busy && <div className="inline-loading" role="status"><span className="spinner" /> Resolving read-only plan and checking prerequisites…</div>}
               {!busy && !plan && <div className="review-empty"><p>{commandError ? 'Review could not be completed.' : 'Resolve the configuration to load current plan and environment checks.'}</p><button className="button secondary-button" disabled={!selection} onClick={() => void loadReview()}>Resolve plan and run checks</button></div>}
               {plan && <>
-                 <div className="stack-summary"><div><small>PROJECT</small><strong>{projectName}</strong><code>{plan.targetPath}</code></div><div><small>STACK</small><strong>{projectType === 'backend' ? `${selectedBackend?.displayName ?? 'Express'} REST API` : `${selectedFrontend?.displayName ?? frontendId} + ${activeTemplate ? 'Forma-managed styling' : stylingAdapters.find((adapter) => adapter.id === stylingId)?.displayName ?? stylingId}`}</strong><span>{plan.recipeId} · {plan.recipeId === 'BE-02' || plan.recipeId === 'BE-04' ? 'Go' : plan.recipeId === 'BE-05' ? 'PHP' : plan.recipeId === 'BE-06' ? 'Python' : 'TypeScript'} · {managerId} · {documentation} docs</span>{(plan.recipeId === 'BE-02' || plan.recipeId === 'BE-04') && <code>Module: {modulePath}</code>}</div>{activeTemplate && <div><small>FORMA TEMPLATE</small><strong>{activeTemplate.name}</strong><span>{selectedVariant?.name ?? activeTemplate.variants.find((variant) => variant.default)?.name ?? 'Default'} variant · planned integration</span></div>}</div>
+                  <div className="stack-summary"><div><small>PROJECT</small><strong>{projectName}</strong><code>{plan.targetPath}</code></div><div><small>STACK</small><strong>{projectType === 'backend' ? `${selectedBackend?.displayName ?? 'Express'} REST API` : `${selectedFrontend?.displayName ?? frontendId} + ${activeTemplate ? 'Forma-managed styling' : stylingAdapters.find((adapter) => adapter.id === stylingId)?.displayName ?? stylingId}`}</strong><span>{plan.recipeId} · {plan.recipeId === 'BE-02' || plan.recipeId === 'BE-04' ? 'Go' : plan.recipeId === 'BE-05' ? 'PHP' : plan.recipeId === 'BE-06' ? 'Python' : 'TypeScript'} · {managerId} · {documentation} docs</span>{projectType === 'backend' && <span>{databaseAdapters.find((adapter) => adapter.id === databaseId)?.displayName ?? 'Database unavailable'} · {ormAdapters.find((adapter) => adapter.id === ormId)?.displayName ?? 'ORM unavailable'}</span>}{(plan.recipeId === 'BE-02' || plan.recipeId === 'BE-04') && <code>Module: {modulePath}</code>}</div>{activeTemplate && <div><small>FORMA TEMPLATE</small><strong>{activeTemplate.name}</strong><span>{selectedVariant?.name ?? activeTemplate.variants.find((variant) => variant.default)?.name ?? 'Default'} variant · planned integration</span></div>}</div>
 
                 <div className="review-section"><div className="review-section-heading"><div><span className="review-icon" aria-hidden="true">✓</span><h3>Environment checks</h3></div><StatusPill tone={doctor?.ready ? 'good' : 'bad'}>{doctor?.ready ? 'READY' : 'BLOCKED'}</StatusPill></div>
                   {doctor?.tools.filter((tool) => tool.id !== 'target').map((tool) => <div className="doctor-row" key={tool.id}><span className={tool.available ? 'check-state ok' : 'check-state missing'} aria-hidden="true">{tool.available ? '✓' : '!'}</span><div><strong>{tool.id}{tool.version ? ` · ${tool.version}` : ''}</strong><small>{tool.message}</small></div><span className={tool.available ? 'doctor-status ok' : 'doctor-status missing'}>{tool.available ? 'Ready' : 'Required'}</span></div>)}
@@ -792,7 +846,7 @@ function App() {
             <button className="button secondary-button" disabled={!adapterRecipe || busy} onClick={() => startWizardForFramework(adapter.id)}>{adapterRecipe ? 'Configure project' : 'Unavailable'}</button>
           </article>
         })}</div>
-             <p className="catalog-pin">FE-01 through FE-15 and BE-01 through BE-06 remain planned. Normal generation remains blocked pending independent acceptance.</p>
+              <p className="catalog-pin">FE-01 through FE-15 and BE-01 through BE-07 remain planned. Normal generation remains blocked pending independent acceptance.</p>
       </section>}
 
       {page === 'templates' && <section className="page-content" aria-labelledby="templates-title">
@@ -873,7 +927,7 @@ function App() {
         {recovery !== null && <RecoveryDetails value={recovery} />}
       </section>}
 
-      <footer className="app-footer"><span>FormaForge · Project Generator</span><span>Local development · FE-01–FE-15 / BE-01–BE-06 / FM-01 / FM-02 remain planned · no release approval</span></footer>
+      <footer className="app-footer"><span>FormaForge · Project Generator</span><span>Local development · FE-01–FE-15 / BE-01–BE-07 / FM-01 / FM-02 remain planned · no release approval</span></footer>
     </main>
   </div>
 }

@@ -27,6 +27,13 @@ export function expectedDocumentationFiles(mode: ResolvedSelection['selection'][
 
 function recipeText(resolved: ResolvedSelection): { title: string; scaffold: string; nodeRange: string; devCommand: string; smokeCommand: string } {
   const commands = managerCommands(resolved.recipe.manager)
+  if (resolved.recipe.projectType === 'backend' && resolved.recipe.id === 'BE-07') return {
+    title: 'Node.js + TypeScript + Express + SQLite + Drizzle ORM',
+    scaffold: 'Reviewed BE-07 Express + SQLite + Drizzle starter',
+    nodeRange: 'Node.js 22.13+',
+    devCommand: commands.run('dev'),
+    smokeCommand: commands.run('start'),
+  }
   if (resolved.recipe.projectType === 'backend' && resolved.recipe.id === 'BE-03') return {
     title: 'Node.js + TypeScript + NestJS REST API',
     scaffold: 'Nest CLI 11.0.24 (official NestJS scaffold; CommonJS-compatible NodeNext + Jest)',
@@ -105,6 +112,7 @@ function recipeText(resolved: ResolvedSelection): { title: string; scaffold: str
 function generatedContent(resolved: ResolvedSelection, nodeVersion: string, npmVersion: string, forma?: FormaInstallEvidence): Map<string, string> {
   const details = recipeText(resolved)
   const isNest = resolved.recipe.id === 'BE-03'
+  const isDatabaseBackend = resolved.recipe.id === 'BE-07'
   const commands = managerCommands(resolved.recipe.manager)
   const manager = packageManager(resolved.recipe.manager)
   const managerRequirement = resolved.recipe.manager === 'npm'
@@ -140,7 +148,9 @@ function generatedContent(resolved: ResolvedSelection, nodeVersion: string, npmV
       && (resolved.recipe.frontend === 'frontend.react-vite' || resolved.recipe.frontend === 'frontend.vue-vite')
       ? 'Tailwind CSS `4.3.5` uses the official `@tailwindcss/vite` plugin `4.3.5`. Tailwind v4 auto-detects source files; no legacy `tailwind.config.js` or content globs are generated.\n'
       : ''
-  const checks = resolved.recipe.projectType === 'backend' && isNest
+  const checks = resolved.recipe.projectType === 'backend' && isDatabaseBackend
+      ? `## Checks\n\n\`\`\`sh\n${commands.run('typecheck')}\n${commands.run('lint')}\n${commands.run('test')}\n${commands.run('build')}\n\`\`\`\n\nThe CRUD integration test applies generated migrations only to an isolated temporary SQLite database. Generation never migrates the configured application database.\n`
+      : resolved.recipe.projectType === 'backend' && isNest
       ? `## Checks\n\n\`\`\`sh\n${commands.run('typecheck')}\n${commands.run('lint')}\n${commands.run('test')}\n${commands.run('test:e2e')}\n${commands.run('build')}\n\`\`\`\n\nThe Jest e2e suite covers JSON API errors and application shutdown. The generator also starts the built server in isolated local smoke test and checks GET /health and /api/info.\n`
       : resolved.recipe.projectType === 'backend'
       ? `## Checks\n\n\`\`\`sh\n${commands.run('typecheck')}\n${commands.run('test')}\n${commands.run('build')}\n\`\`\`\n\nThe generator also starts the built server in an isolated local smoke test and checks GET /health and /api/info.\n`
@@ -154,36 +164,46 @@ function generatedContent(resolved: ResolvedSelection, nodeVersion: string, npmV
         ? `## Checks\n\n\`\`\`sh\n${commands.run('lint')}\n${commands.run('type-check')}\n${commands.run('build')}\n\`\`\`\n`
       : `## Checks\n\n\`\`\`sh\n${commands.run('lint')}\n${commands.run('build')}\n\`\`\`\n`
   const backendApi = resolved.recipe.projectType === 'backend'
-    ? `## API\n\n- \`GET /health\` — process health status.\n- \`GET /api/info\` — service and runtime details.\n\n${isNest ? 'NestJS controllers and services provide the API; a global exception filter returns stable JSON errors.' : 'The Express application provides the API.'} Server reads \`HOST\`, \`PORT\`, and \`NODE_ENV\` from environment variables; \`.env.example\` lists local defaults. SIGINT and SIGTERM close the HTTP listener gracefully.\n\n`
+     ? `## API\n\n- \`GET /health\` — process health status.\n- \`GET /api/info\` — service and runtime details.\n${isDatabaseBackend ? '- `GET /api/notes`, `GET /api/notes/:id`, `POST /api/notes`, `PATCH /api/notes/:id`, `DELETE /api/notes/:id` — SQLite/Drizzle CRUD example.\n' : ''}\n${isNest ? 'NestJS controllers and services provide the API; a global exception filter returns stable JSON errors.' : 'The Express application provides the API.'} Server reads \`HOST\`, \`PORT\`, and \`NODE_ENV\` from environment variables; \`.env.example\` lists local defaults. ${isDatabaseBackend ? 'It reads DB_FILE for a local SQLite file and never applies migrations automatically.' : ''} SIGINT and SIGTERM close the HTTP listener gracefully.\n\n`
     : ''
   const scopeNote = resolved.recipe.projectType === 'backend'
-    ? 'This standalone REST API has no frontend, database, ORM, authentication, or deployment configuration.'
+     ? isDatabaseBackend ? 'This standalone API uses local SQLite and Drizzle; it has no frontend, authentication, Docker, or fullstack composition.' : 'This standalone REST API has no frontend, database, ORM, authentication, or deployment configuration.'
     : 'This is a frontend-only project. No separate backend, database, or deployment is included.'
   const envInstruction = resolved.recipe.projectType === 'backend' ? 'Copy `.env.example` to `.env` if you want to override local defaults.\n\n' : ''
-  const readme = `# ${name}\n\n${origin}${details.title} project.\n${bootstrapNote}${stylingNote}${managerConfigNote}\n## Prerequisites\n\n- ${nodeRange}\n- ${managerRequirement}\n\n## Run locally\n\n${envInstruction}\`\`\`sh\n${commands.install}\n${details.devCommand}\n\`\`\`\n\n${backendApi}${checks}\nSee [docs/SETUP.md](docs/SETUP.md) for setup and verification details.\n\n${scopeNote} ${resolved.recipe.manager} installation may run dependency lifecycle scripts; dependencies are not sandboxed.\n`
-  const setupChecks = resolved.recipe.projectType === 'backend' && isNest ? `${commands.run('typecheck')}\n${commands.run('lint')}\n${commands.run('test')}\n${commands.run('test:e2e')}\n${commands.run('build')}`
+  const migrationInstructions = isDatabaseBackend
+    ? `## SQLite and migrations\n\nThe notes routes require the generated schema. Before using them, review \`DB_FILE\` in \`.env.example\`; default is project-local \`data/notes.sqlite\`. Do not point it at another project's database. Review generated schema and SQL under \`drizzle/\`, then apply migrations only when you explicitly choose to: \`${commands.run('db:migrate')}\`.\n\nGeneration and app startup never apply migrations. No SQLite service is created or started.\n\n`
+    : ''
+   const readmeCommands = isDatabaseBackend ? `${commands.install}\n${commands.run('db:migrate')}\n${details.devCommand}` : `${commands.install}\n${details.devCommand}`
+   const readme = `# ${name}\n\n${origin}${details.title} project.\n${bootstrapNote}${stylingNote}${managerConfigNote}\n## Prerequisites\n\n- ${nodeRange}\n- ${managerRequirement}\n\n## Run locally\n\n${envInstruction}\`\`\`sh\n${readmeCommands}\n\`\`\`\n\n${backendApi}${migrationInstructions}${checks}\nSee [docs/SETUP.md](docs/SETUP.md) for setup and verification details.\n\n${scopeNote} ${resolved.recipe.manager} installation may run dependency lifecycle scripts; dependencies are not sandboxed.\n`
+  const setupChecks = resolved.recipe.projectType === 'backend' && isDatabaseBackend ? `${commands.run('typecheck')}\n${commands.run('lint')}\n${commands.run('test')}\n${commands.run('build')}`
+    : resolved.recipe.projectType === 'backend' && isNest ? `${commands.run('typecheck')}\n${commands.run('lint')}\n${commands.run('test')}\n${commands.run('test:e2e')}\n${commands.run('build')}`
     : resolved.recipe.projectType === 'backend' ? `${commands.run('typecheck')}\n${commands.run('test')}\n${commands.run('build')}`
     : forma || resolved.recipe.frontend === 'frontend.nuxt' ? `${commands.run('typecheck')}\n${commands.run('build')}`
     : resolved.recipe.frontend === 'frontend.angular' ? `${commands.run('build')}\nnpm test -- --watch=false`
       : resolved.recipe.frontend === 'frontend.vue-vite' ? `${commands.run('lint')}\n${commands.run('type-check')}\n${commands.run('build')}` : `${commands.run('lint')}\n${commands.run('build')}`
-  const envSetup = resolved.recipe.projectType === 'backend' ? 'Optional local configuration: copy `.env.example` to `.env` in PowerShell with `Copy-Item .env.example .env`; edit `HOST`, `PORT`, or `NODE_ENV` as needed. The server reads `.env` through Node.js built-in env-file support.\n\n' : ''
-  const setup = `# Setup\n\n## Toolchain\n\nGenerated with ${details.scaffold}, Node.js ${nodeVersion}, ${managerToolchain}.\n${managerConfigNote}${forma ? `Forma source: private GitHub repository, commit ${forma.commitSha}. Template ${forma.id}@${forma.version}; portable SHA-256 ${forma.contentHash}; theme ${forma.variantName}.\n` : ''}${bootstrapNote}${stylingNote}\n## Install and run\n\n${envSetup}\`\`\`sh\n${commands.install}\n${details.devCommand}\n\`\`\`\n\n## Validate\n\n\`\`\`sh\n${setupChecks}\n\`\`\`\n\n${resolved.recipe.projectType === 'backend' ? `${isNest ? 'Nest Jest e2e tests cover JSON API errors and clean application shutdown. ' : 'Generated tests cover 404/error handling and graceful shutdown. ' }The API exposes GET \`/health\` and GET \`/api/info\`; the generator starts the built server only for its HTTP smoke check and stops it before finalization.\n` : "The generator's HTTP smoke check verifies an HTML response from the local server. It does not launch a browser or verify visual rendering.\n"}`
+   const envSetup = resolved.recipe.projectType === 'backend' ? `Optional local configuration: copy \`.env.example\` to \`.env\` in PowerShell with \`Copy-Item .env.example .env\`; edit \`HOST\`, \`PORT\`, or \`NODE_ENV\`${isDatabaseBackend ? ' and review \`DB_FILE\` so it points only to this project’s own local SQLite file' : ''}. The server reads \`.env\` through Node.js built-in env-file support.\n\n` : ''
+   const setup = `# Setup\n\n## Toolchain\n\nGenerated with ${details.scaffold}, Node.js ${nodeVersion}, ${managerToolchain}.\n${managerConfigNote}${forma ? `Forma source: private GitHub repository, commit ${forma.commitSha}. Template ${forma.id}@${forma.version}; portable SHA-256 ${forma.contentHash}; theme ${forma.variantName}.\n` : ''}${bootstrapNote}${stylingNote}\n## Install and run\n\n${envSetup}\`\`\`sh\n${commands.install}\n${isDatabaseBackend ? `${commands.run('db:migrate')}\n` : ''}${details.devCommand}\n\`\`\`\n\n${migrationInstructions}## Validate\n\n\`\`\`sh\n${setupChecks}\n\`\`\`\n\n${resolved.recipe.projectType === 'backend' ? `${isDatabaseBackend ? 'CRUD tests apply generated migrations only to an isolated temporary SQLite database. ' : isNest ? 'Nest Jest e2e tests cover JSON API errors and clean application shutdown. ' : 'Generated tests cover 404/error handling and graceful shutdown. ' }The API exposes GET \`/health\` and GET \`/api/info\`; the generator starts the built server only for its HTTP smoke check and stops it before finalization.\n` : "The generator's HTTP smoke check verifies an HTML response from the local server. It does not launch a browser or verify visual rendering.\n"}`
   const files = new Map<string, string>([['README.md', readme], ['docs/SETUP.md', setup]])
   if (resolved.selection.documentation === 'minimal') return files
 
-  const checkCommands = resolved.recipe.projectType === 'backend' && isNest ? `\`${commands.run('typecheck')}\`, \`${commands.run('lint')}\`, \`${commands.run('test')}\`, \`${commands.run('test:e2e')}\`, and \`${commands.run('build')}\``
+  const checkCommands = resolved.recipe.projectType === 'backend' && isDatabaseBackend ? `\`${commands.run('typecheck')}\`, \`${commands.run('lint')}\`, \`${commands.run('test')}\`, and \`${commands.run('build')}\``
+    : resolved.recipe.projectType === 'backend' && isNest ? `\`${commands.run('typecheck')}\`, \`${commands.run('lint')}\`, \`${commands.run('test')}\`, \`${commands.run('test:e2e')}\`, and \`${commands.run('build')}\``
     : resolved.recipe.projectType === 'backend' ? `\`${commands.run('typecheck')}\`, \`${commands.run('test')}\`, and \`${commands.run('build')}\``
     : forma ? `\`${commands.run('typecheck')}\` and \`${commands.run('build')}\``
     : resolved.recipe.frontend === 'frontend.nuxt' ? `\`${commands.run('typecheck')}\` and \`${commands.run('build')}\``
       : resolved.recipe.frontend === 'frontend.angular' ? `\`${commands.run('build')}\` and \`npm test -- --watch=false\``
         : resolved.recipe.frontend === 'frontend.vue-vite' ? `\`${commands.run('lint')}\`, \`${commands.run('type-check')}\`, and \`${commands.run('build')}\`` : `\`${commands.run('lint')}\` and \`${commands.run('build')}\``
   files.set('AGENTS.md', `# Agent instructions\n\n- Project: ${details.title}.\n- Package manager: ${manager.id}; retain ${manager.lockfile}${manager.configFile ? ` and ${manager.configFile}` : ''}.\n- Run ${checkCommands} before reporting changes.\n- ${scopeNote}\n- Generated by FormaForge; no approval or project history is implied.\n`)
-  files.set('docs/ARCHITECTURE.md', resolved.recipe.projectType === 'backend' && isNest
+  files.set('docs/ARCHITECTURE.md', resolved.recipe.projectType === 'backend' && isDatabaseBackend
+    ? `# Architecture\n\nStandalone Node.js + TypeScript + Express + SQLite + Drizzle API. \`src/db/schema.ts\` defines the notes table; \`src/db/client.ts\` opens a project-local SQLite file; \`src/db/notes.ts\` contains Drizzle CRUD operations; and \`src/routes/notes.ts\` exposes them. \`drizzle.config.ts\` and \`drizzle/\` hold migration config and generated SQL. No global database service is created. App startup never applies migrations; run the documented migration command explicitly against this project's own DB_FILE.\n\nFormaForge owns the reviewed starter files and generated setup/manifest documentation.\n`
+    : resolved.recipe.projectType === 'backend' && isNest
     ? `# Architecture\n\nStandalone Node.js + TypeScript + NestJS REST API. \`src/app.module.ts\` wires the controller, service, and global JSON exception filter. \`src/main.ts\` loads optional environment configuration, validates host/port, starts the HTTP listener, and enables SIGINT/SIGTERM shutdown hooks. The Nest CLI scaffold uses CommonJS-compatible NodeNext TypeScript and Jest. No frontend, database, ORM, authentication, Docker, or fullstack workspace is included.\n\nFormaForge owns the API/configuration files and generated setup/manifest documentation; Nest CLI owns the build/test configuration.\n`
     : resolved.recipe.projectType === 'backend'
     ? `# Architecture\n\nStandalone Node.js + TypeScript + Express REST API. Express application and middleware live in \`src/app.ts\`; \`src/server.ts\` loads environment configuration and owns the HTTP listener and graceful shutdown. No frontend, database, ORM, authentication, or fullstack workspace is included.\n\nFormaForge owns the reviewed starter files and generated setup/manifest documentation.\n`
     : `# Architecture\n\nThis repository is a ${details.title} frontend application generated from ${details.scaffold}. Styling: ${styling}. It uses ${manager.id} and has no separate backend or database.\n\nThe framework/template owns application source and build configuration. FormaForge owns this document and the setup/manifest files.\n`)
-  files.set('docs/TESTING.md', resolved.recipe.projectType === 'backend' && isNest
+  files.set('docs/TESTING.md', resolved.recipe.projectType === 'backend' && isDatabaseBackend
+    ? `# Testing\n\n- Typecheck: \`${commands.run('typecheck')}\`.\n- Lint: \`${commands.run('lint')}\`.\n- CRUD integration tests: \`${commands.run('test')}\`; migrations apply only to a temporary isolated SQLite file.\n- Production build: \`${commands.run('build')}\`.\n- Explicit project migration: review DB_FILE and generated SQL, then run \`${commands.run('db:migrate')}\` yourself.\n- Generation and app startup never apply project migrations.\n`
+    : resolved.recipe.projectType === 'backend' && isNest
     ? `# Testing\n\n- Typecheck: \`${commands.run('typecheck')}\`.\n- Lint: \`${commands.run('lint')}\` (no autofix).\n- Unit tests: \`${commands.run('test')}\` (Jest 30 + ts-jest).\n- E2E tests: \`${commands.run('test:e2e')}\` (Nest testing module + Supertest).\n- Production build: \`${commands.run('build')}\` (Nest CLI).\n- Generator smoke: starts the built API in isolated staging and checks GET \`/health\` and \`/api/info\`.\n- E2E checks cover stable 404/malformed-JSON responses and application shutdown.\n\nNo database or external service is required.\n`
     : resolved.recipe.projectType === 'backend'
     ? `# Testing\n\n- Typecheck: \`${commands.run('typecheck')}\`.\n- Unit and integration tests: \`${commands.run('test')}\` (Node.js built-in test runner).\n- Production build: \`${commands.run('build')}\`.\n- Generator smoke: starts the built API in isolated staging and checks GET \`/health\` and \`/api/info\`.\n- Tests cover 404/error handling and graceful shutdown.\n\nNo database or external service is required.\n`
@@ -250,6 +270,8 @@ export async function writeProjectManifest(
     selectedAdapters: [
       ...(resolved.recipe.frontend ? [{ id: resolved.recipe.frontend, version: '0.1.0' }] : []),
       ...(resolved.recipe.backend ? [{ id: resolved.recipe.backend, version: '0.1.0' }] : []),
+      ...(resolved.recipe.database ? [{ id: resolved.recipe.database, version: '0.1.0' }] : []),
+      ...(resolved.recipe.dataAccess ? [{ id: resolved.recipe.dataAccess, version: '0.1.0' }] : []),
       ...(forma ? [{ id: 'template.forma', version: '0.1.0' }] : resolved.recipe.styling ? [{ id: resolved.recipe.styling, version: '0.1.0' }] : []),
     ],
     packageManager: resolved.recipe.manager,

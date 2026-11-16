@@ -32,7 +32,8 @@ async function waitForDevTools() {
     try {
       const response = await fetch(`${debugBase}/json/list`)
       assert.equal(response.status, 200)
-      const target = (await response.json()).find((item) => item.type === 'page' && item.webSocketDebuggerUrl)
+      const target = (await response.json()).find((item) => item.type === 'page'
+        && (item.url ?? '').startsWith('http://127.0.0.1:1420/') && item.webSocketDebuggerUrl)
       if (target) return target
     } catch (error) {
       lastError = error
@@ -133,7 +134,12 @@ async function chooseBackend(name) {
   await click('.compact-choice', 'Backend')
   await click('.select-card', 'Express')
   await click('.wizard-actions .primary-button', 'Choose tools')
-  await waitFor("document.body.innerText.includes('BE-01 uses TypeScript and npm')", `${name} backend tools`)
+  await waitFor("document.querySelector('#backend-manager')?.value === 'npm'", `${name} backend manager`)
+  const defaults = await evaluate(`({
+    databaseNone: [...document.querySelectorAll('fieldset')].find((fieldset) => fieldset.querySelector('legend')?.textContent.includes('Database'))?.querySelector('.compact-choice[aria-pressed="true"]')?.textContent.includes('None'),
+    ormNone: [...document.querySelectorAll('fieldset')].find((fieldset) => fieldset.querySelector('legend')?.textContent.includes('ORM'))?.querySelector('.compact-choice[aria-pressed="true"]')?.textContent.includes('None'),
+  })`)
+  assert.deepEqual(defaults, { databaseNone: true, ormNone: true }, 'BE-01 defaults to no database and no ORM')
   await click('.wizard-actions .primary-button', 'Documentation')
   await click('.docs-card', 'Standard')
   await click('.wizard-actions .primary-button', 'Review configuration')
@@ -141,10 +147,13 @@ async function chooseBackend(name) {
 
 const target = await waitForDevTools()
 await connectDevTools(target)
-const localStorageSnapshot = await evaluate('Array.from({length: localStorage.length}, (_, i) => { const key = localStorage.key(i); return [key, localStorage.getItem(key)] })')
+let localStorageSnapshot = []
+let storageCaptured = false
 
 try {
   await waitFor("document.querySelector('.hero-actions .primary-button') && !document.querySelector('.hero-actions .primary-button').disabled", 'Forge Studio home and packaged catalog')
+  localStorageSnapshot = await evaluate('Array.from({length: localStorage.length}, (_, i) => { const key = localStorage.key(i); return [key, localStorage.getItem(key)] })')
+  storageCaptured = true
   await click('.hero-actions .primary-button', 'Create project')
   await chooseBackend(generatedName)
   await waitFor("document.body.innerText.includes('BE-01') && document.body.innerText.includes('Express REST API')", 'BE-01 review plan')
@@ -177,6 +186,11 @@ try {
   assert.equal(manifest.recipeStatusAtCreation, 'planned')
   assert.equal(manifest.projectType, 'backend')
   assert.equal(manifest.packageManager, 'npm')
+  assert.equal(manifest.selectedAdapters.some(({ id }) => id.startsWith('database.') || id.startsWith('data-access.')), false)
+  const generatedPackage = JSON.parse(await readFile(join(projectPath, 'package.json'), 'utf8'))
+  assert.equal(generatedPackage.dependencies['better-sqlite3'], undefined)
+  assert.equal(generatedPackage.scripts['db:migrate'], undefined)
+  await assert.rejects(access(join(projectPath, 'data')))
   for (const check of ['dependency-install', 'dependency-integrity', 'lockfile-integrity', 'typecheck', 'unit-tests', 'graceful-shutdown', 'build', 'http-smoke']) {
     assert.equal(manifest.validation.find((item) => item.id === check)?.status, 'pass', check)
   }
@@ -231,11 +245,11 @@ try {
   }, null, 2))
 } finally {
   if (socket?.readyState === WebSocket.OPEN) {
-    await evaluate(`(() => {
-      localStorage.clear();
-      for (const [key, value] of ${JSON.stringify(localStorageSnapshot)}) localStorage.setItem(key, value);
-      return true;
-    })()`).catch(() => undefined)
+    if (storageCaptured) await evaluate(`(() => {
+        localStorage.clear();
+        for (const [key, value] of ${JSON.stringify(localStorageSnapshot)}) localStorage.setItem(key, value);
+        return true;
+      })()`).catch(() => undefined)
     await command('Page.reload', { ignoreCache: true }).catch(() => undefined)
     socket.close()
   }

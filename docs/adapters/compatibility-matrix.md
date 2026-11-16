@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Version | Draft 0.1 — 2026-11-16 |
-| Status | **FE-03–FE-15 and standalone BE-01/BE-02/BE-03/BE-04/BE-05/BE-06 bounded local evidence recorded; FE-01–FE-15/BE-01–BE-06/FM-01/FM-02 remain PLAN; no recipe promoted or release-approved** |
+| Status | **FE-03–FE-15 and standalone BE-01/BE-02/BE-03/BE-04/BE-05/BE-06/BE-07 bounded local evidence recorded; FE-01–FE-15/BE-01–BE-07/FM-01/FM-02 remain PLAN; no recipe promoted or release-approved** |
 | Main platform | Windows 11 |
 | Source of truth | This matrix + machine-readable adapter manifests + QA results |
 
-> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-15, BE-01–BE-04, BE-06, and FM-01/FM-02 have local implementation/evidence only. BE-05 also has a bounded independent review of its CLI/native and isolated MySQL evidence (**PASS**); this is not recipe promotion or release approval. Every recipe remains unavailable in normal generation.
+> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-15, BE-01–BE-04, BE-06–BE-07, and FM-01/FM-02 have local implementation/evidence only. BE-05 also has a bounded independent review of its CLI/native and isolated MySQL evidence (**PASS**); this is not recipe promotion or release approval. Every recipe remains unavailable in normal generation.
 
 ## 1. Status and test gates
 
@@ -136,6 +136,7 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | BE-04 | Backend | None | Go + Gin `v1.12.0` | None | N/A | Go Modules | Phase 05D.2 standalone API; Go >=1.25 |
 | BE-05 | Backend | None | Laravel | MySQL + Eloquent | N/A | Composer only; npm assets omitted | Phase 05C.3 |
 | BE-06 | Backend | None | FastAPI | None in Phase 05C.1; SQLAlchemy/database remains separate proposal | N/A | uv | Phase 05C.1 implementation; Phase 05C.2 bounded local CLI/native evidence; independent acceptance pending |
+| BE-07 | Backend | None | Express | SQLite + Drizzle | N/A | npm | Phase 06A standalone API; SQL generated, never auto-applied |
 | FS-01 | Fullstack | Vue Vite | Laravel | MySQL + Eloquent | Bootstrap | npm + Composer | V1 |
 | FS-02 | Fullstack | React Vite | Go Gin | PostgreSQL + pgx | Tailwind | npm + go | V1 |
 | FS-03 | Fullstack | Angular | NestJS | PostgreSQL + Prisma | Angular Material | npm | V1 |
@@ -163,6 +164,8 @@ Phase 05C.3 adds BE-05 as standalone Laravel 12/PHP/Composer with MySQL/Eloquent
 Phase 05D.1 adds BE-03 as standalone NestJS 11/TypeScript/npm using integrity-pinned Nest CLI `11.0.24`, framework packages `11.2.10`, Node `>=22.13`, Jest 30 + ts-jest `29.4.15`, and CommonJS-compatible NodeNext output. Windows CLI/native acceptance passed scaffold, dependency/lock integrity, typecheck, lint, unit/e2e, build, HTTP, cancellation (CLI), consent, history/open, and collision checks. No DB/ORM/auth/Docker/fullstack/Observe integration. Evidence is local and pending independent review; BE-03 remains `PLAN`, normal/release generation remains blocked. See [DEC-029](../decisions/DEC-029-phase-05d1-nestjs.md) and [Phase 05D.1 evidence](../qa/evidence/phase-05d1-nestjs.md).
 
 Phase 05D.2 adds BE-04 as standalone Go + Gin `1.12.0` + Go Modules with Go `>=1.25.0`; bounded Windows CLI/native acceptance passed pinned module integrity, Go checks, HTTP/shutdown, separate module-download consent, cancellation, cleanup, collision, and native result/history/open. The generated graph hash and test details are recorded in [Phase 05D.2 evidence](../qa/evidence/phase-05d2-go-gin.md). Independent evidence review remains pending; BE-04 stays `PLAN` and normal/release generation remains blocked. This does not implement or verify database/fullstack scope; FS-02 PostgreSQL/pgx remains separate and unverified.
+
+Phase 06A adds BE-07 as a distinct Express + npm + SQLite + Drizzle recipe, with pinned `drizzle-orm@0.45.4`, `drizzle-kit@0.31.11`, `better-sqlite3@13.2.0`, and `tsx@4.21.0`. Windows CLI/native acceptance passed dependency/lock integrity, generated SQL, typecheck/lint/tests/build, HTTP smoke, and CRUD against a separately created test database after explicit migration. Generation never creates or migrates the configured application database; generator smoke uses `:memory:` and `DB_FILE` overrides accept only `:memory:`. Cancellation and collision preservation passed; release policy blocks planned BE-01 and BE-07 before staging. BE-01 remains the no-database Express recipe. Evidence: [DEC-031](../decisions/DEC-031-phase-06a-express-sqlite-drizzle.md) and [Phase 06A report](../qa/evidence/phase-06a-express-sqlite-drizzle.md). BE-07 remains `PLAN`; independent review and release approval remain open.
 
 **Important:** the fullstack recipe must produce a real, reachable example API endpoint and frontend call when that is part of its advertised output. Generating two unrelated folder trees is insufficient.
 

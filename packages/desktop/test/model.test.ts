@@ -3,8 +3,11 @@ import test from 'node:test'
 import {
   emptyPreferences,
   canStartGeneration,
+  backendDatabaseOptions,
+  backendOrmOptions,
   documentationFiles,
   findFrameworkRecipe,
+  findBackendRecipe,
   findRecipe,
   filterFormaTemplates,
   formaMetadataCompatible,
@@ -97,6 +100,30 @@ test('recipe selection requires exact framework, styling, and manager catalog ma
   assert.equal(retainCompatibleStyling(catalog, 'vue', 'scss', 'npm'), 'scss')
   assert.equal(findFrameworkRecipe(catalog, 'nuxt', 'npm'), undefined)
   assert.equal(findFrameworkRecipe(catalog, 'angular', 'npm'), undefined)
+})
+
+test('backend data choices expose only exact recipes and preserve no-database BE-01', () => {
+  const express = { id: 'backend.express', kind: 'backend', displayName: 'Express', supportState: 'planned', versionConstraints: {}, packageManagers: ['npm'], compatibleWith: [], prerequisites: [] }
+  const sqlite = { id: 'database.sqlite', kind: 'database', displayName: 'SQLite', supportState: 'planned', versionConstraints: {}, packageManagers: ['npm'], compatibleWith: [], prerequisites: [] }
+  const none = { id: 'database.none', kind: 'database', displayName: 'None', supportState: 'planned', versionConstraints: {}, packageManagers: [], compatibleWith: [], prerequisites: [] }
+  const drizzle = { id: 'data-access.drizzle-sqlite', kind: 'data-access', displayName: 'Drizzle ORM', supportState: 'planned', versionConstraints: {}, packageManagers: ['npm'], compatibleWith: [], prerequisites: [] }
+  const noOrm = { id: 'data-access.none', kind: 'data-access', displayName: 'None', supportState: 'planned', versionConstraints: {}, packageManagers: [], compatibleWith: [], prerequisites: [] }
+  const catalog = {
+    adapters: [express, sqlite, none, drizzle, noOrm],
+    databaseAdapters: [none, sqlite],
+    ormAdapters: [noOrm, drizzle],
+    recipes: [
+      { id: 'BE-01', status: 'planned', projectType: 'backend', backend: 'backend.express', manager: 'npm', limitations: [], checks: [] },
+      { id: 'BE-07', status: 'planned', projectType: 'backend', backend: 'backend.express', database: 'database.sqlite', dataAccess: 'data-access.drizzle-sqlite', manager: 'npm', limitations: [], checks: [] },
+    ],
+  } as Catalog
+  assert.equal(findBackendRecipe(catalog, 'backend.express', 'npm', 'database.none', 'data-access.none')?.id, 'BE-01')
+  assert.equal(findBackendRecipe(catalog, 'backend.express', 'npm', 'database.sqlite', 'data-access.drizzle-sqlite')?.id, 'BE-07')
+  assert.equal(findBackendRecipe(catalog, 'backend.express', 'npm', 'database.sqlite', 'data-access.none'), undefined)
+  assert.deepEqual(backendDatabaseOptions(catalog, 'backend.express', 'npm').filter(({ enabled }) => enabled).map(({ adapter }) => adapter.id), ['database.none', 'database.sqlite'])
+  assert.deepEqual(backendOrmOptions(catalog, 'backend.express', 'npm', 'database.sqlite').filter(({ enabled }) => enabled).map(({ adapter }) => adapter.id), ['data-access.drizzle-sqlite'])
+  assert.deepEqual(backendOrmOptions(catalog, 'backend.express', 'npm', 'database.none').filter(({ enabled }) => enabled).map(({ adapter }) => adapter.id), ['data-access.none'])
+  assert.equal(backendDatabaseOptions(catalog, 'backend.express', 'yarn').some(({ enabled }) => enabled), false)
 })
 
 test('Forma compatibility exposes catalog metadata only', () => {
