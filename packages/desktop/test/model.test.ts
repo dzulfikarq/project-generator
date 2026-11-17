@@ -104,6 +104,7 @@ test('recipe selection requires exact framework, styling, and manager catalog ma
 
 test('backend data choices expose only exact recipes and preserve no-database BE-01', () => {
   const express = { id: 'backend.express', kind: 'backend', displayName: 'Express', supportState: 'planned', versionConstraints: {}, packageManagers: ['npm'], compatibleWith: [], prerequisites: [] }
+  const nest = { id: 'backend.nestjs', kind: 'backend', displayName: 'NestJS', supportState: 'planned', versionConstraints: {}, packageManagers: ['npm'], compatibleWith: [], prerequisites: [] }
   const sqlite = { id: 'database.sqlite', kind: 'database', displayName: 'SQLite', supportState: 'planned', versionConstraints: {}, packageManagers: ['npm'], compatibleWith: [], prerequisites: [] }
   const none = { id: 'database.none', kind: 'database', displayName: 'None', supportState: 'planned', versionConstraints: {}, packageManagers: [], compatibleWith: [], prerequisites: [] }
   const drizzle = { id: 'data-access.drizzle-sqlite', kind: 'data-access', displayName: 'Drizzle ORM', supportState: 'planned', versionConstraints: {}, packageManagers: ['npm'], compatibleWith: [], prerequisites: [] }
@@ -111,23 +112,29 @@ test('backend data choices expose only exact recipes and preserve no-database BE
   const drizzlePostgres = { id: 'data-access.drizzle-postgresql', kind: 'data-access', displayName: 'Drizzle ORM · PostgreSQL', supportState: 'planned', versionConstraints: {}, packageManagers: ['npm'], compatibleWith: [], prerequisites: [] }
   const noOrm = { id: 'data-access.none', kind: 'data-access', displayName: 'None', supportState: 'planned', versionConstraints: {}, packageManagers: [], compatibleWith: [], prerequisites: [] }
   const catalog = {
-    adapters: [express, sqlite, postgres, none, drizzle, drizzlePostgres, noOrm],
+    adapters: [express, nest, sqlite, postgres, none, drizzle, drizzlePostgres, noOrm],
     databaseAdapters: [none, sqlite, postgres],
     ormAdapters: [noOrm, drizzle, drizzlePostgres],
     recipes: [
       { id: 'BE-01', status: 'planned', projectType: 'backend', backend: 'backend.express', manager: 'npm', limitations: [], checks: [] },
       { id: 'BE-07', status: 'planned', projectType: 'backend', backend: 'backend.express', database: 'database.sqlite', dataAccess: 'data-access.drizzle-sqlite', manager: 'npm', limitations: [], checks: [] },
       { id: 'BE-08', status: 'planned', projectType: 'backend', backend: 'backend.express', database: 'database.postgresql', dataAccess: 'data-access.drizzle-postgresql', manager: 'npm', limitations: [], checks: [] },
+      { id: 'BE-03', status: 'planned', projectType: 'backend', backend: 'backend.nestjs', manager: 'npm', limitations: [], checks: [] },
+      { id: 'BE-09', status: 'planned', projectType: 'backend', backend: 'backend.nestjs', database: 'database.postgresql', dataAccess: 'data-access.drizzle-postgresql', manager: 'npm', limitations: [], checks: [] },
     ],
   } as Catalog
   assert.equal(findBackendRecipe(catalog, 'backend.express', 'npm', 'database.none', 'data-access.none')?.id, 'BE-01')
   assert.equal(findBackendRecipe(catalog, 'backend.express', 'npm', 'database.sqlite', 'data-access.drizzle-sqlite')?.id, 'BE-07')
   assert.equal(findBackendRecipe(catalog, 'backend.express', 'npm', 'database.postgresql', 'data-access.drizzle-postgresql')?.id, 'BE-08')
+  assert.equal(findBackendRecipe(catalog, 'backend.nestjs', 'npm', 'database.none', 'data-access.none')?.id, 'BE-03')
+  assert.equal(findBackendRecipe(catalog, 'backend.nestjs', 'npm', 'database.postgresql', 'data-access.drizzle-postgresql')?.id, 'BE-09')
   assert.equal(findBackendRecipe(catalog, 'backend.express', 'npm', 'database.sqlite', 'data-access.none'), undefined)
   assert.deepEqual(backendDatabaseOptions(catalog, 'backend.express', 'npm').filter(({ enabled }) => enabled).map(({ adapter }) => adapter.id), ['database.none', 'database.sqlite', 'database.postgresql'])
   assert.deepEqual(backendOrmOptions(catalog, 'backend.express', 'npm', 'database.sqlite').filter(({ enabled }) => enabled).map(({ adapter }) => adapter.id), ['data-access.drizzle-sqlite'])
   assert.deepEqual(backendOrmOptions(catalog, 'backend.express', 'npm', 'database.postgresql').filter(({ enabled }) => enabled).map(({ adapter }) => adapter.id), ['data-access.drizzle-postgresql'])
   assert.deepEqual(backendOrmOptions(catalog, 'backend.express', 'npm', 'database.none').filter(({ enabled }) => enabled).map(({ adapter }) => adapter.id), ['data-access.none'])
+  assert.deepEqual(backendDatabaseOptions(catalog, 'backend.nestjs', 'npm').filter(({ enabled }) => enabled).map(({ adapter }) => adapter.id), ['database.none', 'database.postgresql'])
+  assert.deepEqual(backendOrmOptions(catalog, 'backend.nestjs', 'npm', 'database.postgresql').filter(({ enabled }) => enabled).map(({ adapter }) => adapter.id), ['data-access.drizzle-postgresql'])
   assert.equal(backendDatabaseOptions(catalog, 'backend.express', 'yarn').some(({ enabled }) => enabled), false)
 })
 

@@ -6,7 +6,7 @@ import test from 'node:test'
 import { parseSelection } from '../src/schema.js'
 import { createPlan } from '../src/plan.js'
 import { resolveSelection } from '../src/resolver.js'
-import { normalizeWindowsParent, resolveOutputPath } from '../src/paths.js'
+import { assertNestPostgresInstallPathSafe, normalizeWindowsParent, resolveOutputPath } from '../src/paths.js'
 import { GeneratorError } from '../src/errors.js'
 import { supportsComposer, supportsGo, supportsGoGin, supportsNodeForAngular, supportsNodeForBackend, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue, supportsNpm, supportsPhp, supportsPython, supportsUv } from '../src/toolchain.js'
 import { defaultGoModulePath, isValidGoModulePath } from '../src/go-module.js'
@@ -314,6 +314,57 @@ test('BE-08 resolves separate Express PostgreSQL Drizzle recipe with guarded mig
   assert.ok(docs.has('docs/ARCHITECTURE.md'))
   const fullDocs = postgresProjectDocs(resolveSelection(parseSelection({ ...selection, documentation: 'full' })), '22.22.1', '10.9.4')
   assert.ok(fullDocs.has('docs/qa/acceptance-matrix.md'))
+
+  for (const database of [
+    { adapterId: 'database.postgresql', accessAdapterId: 'data-access.none', mode: 'existing-service' },
+    { adapterId: 'database.postgresql', mode: 'existing-service' },
+    { adapterId: 'database.postgresql', accessAdapterId: 'data-access.drizzle-postgresql', mode: 'embedded' },
+    { adapterId: 'database.sqlite', accessAdapterId: 'data-access.drizzle-postgresql', mode: 'embedded' },
+  ]) {
+    assert.throws(() => createPlan(parseSelection({ ...selection, database })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  }
+})
+
+test('BE-09 resolves a distinct NestJS PostgreSQL Drizzle recipe and preserves database-free BE-03', () => {
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'nest-items-api', type: 'backend', parentDirectory: 'E:\\Projects' },
+    backend: { adapterId: 'backend.nestjs', manager: 'npm' },
+    database: { adapterId: 'database.postgresql', accessAdapterId: 'data-access.drizzle-postgresql', mode: 'existing-service' },
+    documentation: 'standard',
+    git: { initialize: false, initialCommit: false },
+  })
+  const resolved = resolveSelection(selection)
+  const plan = createPlan(selection)
+  assert.equal(resolved.recipe.id, 'BE-09')
+  assert.equal(resolved.recipe.status, 'planned')
+  assert.equal(resolved.recipe.backend, 'backend.nestjs')
+  assert.equal(resolved.recipe.database, 'database.postgresql')
+  assert.equal(resolved.recipe.dataAccess, 'data-access.drizzle-postgresql')
+  assert.equal(resolved.recipe.dependencies?.length, 28)
+  assert.deepEqual(resolved.recipe.dependencies?.filter(({ packageName }) => ['class-validator', 'class-transformer', 'drizzle-orm', 'drizzle-kit', 'pg', '@types/pg'].includes(packageName)).map(({ packageName, version }) => [packageName, version]), [
+    ['class-validator', '0.15.1'], ['class-transformer', '0.5.1'], ['drizzle-orm', '0.45.4'], ['pg', '8.23.1'], ['drizzle-kit', '0.31.11'], ['@types/pg', '8.23.1'],
+  ])
+  assert.ok(resolved.recipe.dependencies?.every(({ integrity }) => integrity.startsWith('sha512-')))
+  assert.equal(plan.executionAvailable, false)
+  assert.equal(plan.requiresDependencyConsent, true)
+  assert.equal(plan.requiresNetworkConsent, false)
+  assert.equal(plan.steps.find((step) => step.id === 'scaffold')?.action, 'run-pinned-cli')
+  assert.equal(new Set(plan.expectedWrites).size, plan.expectedWrites.length)
+  for (const path of ['src/items/items.controller.ts', 'src/items/dto/create-item.dto.ts', 'src/database/database.service.ts', 'src/db/target.ts', 'src/db/migrate.ts', 'docs/DATABASE-SAFETY.md', 'drizzle/*.sql', 'package-lock.json']) assert.ok(plan.expectedWrites.includes(path), path)
+  assert.ok(!plan.expectedWrites.includes('src/server.ts'))
+  assert.ok(!plan.expectedWrites.includes('src/routes/items.ts'))
+  assert.ok(plan.warnings.some((warning) => warning.includes('first CRUD request') && warning.includes('/health')))
+  assert.ok(plan.warnings.some((warning) => warning.includes('--target host:port/database')))
+  assert.ok(plan.warnings.some((warning) => warning.includes('outside wrapper enforcement')))
+  assert.equal(resolveBackendRecipe('backend.nestjs', 'npm')?.id, 'BE-03')
+  assert.equal(resolveBackendRecipe('backend.nestjs', 'npm', 'database.postgresql', 'data-access.drizzle-postgresql')?.id, 'BE-09')
+  assert.equal(resolveBackendRecipe('backend.nestjs', 'npm', 'database.postgresql', 'data-access.none'), undefined)
+  const docs = postgresProjectDocs(resolved, '22.22.1', '10.9.4')
+  assert.match(docs.get('README.md') ?? '', /BE-09 planned starter: NestJS/)
+  assert.match(docs.get('docs/DATABASE-SAFETY.md') ?? '', /first CRUD request/)
+  assert.ok(docs.has('docs/ARCHITECTURE.md'))
+  assert.ok(docs.has('docs/TESTING.md'))
 
   for (const database of [
     { adapterId: 'database.postgresql', accessAdapterId: 'data-access.none', mode: 'existing-service' },
@@ -669,6 +720,21 @@ test('validates Windows path forms, spaces, Unicode, traversal, reserved names, 
   assert.throws(() => resolveOutputPath('C:\\Projects', 'CON'), GeneratorError)
   assert.throws(() => resolveOutputPath('C:\\Projects', 'nul.txt'), GeneratorError)
   assert.throws(() => resolveOutputPath(`C:\\${'x'.repeat(220)}`, 'sample-web'), GeneratorError)
+})
+
+test('BE-09 preflights the nested esbuild executable path conservatively', () => {
+  const jobId = '12345678-1234-1234-1234-123456789abc'
+  const projectName = 'pg-be09-native'
+  const parentOfLength = (length: number) => `C:\\${'p'.repeat(length - 3)}`
+  const failedPathLength = win32.join(parentOfLength(103), `.project-generator-stage-${jobId}`, projectName, 'node_modules', '@esbuild-kit', 'core-utils', 'node_modules', '@esbuild', 'win32-x64', 'esbuild.exe').length
+  const passedPathLength = win32.join(parentOfLength(61), `.project-generator-stage-${jobId}`, projectName, 'node_modules', '@esbuild-kit', 'core-utils', 'node_modules', '@esbuild', 'win32-x64', 'esbuild.exe').length
+  assert.equal(failedPathLength, 261)
+  assert.equal(passedPathLength, 219)
+  assert.throws(
+    () => assertNestPostgresInstallPathSafe(parentOfLength(103), projectName, jobId),
+    (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_PATH_UNSAFE' && error.message.includes('261 characters'),
+  )
+  assert.doesNotThrow(() => assertNestPostgresInstallPathSafe(parentOfLength(61), projectName, jobId))
 })
 
 test('plan is read-only even when parent path does not exist', () => {

@@ -5,7 +5,8 @@ import { homedir } from 'node:os'
 import { spawnSync } from 'node:child_process'
 import { dirname, join, resolve, win32 } from 'node:path'
 
-if (process.platform !== 'win32') throw new Error('Phase 06B packaged release-policy check requires Windows.')
+const phase = process.env.PG_POLICY_PHASE === '06C' ? '06C' : '06B'
+if (process.platform !== 'win32') throw new Error(`Phase ${phase} packaged release-policy check requires Windows.`)
 
 const root = resolve(import.meta.dirname, '..')
 const tempBase = join(process.env.LOCALAPPDATA ?? win32.join(homedir(), 'AppData', 'Local'), 'Temp', 'opencode')
@@ -14,7 +15,7 @@ const coreDist = join(root, 'packages', 'core', 'dist', 'src')
 const corePackage = join(root, 'packages', 'core', 'package.json')
 const npmSource = join(dirname(process.execPath), 'node_modules', 'npm')
 const packagedSmoke = join(root, 'scripts', 'packaged-cli-policy-smoke.mjs')
-const tempRoot = await mkdtemp(join(tempBase, 'phase-06b-release-policy-'))
+const tempRoot = await mkdtemp(join(tempBase, `phase-${phase.toLowerCase()}-release-policy-`))
 
 function copyJavaScriptTree(source, destination) {
   mkdirSync(destination, { recursive: true })
@@ -67,7 +68,7 @@ try {
     const output = run(mode, resources)
     assert.match(output, new RegExp(`Packaged ${mode} CLI policy smoke passed`))
   }
-  console.log('Phase 06B packaged release policy passed for system and bundled Node; BE-08 remains planned and blocked before staging.')
+  console.log(`Phase ${phase} packaged release policy passed for system and bundled Node; BE-08/BE-09 remain planned and blocked before staging.`)
 } finally {
   await rm(tempRoot, { recursive: true, force: true })
 }

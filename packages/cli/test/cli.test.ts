@@ -25,7 +25,7 @@ test('catalog emits local versioned JSON without network', () => {
   }
   assert.equal(envelope.ok, true)
   assert.deepEqual(envelope.data.recipes.map(({ id, status }) => [id, status]), [
-    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'], ['FE-06', 'planned'], ['FE-07', 'planned'], ['FE-08', 'planned'], ['FE-09', 'planned'], ['FE-10', 'planned'], ['FE-11', 'planned'], ['FE-12', 'planned'], ['FE-13', 'planned'], ['FE-14', 'planned'], ['FE-15', 'planned'], ['BE-01', 'planned'], ['BE-07', 'planned'], ['BE-08', 'planned'], ['BE-03', 'planned'], ['BE-02', 'planned'], ['BE-04', 'planned'], ['BE-05', 'planned'], ['BE-06', 'planned'],
+    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'], ['FE-06', 'planned'], ['FE-07', 'planned'], ['FE-08', 'planned'], ['FE-09', 'planned'], ['FE-10', 'planned'], ['FE-11', 'planned'], ['FE-12', 'planned'], ['FE-13', 'planned'], ['FE-14', 'planned'], ['FE-15', 'planned'], ['BE-01', 'planned'], ['BE-07', 'planned'], ['BE-08', 'planned'], ['BE-09', 'planned'], ['BE-03', 'planned'], ['BE-02', 'planned'], ['BE-04', 'planned'], ['BE-05', 'planned'], ['BE-06', 'planned'],
   ])
   assert.deepEqual(envelope.data.packageManagers.map(({ id, version }) => [id, version]), [['npm', '>=10.0.0'], ['yarn', '4.18.1'], ['pnpm', '11.28.11'], ['go-modules', 'Go 1.22+'], ['composer', '>=2.2.0'], ['uv', '>=0.8.0']])
   const vue = envelope.data.recipes.find(({ id }) => id === 'FE-03')!
@@ -75,6 +75,12 @@ test('catalog emits local versioned JSON without network', () => {
     ['drizzle-orm', '0.45.4'], ['drizzle-kit', '0.31.11'], ['pg', '8.23.1'], ['@types/pg', '8.23.1'],
   ])
   assert.ok(expressPostgres.dependencies?.every(({ integrity }) => integrity.startsWith('sha512-')))
+  const nestPostgres = envelope.data.recipes.find(({ id }) => id === 'BE-09')!
+  assert.equal(nestPostgres.backend, 'backend.nestjs')
+  assert.equal(nestPostgres.database, 'database.postgresql')
+  assert.equal(nestPostgres.dataAccess, 'data-access.drizzle-postgresql')
+  assert.equal(nestPostgres.manager, 'npm')
+  assert.equal(nestPostgres.status, 'planned')
   assert.ok(envelope.data.databaseAdapters.some(({ id }) => id === 'database.sqlite'))
   assert.ok(envelope.data.ormAdapters.some(({ id }) => id === 'data-access.drizzle-sqlite'))
   const nest = envelope.data.recipes.find(({ id }) => id === 'BE-03')!
@@ -103,13 +109,14 @@ test('catalog emits local versioned JSON without network', () => {
   assert.ok(bootstrap.incompatibleWith.includes('styling.tailwind'))
 })
 
-test('help keeps BE-01 database-free and lists BE-07/BE-08 database recipes separately', () => {
+test('help keeps database-free recipes distinct and lists BE-07/BE-08/BE-09 separately', () => {
   const result = spawnSync(process.execPath, [cli, '--help'], { encoding: 'utf8' })
   assert.equal(result.status, 0)
   assert.match(result.stdout, /BE-01 Express \+ npm \(database-free\)/)
   assert.match(result.stdout, /BE-07 Express \+ npm \+ SQLite \+ Drizzle/)
   assert.match(result.stdout, /BE-08 Express \+ npm \+ PostgreSQL \+ Drizzle/)
-  assert.match(result.stdout, /BE-01–BE-08.*remain planned/)
+  assert.match(result.stdout, /BE-09 NestJS \+ npm \+ PostgreSQL \+ Drizzle/)
+  assert.match(result.stdout, /BE-01–BE-09.*remain planned/)
 })
 
 test('recovery apply refuses mismatched confirmation before native operations', () => {

@@ -46,6 +46,7 @@ const configs = [
   ['BE-01', 'backend.express', undefined, undefined, 'npm'],
   ['BE-07', 'backend.express', undefined, undefined, 'npm'],
   ['BE-08', 'backend.express', undefined, undefined, 'npm'],
+  ['BE-09', 'backend.nestjs', undefined, undefined, 'npm'],
   ['BE-02', 'backend.go-net-http', undefined, undefined, 'go-modules'],
   ['FM-01', 'frontend.react-vite', undefined, 'focus-planner'],
   ['FM-02', 'frontend.nextjs-app', undefined, 'staywise-host-dashboard'],
@@ -78,6 +79,14 @@ function selection(id, frontend, styling, templateId, manager = 'npm') {
     schemaVersion: 1,
     project: { name: 'planned-be-08', parentDirectory: root, type: 'backend' },
     backend: { adapterId: 'backend.express', manager: 'npm' },
+    database: { adapterId: 'database.postgresql', accessAdapterId: 'data-access.drizzle-postgresql', mode: 'existing-service' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  }
+  if (id === 'BE-09') return {
+    schemaVersion: 1,
+    project: { name: 'planned-be-09', parentDirectory: root, type: 'backend' },
+    backend: { adapterId: 'backend.nestjs', manager: 'npm' },
     database: { adapterId: 'database.postgresql', accessAdapterId: 'data-access.drizzle-postgresql', mode: 'existing-service' },
     documentation: 'minimal',
     git: { initialize: false, initialCommit: false },
@@ -126,6 +135,7 @@ try {
     ['BE-01', 'planned'],
     ['BE-07', 'planned'],
     ['BE-08', 'planned'],
+    ['BE-09', 'planned'],
     ['BE-03', 'planned'],
     ['BE-02', 'planned'],
     ['BE-04', 'planned'],
@@ -159,6 +169,17 @@ try {
   assert.equal(new Set(postgresPlanData.expectedWrites).size, postgresPlanData.expectedWrites.length)
   assert.ok(postgresPlanData.warnings.some((warning) => warning.includes('does not connect') && warning.includes('/health')))
 
+  const nestPostgresConfigPath = join(root, 'BE-09.json')
+  const nestPostgresPlan = invoke(['plan', '--config', nestPostgresConfigPath, '--json'])
+  assert.equal(nestPostgresPlan.status, 0, nestPostgresPlan.stdout)
+  const nestPostgresPlanData = JSON.parse(nestPostgresPlan.stdout).data
+  assert.equal(nestPostgresPlanData.recipeId, 'BE-09')
+  assert.equal(nestPostgresPlanData.recipeStatus, 'planned')
+  assert.equal(nestPostgresPlanData.executionAvailable, false)
+  assert.ok(nestPostgresPlanData.expectedWrites.includes('src/database/database.service.ts'))
+  assert.ok(nestPostgresPlanData.expectedWrites.includes('src/db/migrate.ts'))
+  assert.equal(new Set(nestPostgresPlanData.expectedWrites).size, nestPostgresPlanData.expectedWrites.length)
+
   const goConfigPath = join(root, 'BE-02.json')
   const goPlan = invoke(['plan', '--config', goConfigPath, '--json'])
   assert.equal(goPlan.status, 0, goPlan.stdout)
@@ -191,7 +212,7 @@ try {
     assert.ok(output.some((event) => event.code === 'GEN_RECIPE_UNTESTED'), `${id}: ${result.stdout}`)
     assert.equal(output.some((event) => event.type === 'stage-started' && ['staging', 'scaffolding', 'installing'].includes(event.stageId)), false, `${id} entered execution stage`)
     await assert.rejects(access(join(root, `planned-${id.toLowerCase()}`)))
-    if (id.startsWith('FE-') || id === 'BE-02' || id === 'BE-07' || id === 'BE-08') {
+    if (id.startsWith('FE-') || id === 'BE-02' || id === 'BE-07' || id === 'BE-08' || id === 'BE-09') {
       const override = invoke(['generate', '--config', configPaths[index], '--jsonl', '--development-allow-planned'])
       assert.equal(override.status, 3, `${id} release override: ${override.stderr}\n${override.stdout}`)
       assert.ok(events(override.stdout).some((event) => event.code === 'GEN_RECIPE_UNTESTED'), `${id} release override was not blocked: ${override.stdout}`)
@@ -228,7 +249,7 @@ try {
   assert.equal(directResult.error?.code, 'GEN_RECIPE_UNTESTED')
 
   assert.deepEqual((await readdir(root)).sort(), configPaths.map((path) => path.split(/[\\/]/).at(-1)).sort())
-  console.log(`Packaged ${mode} CLI policy smoke passed: catalog/plan/doctor read-only; release override rejected; FE-01–FE-15, BE-01/BE-02/BE-07/BE-08, and FM-01/FM-02 blocked before staging.`)
+  console.log(`Packaged ${mode} CLI policy smoke passed: catalog/plan/doctor read-only; release override rejected; FE-01–FE-15, BE-01/BE-02/BE-07/BE-08/BE-09, and FM-01/FM-02 blocked before staging.`)
 } finally {
   await rm(root, { recursive: true, force: true })
 }

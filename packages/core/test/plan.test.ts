@@ -86,6 +86,28 @@ test('BE-03 plan discloses pinned Nest scaffold, npm network, lifecycle consent,
   assert.ok(plan.warnings.some((warning) => warning.includes('lifecycle scripts') && warning.includes('not sandboxed')))
 })
 
+test('BE-09 plan keeps Nest scaffold and PostgreSQL migration behind explicit review', () => {
+  const plan = createPlan(parseSelection({
+    schemaVersion: 1,
+    project: { name: 'nest-postgres-plan', type: 'backend', parentDirectory: 'C:\\Projects' },
+    backend: { adapterId: 'backend.nestjs', manager: 'npm' },
+    database: { adapterId: 'database.postgresql', accessAdapterId: 'data-access.drizzle-postgresql', mode: 'existing-service' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  }))
+  assert.equal(plan.recipeId, 'BE-09')
+  assert.equal(plan.recipeStatus, 'planned')
+  assert.equal(plan.executionAvailable, false)
+  assert.equal(plan.executesDependencyLifecycleScripts, true)
+  assert.equal(plan.requiresDependencyConsent, true)
+  assert.ok(plan.steps.find((step) => step.id === 'configure')?.readableSummary.includes('lazy PostgreSQL pool DI'))
+  assert.ok(plan.expectedWrites.includes('src/database/database.service.ts'))
+  assert.ok(plan.expectedWrites.includes('drizzle/*.sql'))
+  assert.ok(plan.warnings.some((warning) => warning.includes('first CRUD request') && warning.includes('/health')))
+  assert.ok(plan.warnings.some((warning) => warning.includes('--target host:port/database')))
+  assert.ok(plan.warnings.some((warning) => warning.includes('not sandboxed')))
+})
+
 test('BE-05 plan separates Composer script suppression from explicit unsandboxed dependency consent', () => {
   const plan = createPlan(parseSelection({
     schemaVersion: 1,

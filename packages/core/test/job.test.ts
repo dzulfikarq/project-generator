@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { access, mkdtemp, readdir, rm } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, win32 } from 'node:path'
 import test, { type TestContext } from 'node:test'
@@ -227,6 +227,60 @@ test('production generation blocks planned BE-08 before staging or destination w
   }
 })
 
+test('production generation blocks planned BE-09 before staging or destination writes', async () => {
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-planned-nest-postgres-'))
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'planned-nest-postgres-api', type: 'backend', parentDirectory: parent },
+    backend: { adapterId: 'backend.nestjs', manager: 'npm' },
+    database: { adapterId: 'database.postgresql', accessAdapterId: 'data-access.drizzle-postgresql', mode: 'existing-service' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  })
+  let logFile = ''
+  try {
+    const result = await generateProject(selection)
+    logFile = result.logFile ?? ''
+    assert.equal(result.status, 'failed')
+    assert.equal(result.error?.code, 'GEN_RECIPE_UNTESTED')
+    await assert.rejects(access(win32.join(parent, 'planned-nest-postgres-api')))
+    assert.deepEqual(await readdir(parent), [])
+  } finally {
+    await rm(parent, { recursive: true, force: true })
+    if (logFile) await rm(dirname(logFile), { recursive: true, force: true })
+  }
+})
+
+test('BE-09 rejects a long staged esbuild path before creating staging', { skip: !ALLOW_PLANNED_RECIPE_GENERATION }, async () => {
+  const root = await mkdtemp(win32.join(tmpdir(), 'pg-be09-path-'))
+  const padding = 103 - root.length - 1
+  const parent = padding > 0 ? win32.join(root, 'p'.repeat(padding)) : root
+  await mkdir(parent, { recursive: true })
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'pg-be09-native', type: 'backend', parentDirectory: parent },
+    backend: { adapterId: 'backend.nestjs', manager: 'npm' },
+    database: { adapterId: 'database.postgresql', accessAdapterId: 'data-access.drizzle-postgresql', mode: 'existing-service' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  })
+  const events: JobEventV1[] = []
+  let logFile = ''
+  try {
+    const result = await generateProject(selection, { allowPlanned: true, allowDependencyScripts: true, onEvent: (event) => events.push(event) })
+    logFile = result.logFile ?? ''
+    assert.equal(result.status, 'failed')
+    assert.equal(result.error?.code, 'GEN_PATH_UNSAFE')
+    assert.match(result.error?.message ?? '', /staged esbuild\.exe path.*240/)
+    assert.equal(events.find((event) => event.type === 'error')?.stageId, 'preflight')
+    await assert.rejects(access(win32.join(parent, 'pg-be09-native')))
+    assert.deepEqual(await readdir(parent), [])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+    if (logFile) await rm(dirname(logFile), { recursive: true, force: true })
+  }
+})
+
 test('BE-08 requires explicit unsandboxed npm consent before staging', { skip: !ALLOW_PLANNED_RECIPE_GENERATION }, async () => {
   const parent = await mkdtemp(win32.join(tmpdir(), 'pg-postgres-consent-'))
   const selection = parseSelection({
@@ -244,6 +298,30 @@ test('BE-08 requires explicit unsandboxed npm consent before staging', { skip: !
     assert.equal(result.status, 'failed')
     assert.equal(result.error?.code, 'GEN_DEPENDENCY_CONSENT_REQUIRED')
     await assert.rejects(access(win32.join(parent, 'postgres-consent-api')))
+    assert.deepEqual(await readdir(parent), [])
+  } finally {
+    await rm(parent, { recursive: true, force: true })
+    if (logFile) await rm(dirname(logFile), { recursive: true, force: true })
+  }
+})
+
+test('BE-09 requires explicit npm lifecycle consent before staging or database access', { skip: !ALLOW_PLANNED_RECIPE_GENERATION }, async () => {
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-nest-postgres-consent-'))
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'nest-postgres-consent', type: 'backend', parentDirectory: parent },
+    backend: { adapterId: 'backend.nestjs', manager: 'npm' },
+    database: { adapterId: 'database.postgresql', accessAdapterId: 'data-access.drizzle-postgresql', mode: 'existing-service' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  })
+  let logFile = ''
+  try {
+    const result = await generateProject(selection, { allowPlanned: true })
+    logFile = result.logFile ?? ''
+    assert.equal(result.status, 'failed')
+    assert.equal(result.error?.code, 'GEN_DEPENDENCY_CONSENT_REQUIRED')
+    await assert.rejects(access(win32.join(parent, 'nest-postgres-consent')))
     assert.deepEqual(await readdir(parent), [])
   } finally {
     await rm(parent, { recursive: true, force: true })
