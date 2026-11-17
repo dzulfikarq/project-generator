@@ -1,6 +1,6 @@
 # Roadmap — Project Generator Desktop V1
 
-Status: **Phase 01 bounded acceptance, Phase 02 local Forma integration/evidence, Phase 03 internal UI implementation, Phase 04A–04B.3 frontend evidence, Phase 05A–05D.2 and Phase 06A evidence present; Phase 06A and Phase 06B development closures GO; Phase 06B independent acceptance PASS WITH FINDINGS; broader acceptance remains partial, no recipe release-approved.** Date: 2026-11-17.
+Status: **Phase 01 bounded acceptance, Phase 02 local Forma integration/evidence, Phase 03 internal UI implementation, Phase 04A–04B.3 frontend evidence, Phase 05A–05D.2 and Phase 06A evidence present; Phase 06A and Phase 06B development closures GO; Phase 06B independent acceptance PASS WITH FINDINGS; Phase 06C independent review PASS WITH FINDINGS, no product blocker, and development closure GO; broader acceptance remains partial, no recipe release-approved.** Date: 2026-11-18.
 
 ## Phase 0 — Specification and governance
 
@@ -68,6 +68,13 @@ Architecture specification: [`ARCHITECTURE.md`](ARCHITECTURE.md). UX specificati
 - Generation, startup, and `/health` are designed to remain DB-free. Explicit migration requires the guarded `--target host:port/database` wrapper and connected-identity checks.
 - Initial timeout was harness false failure: pipe-backed `spawnSync` timed out after `pg_ctl` reported success and PostgreSQL was ready. File-backed capture fixed startup. Final independent acceptance reran the full E2E on PostgreSQL `17.2`, run-owned loopback port `62859`; generation, DB-free smoke, guarded migration, CRUD, rollback, cancellation, collision, and BE-01/BE-07 regressions passed. P3 stdout-FD leak on stderr-open failure was fixed and targeted regression passed. Port `5432` remained untouched. PostgreSQL `16` was not independently tested.
 - **Phase 06B independent acceptance: PASS WITH FINDINGS; development closure: GO.** BE-01, BE-07, and BE-08 remain `planned`; no promotion. Unsandboxed lifecycle scripts, direct Drizzle Kit migration bypass, and non-cryptographic target identity checks remain disclosed. Clean-machine/installer acceptance remains open; public release remains NO-GO. See [DEC-032](decisions/DEC-032-phase-06b-express-postgresql-drizzle.md) and [evidence](qa/evidence/phase-06b-express-postgresql-drizzle.md).
+
+## Phase 06C — Standalone NestJS + PostgreSQL + Drizzle
+
+- Implemented BE-09 as a distinct NestJS 11/npm/PostgreSQL 16+/Drizzle recipe. BE-03 remains database-free; BE-07 remains Express/SQLite/Drizzle; BE-08 remains Express/PostgreSQL/Drizzle.
+- Phase 06C CLI E2E passed with Node `22.22.1`, PostgreSQL `17.2`, and a run-owned loopback cluster on port `57573`, including migration and CRUD. Port `5432` was not selected; the cluster stopped cleanly. BE-08 E2E ran separately in Phase 06B; it is not part of the Phase 06C harness.
+- Final native Desktop E2E r9 passed (exit `0`, 116/116 assertions) without PostgreSQL. It verified dual consent, normal BE-09 generation, live `stageId=installing`, cancellation while matching npm PID was active, PID exit, absent target/staging, empty recovery, and collision `BLOCKED` with sentinel preserved. Manifest kept BE-09 `planned`. r1 covered generation/collision only; r5 follow-up verified npm cancellation/cleanup although its harness failed on a missing UI attribute. R6–R8 failures were harness/resource/readiness/status-selector issues corrected in r9 without weakening key assertions.
+- System and bundled Node release-policy checks passed; BE-09 remains blocked before staging in release builds. Long-path preflight conservatively rejects predicted staged `esbuild.exe` paths over 240 characters; regression rejects 261 and accepts 219. This does not prove a Windows maximum or the observed 261-character `ENOENT` root cause. PostgreSQL `16` and clean-machine/installer acceptance remain untested. Independent review: **PASS WITH FINDINGS, no product blocker**; **Phase 06C development closure: GO**. BE-09 remains `planned`, with no recipe promotion or public release approval. Unsandboxed npm lifecycle code and direct Drizzle Kit migration bypass remain disclosed. See [DEC-033](decisions/DEC-033-phase-06c-nest-postgresql-drizzle.md) and [evidence](qa/evidence/phase-06c-nest-postgresql-drizzle.md).
 
 ## Phase 6 — Fullstack composition
 

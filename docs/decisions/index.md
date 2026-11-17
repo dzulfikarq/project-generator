@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Date | 2026-11-17 |
-| State | Phase 01 CLI, Phase 02 local Forma integration, bounded DEC-017 recovery, Phase 02.6 runtime PoC, Phase 03 internal UI MVP, Phase 04B.3 frontend evidence, Phase 05A–05D.2 and Phase 06A backend work; Phase 06B independent acceptance PASS WITH FINDINGS and development closure GO; Phase 05C development scope closed after bounded independent BE-05 review; formal release review pending |
+| Date | 2026-11-18 |
+| State | Phase 01 CLI, Phase 02 local Forma integration, bounded DEC-017 recovery, Phase 02.6 runtime PoC, Phase 03 internal UI MVP, Phase 04B.3 frontend evidence, Phase 05A–05D.2 and Phase 06A backend work; Phase 06B independent acceptance PASS WITH FINDINGS and development closure GO; Phase 06C independent review PASS WITH FINDINGS, no product blocker, and development closure GO; Phase 05C development scope closed after bounded independent BE-05 review; formal release review pending |
 | Governance | See [`governance.md`](governance.md) |
 
 This project adopts EvoPilot's **decision accountability** pattern but uses standard English spelling (`decision`, `decisions`). A user-selected direction can be recorded as **Accepted Discovery** without implying implementation completion, test passage or formal release approval.
@@ -44,6 +44,7 @@ This project adopts EvoPilot's **decision accountability** pattern but uses stan
 | DEC-030 | Phase 05D.2 standalone Go Gin backend | User-authorized bounded implementation and Windows CLI/native acceptance complete; independent evidence review pending | [DEC-030](DEC-030-phase-05d2-go-gin.md), [Phase 05D.2 evidence](../qa/evidence/phase-05d2-go-gin.md) | BE-04 is Gin `v1.12.0` + Go Modules, Go >=1.25, no DB/auth; keep planned, no FS-02 scope change, promotion, or release approval |
 | DEC-031 | Phase 06A Express + SQLite + Drizzle backend | Final independent post-remediation runtime acceptance PASS; Phase 06A development closure GO; BE-01/BE-07 remain planned; public release NO-GO | [DEC-031](DEC-031-phase-06a-express-sqlite-drizzle.md), [Phase 06A evidence](../qa/evidence/phase-06a-express-sqlite-drizzle.md) | Keep BE-01/BE-07 distinct and planned; preserve documented path-verifier limits; no release approval |
 | DEC-032 | Phase 06B Express + PostgreSQL + Drizzle backend | Independent acceptance PASS WITH FINDINGS; Phase 06B development closure GO; public release NO-GO | [DEC-032](DEC-032-phase-06b-express-postgresql-drizzle.md), [Phase 06B evidence](../qa/evidence/phase-06b-express-postgresql-drizzle.md) | Keep BE-01 database-free, BE-07 SQLite/Drizzle, BE-08 PostgreSQL/Drizzle separate and planned; no recipe promotion or public release approval |
+| DEC-033 | Phase 06C NestJS + PostgreSQL + Drizzle backend | Independent review PASS WITH FINDINGS, no product blocker; native r9 E2E 116/116; development closure GO; BE-09 planned; public release NO-GO | [DEC-033](DEC-033-phase-06c-nest-postgresql-drizzle.md), [Phase 06C evidence](../qa/evidence/phase-06c-nest-postgresql-drizzle.md) | Preserve BE-03 database-free, BE-07 Express/SQLite/Drizzle, and BE-08 Express/PostgreSQL/Drizzle; retain PostgreSQL 16 and clean-machine/installer limits; no recipe promotion or release approval |
 
 ## Open items
 
@@ -55,5 +56,6 @@ This project adopts EvoPilot's **decision accountability** pattern but uses stan
 - OPEN-006: Approve and validate native process containment and handle-safe staging operations before closing Windows safety blockers.
 - OPEN-007: Run second-account ACL denial test when another standard account is available; decide whether lifecycle scripts require OS filesystem isolation.
 - OPEN-008: CLOSED for stated Phase 06B development scope by independent acceptance PASS WITH FINDINGS; BE-08 remains planned and public release remains NO-GO. PostgreSQL 16, clean-machine, and installer acceptance remain open.
+- OPEN-009: **CLOSED for Phase 06C development scope** following independent review **PASS WITH FINDINGS, no product blocker**, r9 native Desktop E2E (exit 0, 116/116), and verified documentation consistency. Phase 06C development closure is **GO**. BE-09 stays planned and public release remains NO-GO. PostgreSQL 16 and clean-machine/installer acceptance remain open; npm lifecycle scripts are unsandboxed and direct Drizzle Kit migration bypass remains possible.
 
 Proposed decisions remain unapproved even where Phase 01 code now uses that approach. Implementation or passing tests do not substitute for decision approval. Record real authorization before changing status.
