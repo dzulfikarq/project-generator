@@ -42,6 +42,18 @@ export function resolveOutputPath(parentDirectory: string, projectName: string):
   return output
 }
 
+export function assertNestPostgresInstallPathSafe(parentPath: string, projectName: string, jobId: string): void {
+  const stagePath = win32.join(parentPath, `.project-generator-stage-${jobId}`)
+  const executablePath = win32.join(stagePath, projectName, 'node_modules', '@esbuild-kit', 'core-utils', 'node_modules', '@esbuild', 'win32-x64', 'esbuild.exe')
+  if (executablePath.length > 240) {
+    throw pathError(
+      'GEN_PATH_UNSAFE',
+      `BE-09 dependency installation is blocked because its staged esbuild.exe path would be ${executablePath.length} characters; the conservative Windows limit is 240.`,
+      'Choose a shorter parent directory or project name, then rerun generation.',
+    )
+  }
+}
+
 function pathError(code: string, message: string, nextAction: string): GeneratorError {
   return new GeneratorError({ code, stage: 'preflight', message, nextAction, targetModified: false })
 }

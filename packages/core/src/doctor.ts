@@ -13,6 +13,7 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
   const isGin = recipe.id === 'BE-04'
   const isDatabaseBackend = recipe.id === 'BE-07'
   const isPostgresBackend = recipe.id === 'BE-08'
+  const isNestPostgresBackend = recipe.id === 'BE-09'
   const usesGo = isGo || isGin
   const isLaravel = recipe.id === 'BE-05'
   const isPython = recipe.id === 'BE-06'
@@ -30,7 +31,7 @@ export async function runDoctor(selection: ProjectSelectionV1): Promise<DoctorRe
     id: 'node',
     available: nodeSupported,
     version: nodeVersion,
-    message: nodeSupported ? isDatabaseBackend ? 'Node.js satisfies Express and native SQLite requirements; better-sqlite3 runtime compatibility is verified during explicit dependency installation.' : isPostgresBackend ? 'Node.js satisfies the Express/PostgreSQL recipe requirement; Doctor does not connect to PostgreSQL.' : 'Node.js version satisfies pinned scaffold and package-manager requirements.' : `Node.js ${process.version} is outside this recipe's supported range.`,
+    message: nodeSupported ? isDatabaseBackend ? 'Node.js satisfies Express and native SQLite requirements; better-sqlite3 runtime compatibility is verified during explicit dependency installation.' : isPostgresBackend ? 'Node.js satisfies the Express/PostgreSQL recipe requirement; Doctor does not connect to PostgreSQL.' : isNestPostgresBackend ? 'Node.js satisfies the NestJS/PostgreSQL recipe requirement; Doctor does not connect to PostgreSQL.' : 'Node.js version satisfies pinned scaffold and package-manager requirements.' : `Node.js ${process.version} is outside this recipe's supported range.`,
   }
 
   const npmTool = usesGo || isPython || isPhp ? undefined : await resolveNpmTool()

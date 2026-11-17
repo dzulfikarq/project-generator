@@ -11,6 +11,7 @@ import { writeBackendStarter } from './backend-starter.js'
 import { writeDatabaseBackendStarter } from './database-backend-starter.js'
 import { writePostgresBackendStarter } from './postgres-backend-starter.js'
 import { writeNestBackendStarter } from './nest-backend-starter.js'
+import { writeNestPostgresBackendStarter } from './nest-postgres-backend-starter.js'
 import { writeFastApiBackendStarter } from './fastapi-backend-starter.js'
 import { verifyUvLockfile, writeFastApiProjectDocs, writeFastApiProjectManifest } from './fastapi-project-docs.js'
 import { writeLaravelBackendStarter, LARAVEL_PINS } from './laravel-backend-starter.js'
@@ -22,6 +23,7 @@ import { writeGinProjectDocs, writeGinProjectManifest } from './gin-project-docs
 import { createGinGoMod, verifyGinModuleGraph, GIN_GO_MINIMUM, GIN_GO_SUM_SHA256 } from './gin-module-graph.js'
 import { runDoctor } from './doctor.js'
 import { createPlan } from './plan.js'
+import { assertNestPostgresInstallPathSafe } from './paths.js'
 import { writeProjectDocs, writeProjectManifest } from './project-docs.js'
 import { runNodeProcess, runSafeProcess, startNodeProcess, startPostgresSmokeProcess, startSafeProcess, type ProcessResult, type SafeProcessOptions } from './runner.js'
 import { bindOwnedStageProjectIdentity, createOwnedStage, cleanupOwnedStage, cleanupStageSupportFiles, markOwnedStageGenerating, mutateOwnedStage, moveDirectoryNoReplace, verifyOwnedStageProjectIdentity, type OwnedStage } from './staging.js'
@@ -866,7 +868,7 @@ async function servedBackendSmoke(
         const info = await fetch(`http://127.0.0.1:${port}/api/info`, { signal: AbortSignal.timeout(800) })
         const infoBody = await info.json() as { name?: string; version?: string; environment?: string }
         if (health.status === 200 && healthBody.status === 'ok' && info.status === 200
-          && infoBody.name === (isNest ? 'BE-03 NestJS API' : isDatabaseBackend ? 'BE-07 Express SQLite API' : isPostgresBackend ? 'BE-08 Express PostgreSQL API' : 'BE-01 Express API') && infoBody.version === '0.1.0' && infoBody.environment === 'test') {
+          && infoBody.name === (isNest && isPostgresBackend ? 'BE-09 NestJS PostgreSQL API' : isNest ? 'BE-03 NestJS API' : isDatabaseBackend ? 'BE-07 Express SQLite API' : isPostgresBackend ? 'BE-08 Express PostgreSQL API' : 'BE-01 Express API') && infoBody.version === '0.1.0' && infoBody.environment === 'test') {
           outcome = { id: 'http-smoke', status: 'pass', message: isPostgresBackend ? 'Built API returned valid JSON from /health and /api/info; owned loopback PostgreSQL probe observed no connection.' : 'Built API returned valid JSON from /health and /api/info.', exitCode: 0 }
           break
         }
@@ -1185,7 +1187,8 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
   const isGo = resolved.recipe.id === 'BE-02'
   const isGin = resolved.recipe.id === 'BE-04'
   const usesGo = isGo || isGin
-  const isNest = resolved.recipe.id === 'BE-03'
+  const isNestPostgres = resolved.recipe.id === 'BE-09'
+  const isNest = resolved.recipe.id === 'BE-03' || isNestPostgres
   const isDatabaseBackend = resolved.recipe.id === 'BE-07'
   const isPostgresBackend = resolved.recipe.id === 'BE-08'
   const isLaravel = resolved.recipe.id === 'BE-05'
@@ -1257,6 +1260,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       npmTool = await resolveNpmTool()
       if (!npmTool || !supportsNpm(npmTool.version)) throw userError('GEN_TOOL_MISSING', 'preflight', 'Trusted npm CLI is missing or unsupported.', 'Install Node.js with npm 10 or newer and rerun doctor.')
     }
+    if (isNestPostgres) assertNestPostgresInstallPathSafe(win32.dirname(doctor.target.path), selection.project.name, jobId)
     stageFinish('preflight', 'passed')
 
     stageStart('staging')
@@ -1289,7 +1293,9 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       starterFiles = await writeGinBackendStarter(stage, selection.project.name, selection.backend!.modulePath!)
     } else if (isNest) {
       await executeScaffold(stage, resolved, npmTool!.cliPath, dirs, log, options.signal)
-      starterFiles = await writeNestBackendStarter(stage, selection.project.name, resolved.recipe.dependencies ?? [])
+      starterFiles = isNestPostgres
+        ? await writeNestPostgresBackendStarter(stage, selection.project.name, resolved.recipe.dependencies ?? [])
+        : await writeNestBackendStarter(stage, selection.project.name, resolved.recipe.dependencies ?? [])
     } else if (isDatabaseBackend) {
       starterFiles = await writeDatabaseBackendStarter(stage, selection.project.name, resolved.recipe.dependencies ?? [])
     } else if (isPostgresBackend) {
@@ -1458,14 +1464,14 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       validations.push(checkOutcome('dependency-install', install))
       if (install.exitCode !== 0) throw mappedProcessError('installing', install)
       await verifyDependencyPins(projectPath, resolved.recipe.dependencies ?? [])
-      if (isDatabaseBackend || isPostgresBackend) {
+      if (isDatabaseBackend || isPostgresBackend || isNestPostgres) {
         const migration = await runAppScript(
           win32.join(projectPath, 'node_modules', 'drizzle-kit', 'bin.cjs'),
           ['generate'], projectPath, stage, dirs, options.signal, log, 'drizzle-migration-generation',
         )
         const migrationOutcome = checkOutcome('migration-generation', migration)
         validations.push(migrationOutcome)
-        emitValidation(emit, migrationOutcome, isPostgresBackend ? 'data-access.drizzle-postgresql' : 'data-access.drizzle-sqlite')
+        emitValidation(emit, migrationOutcome, isPostgresBackend || isNestPostgres ? 'data-access.drizzle-postgresql' : 'data-access.drizzle-sqlite')
         if (migration.exitCode !== 0) throw mappedProcessError('installing', migration)
         const migrationFiles = await listRegularFiles(win32.join(projectPath, 'drizzle'))
         if (!migrationFiles.some((file) => /^\d{4}_.+\.sql$/.test(file))
@@ -1526,7 +1532,17 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       validations.push(moduleOutcome)
       emitValidation(emit, moduleOutcome, recipeOwnerId)
     }
-    const checks: { id: string; path?: string; args: string[] }[] = isPostgresBackend
+    const checks: { id: string; path?: string; args: string[] }[] = isNestPostgres
+      ? [
+        { id: 'typecheck', path: win32.join(projectPath, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['--project', 'tsconfig.json', '--noEmit'] },
+        { id: 'lint', path: win32.join(projectPath, 'node_modules', 'eslint', 'bin', 'eslint.js'), args: ['src', 'test'] },
+        { id: 'unit-tests', path: win32.join(projectPath, 'node_modules', 'jest', 'bin', 'jest.js'), args: ['--runInBand'] },
+        { id: 'database-safety-tests', path: win32.join(projectPath, 'node_modules', 'jest', 'bin', 'jest.js'), args: ['--runInBand', '--runTestsByPath', 'src/app.controller.spec.ts'] },
+        { id: 'e2e-tests', path: win32.join(projectPath, 'node_modules', 'jest', 'bin', 'jest.js'), args: ['--config', 'test/jest-e2e.json', '--runInBand', '--testPathIgnorePatterns', 'shutdown.e2e-spec.ts'] },
+        { id: 'graceful-shutdown', path: win32.join(projectPath, 'node_modules', 'jest', 'bin', 'jest.js'), args: ['--config', 'test/jest-e2e.json', '--runInBand', '--runTestsByPath', 'test/shutdown.e2e-spec.ts'] },
+        { id: 'build', path: win32.join(projectPath, 'node_modules', '@nestjs', 'cli', 'bin', 'nest.js'), args: ['build'] },
+      ]
+      : isPostgresBackend
       ? [
         { id: 'typecheck', path: win32.join(projectPath, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['--project', 'tsconfig.json', '--noEmit'] },
         { id: 'lint', path: win32.join(projectPath, 'node_modules', 'eslint', 'bin', 'eslint.js'), args: ['src', 'test'] },
@@ -1682,7 +1698,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       : [usesGo
         ? await servedGoBackendSmoke(projectPath, stage, dirs, goTool!, selection.project.name, options.signal, log)
         : resolved.recipe.projectType === 'backend'
-            ? await servedBackendSmoke(projectPath, stage, dirs, options.signal, log, isNest, isDatabaseBackend, isPostgresBackend)
+             ? await servedBackendSmoke(projectPath, stage, dirs, options.signal, log, isNest, isDatabaseBackend, isPostgresBackend || isNestPostgres)
           : await servedPageSmoke(projectPath, stage, dirs, resolved.recipe.frontend!, options.signal, log)]
     validations.push(...smokeOutcomes)
     for (const smoke of smokeOutcomes) emitValidation(emit, smoke, recipeOwnerId)

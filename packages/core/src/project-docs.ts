@@ -111,7 +111,7 @@ function recipeText(resolved: ResolvedSelection): { title: string; scaffold: str
 }
 
 function generatedContent(resolved: ResolvedSelection, nodeVersion: string, npmVersion: string, forma?: FormaInstallEvidence): Map<string, string> {
-  if (resolved.recipe.id === 'BE-08') return postgresProjectDocs(resolved, nodeVersion, npmVersion)
+  if (resolved.recipe.id === 'BE-08' || resolved.recipe.id === 'BE-09') return postgresProjectDocs(resolved, nodeVersion, npmVersion)
   const details = recipeText(resolved)
   const isNest = resolved.recipe.id === 'BE-03'
   const isDatabaseBackend = resolved.recipe.id === 'BE-07'

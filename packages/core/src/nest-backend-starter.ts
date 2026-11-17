@@ -28,6 +28,38 @@ function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined
 }
 
+export interface NestScaffold {
+  packageJson: Record<string, unknown>
+  jestConfig: Record<string, unknown>
+  e2eConfig: Record<string, unknown>
+}
+
+export async function validateNestScaffold(stage: OwnedStage, projectName: string): Promise<NestScaffold> {
+  const projectPath = stage.childPath
+  const packageJson = await readJson(win32.join(projectPath, 'package.json'))
+  const tsconfig = await readJson(win32.join(projectPath, 'tsconfig.json'))
+  const e2eConfig = await readJson(win32.join(projectPath, 'test', 'jest-e2e.json'))
+  const scripts = record(packageJson.scripts)
+  const dependencies = record(packageJson.dependencies)
+  const devDependencies = record(packageJson.devDependencies)
+  const jestConfig = record(packageJson.jest)
+  const compilerOptions = record(tsconfig.compilerOptions)
+  const transform = record(jestConfig?.transform)
+  const e2eTransform = record(e2eConfig.transform)
+  const mismatches = [
+    ...(packageJson.name !== projectName ? ['project-name'] : []),
+    ...(packageJson.type === 'module' ? ['module-is-esm'] : []),
+    ...(scripts?.build !== 'nest build' || scripts?.test !== 'jest' || typeof scripts['test:e2e'] !== 'string' || !scripts['test:e2e'].includes('jest') ? ['scripts'] : []),
+    ...(!dependencies?.['@nestjs/common'] || !dependencies['@nestjs/core'] || !dependencies['@nestjs/platform-express'] ? ['framework-dependencies'] : []),
+    ...(!devDependencies?.['@nestjs/cli'] || !devDependencies['@nestjs/schematics'] || !devDependencies.jest || !devDependencies['ts-jest'] ? ['test-and-cli-dependencies'] : []),
+    ...(compilerOptions?.module !== 'nodenext' || compilerOptions.moduleResolution !== 'nodenext' || compilerOptions.emitDecoratorMetadata !== true || compilerOptions.experimentalDecorators !== true ? ['typescript-config'] : []),
+    ...(!transform || !Object.values(transform).some((value) => value === 'ts-jest') ? ['unit-test-transform'] : []),
+    ...(!e2eTransform || !Object.values(e2eTransform).some((value) => value === 'ts-jest') ? ['e2e-test-transform'] : []),
+  ]
+  if (mismatches.length) throw scaffoldError(mismatches.join(', '))
+  return { packageJson, jestConfig: jestConfig!, e2eConfig }
+}
+
 const configSource = `export interface ServerConfig {
   host: string
   port: number
@@ -221,38 +253,16 @@ export default tseslint.config(
 `
 
 export async function writeNestBackendStarter(stage: OwnedStage, projectName: string, pins: readonly DependencyPin[]): Promise<string[]> {
-  const projectPath = stage.childPath
-  const packagePath = win32.join(projectPath, 'package.json')
-  const tsconfigPath = win32.join(projectPath, 'tsconfig.json')
-  const e2eConfigPath = win32.join(projectPath, 'test', 'jest-e2e.json')
-  const packageJson = await readJson(packagePath)
-  const tsconfig = await readJson(tsconfigPath)
-  const e2eConfig = await readJson(e2eConfigPath)
-  const scripts = record(packageJson.scripts)
-  const dependencies = record(packageJson.dependencies)
-  const devDependencies = record(packageJson.devDependencies)
-  const jestConfig = record(packageJson.jest)
-  const compilerOptions = record(tsconfig.compilerOptions)
-  const transform = record(jestConfig?.transform)
-  const e2eTransform = record(e2eConfig.transform)
-  const mismatches = [
-    ...(packageJson.name !== projectName ? ['project-name'] : []),
-    ...(packageJson.type === 'module' ? ['module-is-esm'] : []),
-    ...(scripts?.build !== 'nest build' || scripts?.test !== 'jest' || typeof scripts['test:e2e'] !== 'string' || !scripts['test:e2e'].includes('jest') ? ['scripts'] : []),
-    ...(!dependencies?.['@nestjs/common'] || !dependencies['@nestjs/core'] || !dependencies['@nestjs/platform-express'] ? ['framework-dependencies'] : []),
-    ...(!devDependencies?.['@nestjs/cli'] || !devDependencies['@nestjs/schematics'] || !devDependencies.jest || !devDependencies['ts-jest'] ? ['test-and-cli-dependencies'] : []),
-    ...(compilerOptions?.module !== 'nodenext' || compilerOptions.moduleResolution !== 'nodenext' || compilerOptions.emitDecoratorMetadata !== true || compilerOptions.experimentalDecorators !== true ? ['typescript-config'] : []),
-    ...(!transform || !Object.values(transform).some((value) => value === 'ts-jest') ? ['unit-test-transform'] : []),
-    ...(!e2eTransform || !Object.values(e2eTransform).some((value) => value === 'ts-jest') ? ['e2e-test-transform'] : []),
-  ]
-  if (mismatches.length) throw scaffoldError(mismatches.join(', '))
+  const { packageJson, jestConfig } = await validateNestScaffold(stage, projectName)
   const expectedDependencies = Object.fromEntries(pins
     .filter((pin) => (pin.scope ?? 'dependencies') === 'dependencies')
     .map((pin) => [pin.packageName, pin.version]))
   const expectedDevDependencies = Object.fromEntries(pins
     .filter((pin) => pin.scope === 'devDependencies')
     .map((pin) => [pin.packageName, pin.version]))
-  if (Object.keys(expectedDependencies).length !== 5 || Object.keys(expectedDevDependencies).length !== pins.length - 5) throw scaffoldError()
+  if (Object.keys(expectedDependencies).length !== pins.filter((pin) => (pin.scope ?? 'dependencies') === 'dependencies').length
+    || Object.keys(expectedDevDependencies).length !== pins.filter((pin) => pin.scope === 'devDependencies').length
+    || !['@nestjs/common', '@nestjs/core', '@nestjs/platform-express', 'reflect-metadata', 'rxjs'].every((name) => expectedDependencies[name])) throw scaffoldError()
 
   packageJson.version = '0.1.0'
   packageJson.private = true

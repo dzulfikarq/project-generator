@@ -536,3 +536,23 @@ export async function writePostgresBackendStarter(stage: OwnedStage, projectName
   ])
   return writes.map((path) => path.slice(prefix.length))
 }
+
+export function postgresDatabaseSupportFiles(): { drizzleConfig: string; schema: string; target: string; migrate: string; databaseSafety: string } {
+  return {
+    drizzleConfig: files['drizzle.config.ts']!,
+    schema: files['src/db/schema.ts']!,
+    target: files['src/db/target.ts']!,
+    migrate: files['src/db/migrate.ts']!,
+    databaseSafety: `# PostgreSQL safety
+
+- Generation installs pinned npm dependencies and generates Drizzle SQL; it never connects to PostgreSQL or applies migrations.
+- Nest starts without DATABASE_URL. DatabaseService creates one pooled connection service only on the first CRUD request; GET /health is process-only.
+- PostgreSQL 16+ is user-provided and needed only for CRUD and explicit migration. No database is automatically created, reset, or dropped.
+- DTO validation rejects unknown properties and invalid item values. Database failures return generic HTTP 503; credentials and driver errors are not returned or logged.
+- .env is ignored; .env.example contains placeholders only. Never commit credentials.
+- Migration requires npm run db:migrate -- --target host:port/database. The wrapper matches DATABASE_URL, verifies connected database, role, server address, port, and PostgreSQL version, then migrates on that checked connection.
+- Drizzle Kit generates SQL only. Do not invoke drizzle-kit migrate directly; installed tools remain manually callable outside wrapper enforcement.
+- npm lifecycle/build scripts run unsandboxed after explicit consent.
+`,
+  }
+}
