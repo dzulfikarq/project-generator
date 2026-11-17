@@ -1,6 +1,6 @@
 # Roadmap — Project Generator Desktop V1
 
-Status: **Phase 01 bounded acceptance, Phase 02 local Forma integration/evidence, Phase 03 internal UI implementation, Phase 04A–04B.3 frontend evidence, Phase 05A–05D.2 and Phase 06A BE-01–BE-07 bounded local evidence present; Phase 05C development scope closed after bounded independent BE-05 review; broader acceptance remains partial, no recipe release-approved.** Date: 2026-11-16.
+Status: **Phase 01 bounded acceptance, Phase 02 local Forma integration/evidence, Phase 03 internal UI implementation, Phase 04A–04B.3 frontend evidence, Phase 05A–05D.2 and Phase 06A evidence present; Phase 06A and Phase 06B development closures GO; Phase 06B independent acceptance PASS WITH FINDINGS; broader acceptance remains partial, no recipe release-approved.** Date: 2026-11-17.
 
 ## Phase 0 — Specification and governance
 
@@ -60,7 +60,14 @@ Architecture specification: [`ARCHITECTURE.md`](ARCHITECTURE.md). UX specificati
 
 - Implemented BE-07 as a distinct Express/npm/SQLite/Drizzle recipe with pinned dependencies, generated schema/config/CRUD starter, and migration SQL. BE-01 remains Express with no database.
 - Bounded Windows CLI/native acceptance and release-policy verification passed. Migrations are never applied during generation or app startup; generator smoke uses `:memory:`, while migration/CRUD acceptance uses a disposable isolated database.
-- BE-07 remains `planned` and blocked in normal/release generation pending independent evidence review. No other database pairing, fullstack composition, recipe promotion, or release is approved. See [DEC-031](decisions/DEC-031-phase-06a-express-sqlite-drizzle.md) and [evidence](qa/evidence/phase-06a-express-sqlite-drizzle.md).
+- Final independent post-remediation runtime acceptance passed; **Phase 06A development closure: GO**. BE-01 and BE-07 remain `planned`; public release remains NO-GO. Phase 06A did not approve another database pairing or fullstack composition. See [DEC-031](decisions/DEC-031-phase-06a-express-sqlite-drizzle.md) and [evidence](qa/evidence/phase-06a-express-sqlite-drizzle.md).
+
+## Phase 06B — Standalone Express + PostgreSQL + Drizzle
+
+- Implemented BE-08 as a separate planned Express/npm/PostgreSQL 16+/Drizzle recipe. Exact direct pins and npm integrity metadata, desktop/Tauri mapping, focused tests, and system/bundled packaged release policy passed.
+- Generation, startup, and `/health` are designed to remain DB-free. Explicit migration requires the guarded `--target host:port/database` wrapper and connected-identity checks.
+- Initial timeout was harness false failure: pipe-backed `spawnSync` timed out after `pg_ctl` reported success and PostgreSQL was ready. File-backed capture fixed startup. Final independent acceptance reran the full E2E on PostgreSQL `17.2`, run-owned loopback port `62859`; generation, DB-free smoke, guarded migration, CRUD, rollback, cancellation, collision, and BE-01/BE-07 regressions passed. P3 stdout-FD leak on stderr-open failure was fixed and targeted regression passed. Port `5432` remained untouched. PostgreSQL `16` was not independently tested.
+- **Phase 06B independent acceptance: PASS WITH FINDINGS; development closure: GO.** BE-01, BE-07, and BE-08 remain `planned`; no promotion. Unsandboxed lifecycle scripts, direct Drizzle Kit migration bypass, and non-cryptographic target identity checks remain disclosed. Clean-machine/installer acceptance remains open; public release remains NO-GO. See [DEC-032](decisions/DEC-032-phase-06b-express-postgresql-drizzle.md) and [evidence](qa/evidence/phase-06b-express-postgresql-drizzle.md).
 
 ## Phase 6 — Fullstack composition
 

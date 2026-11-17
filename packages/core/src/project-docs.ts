@@ -5,6 +5,7 @@ import { packageManager } from './catalog.js'
 import { mutateOwnedStage, type OwnedStage } from './staging.js'
 import type { FormaInstallEvidence } from './forma.js'
 import type { NpmTool } from './toolchain.js'
+import { postgresProjectDocs } from './postgres-project-docs.js'
 import type { ResolvedSelection, ValidationOutcome } from './types.js'
 
 const lockfiles = ['package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lock', 'bun.lockb']
@@ -110,6 +111,7 @@ function recipeText(resolved: ResolvedSelection): { title: string; scaffold: str
 }
 
 function generatedContent(resolved: ResolvedSelection, nodeVersion: string, npmVersion: string, forma?: FormaInstallEvidence): Map<string, string> {
+  if (resolved.recipe.id === 'BE-08') return postgresProjectDocs(resolved, nodeVersion, npmVersion)
   const details = recipeText(resolved)
   const isNest = resolved.recipe.id === 'BE-03'
   const isDatabaseBackend = resolved.recipe.id === 'BE-07'

@@ -140,9 +140,38 @@ async function verifyIsolatedMigrationAndCrud(projectPath) {
   const testEnvironment = { ...environment }
   delete testEnvironment.DB_FILE
   try {
-    assert.equal(await readFile(join(databaseDirectory, '.gitkeep'), 'utf8'), '')
-    await assert.rejects(access(join(databaseDirectory, 'notes.sqlite')))
+    await assert.rejects(access(databaseDirectory), { code: 'ENOENT' })
+    const externalFile = join(dirname(projectPath), 'external.sqlite')
+    const traversalFile = join(dirname(projectPath), 'external-traversal.sqlite')
+    for (const [dbFile, target] of [[externalFile, externalFile], ['..\\external-traversal.sqlite', traversalFile], [':memory:', undefined]]) {
+      const blocked = spawnSync(process.execPath, [npmCli, 'run', 'db:migrate'], {
+        cwd: projectPath,
+        env: { ...testEnvironment, DB_FILE: dbFile },
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 60_000,
+      })
+      assert.equal(blocked.error, undefined, `Could not start DB_FILE rejection check: ${dbFile}`)
+      assert.equal(blocked.signal, null, `DB_FILE rejection check was interrupted: ${dbFile}`)
+      assert.ok(Number.isInteger(blocked.status) && blocked.status !== 0, `Unsafe DB_FILE was accepted or process did not complete: ${dbFile}`)
+      if (target) await assert.rejects(access(target), { code: 'ENOENT' })
+      await assert.rejects(access(databaseDirectory), { code: 'ENOENT' })
+    }
+    for (const dbFile of [externalFile, '..\\external-traversal.sqlite', ':memory:']) {
+      const badDrizzleConfig = spawnSync(process.execPath, [npmCli, 'run', 'db:generate'], {
+        cwd: projectPath,
+        env: { ...testEnvironment, DB_FILE: dbFile },
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 60_000,
+      })
+      assert.equal(badDrizzleConfig.error, undefined, `Could not start Drizzle config rejection check: ${dbFile}`)
+      assert.equal(badDrizzleConfig.signal, null, `Drizzle config rejection check was interrupted: ${dbFile}`)
+      assert.ok(Number.isInteger(badDrizzleConfig.status) && badDrizzleConfig.status !== 0, `Drizzle config accepted unsafe DB_FILE or process did not complete: ${dbFile}`)
+      await assert.rejects(access(databaseDirectory), { code: 'ENOENT' })
+    }
     await npm(['run', 'db:migrate'], projectPath, testEnvironment)
+    await access(databaseDirectory)
     await access(join(databaseDirectory, 'notes.sqlite'))
     const migrationFiles = (await readdir(join(projectPath, 'drizzle'))).filter((file) => file.endsWith('.sql'))
     assert.ok(migrationFiles.length > 0)
@@ -217,6 +246,26 @@ try {
   assert.equal(be01Plan.status, 0, be01Plan.stdout)
   assert.equal(JSON.parse(be01Plan.stdout).data.recipeId, 'BE-01')
   assert.equal(JSON.parse(be01Plan.stdout).data.expectedWrites.includes('data/notes.sqlite'), false)
+  const be01Generated = invoke(['generate', '--config', be01Config, '--jsonl', '--development-allow-planned', '--allow-dependency-scripts'])
+  rememberLog(be01Generated.stderr)
+  assert.equal(be01Generated.status, 0, `${be01Generated.stderr}\n${be01Generated.stdout}`)
+  assert.ok(events(be01Generated.stdout).some((event) => event.type === 'job-finished' && event.status === 'completed'))
+  const be01Path = join(parent, 'be01-no-db')
+  const be01Manifest = JSON.parse(await readFile(join(be01Path, '.project-generator', 'manifest.json'), 'utf8'))
+  const be01Package = JSON.parse(await readFile(join(be01Path, 'package.json'), 'utf8'))
+  assert.equal(be01Manifest.recipeId, 'BE-01')
+  assert.equal(be01Manifest.recipeStatusAtCreation, 'planned')
+  assert.deepEqual(be01Manifest.selectedAdapters.map(({ id }) => id), ['backend.express'])
+  assert.equal(be01Manifest.selectedAdapters.some(({ id }) => id.startsWith('database.') || id.startsWith('data-access.')), false)
+  assert.equal(Object.hasOwn(be01Package.scripts, 'db:migrate'), false)
+  assert.equal(Object.hasOwn(be01Package.scripts, 'db:generate'), false)
+  const be01Dependencies = { ...be01Package.dependencies, ...be01Package.devDependencies }
+  for (const packageName of ['better-sqlite3', 'drizzle-orm', 'drizzle-kit']) assert.equal(Object.hasOwn(be01Dependencies, packageName), false, packageName)
+  await assert.rejects(access(join(be01Path, 'data')), { code: 'ENOENT' })
+  await assert.rejects(access(join(be01Path, 'data', 'notes.sqlite')), { code: 'ENOENT' })
+  for (const check of ['dependency-install', 'dependency-integrity', 'lockfile-integrity', 'typecheck', 'unit-tests', 'build', 'http-smoke', 'graceful-shutdown']) {
+    assert.equal(be01Manifest.validation.find((item) => item.id === check)?.status, 'pass', check)
+  }
   const plan = invoke(['plan', '--config', be07Config, '--json'])
   assert.equal(plan.status, 0, plan.stdout)
   const planData = JSON.parse(plan.stdout).data
@@ -224,6 +273,7 @@ try {
   assert.equal(planData.executionAvailable, false)
   assert.equal(new Set(planData.expectedWrites).size, planData.expectedWrites.length)
   assert.ok(planData.expectedWrites.includes('drizzle/*.sql'))
+  assert.ok(planData.expectedWrites.includes('native/pg-db-path-verifier.exe'))
   assert.equal(planData.expectedWrites.includes('data/notes.sqlite'), false)
   assert.ok(planData.warnings.some((warning) => warning.includes('never applies migrations')))
   assert.ok(planData.warnings.some((warning) => warning.includes('isolated temporary SQLite database')))
@@ -257,7 +307,7 @@ try {
   const packageJson = JSON.parse(await readFile(join(projectPath, 'package.json'), 'utf8'))
   assert.equal(packageJson.engines.node, '>=22.13.0')
   assert.equal(packageJson.scripts['db:generate'], 'drizzle-kit generate')
-  assert.equal(packageJson.scripts['db:migrate'], 'drizzle-kit migrate')
+  assert.equal(packageJson.scripts['db:migrate'], 'node --import tsx src/db/migrate.ts')
   assert.equal(packageJson.dependencies['drizzle-orm'], '0.45.4')
   assert.equal(packageJson.dependencies['better-sqlite3'], '13.2.0')
   assert.equal(packageJson.devDependencies['drizzle-kit'], '0.31.11')
@@ -267,11 +317,15 @@ try {
     assert.equal(entry.version, dependency.version, dependency.packageName)
     assert.equal(entry.integrity, dependency.integrity, dependency.packageName)
   }
-  for (const file of ['drizzle.config.ts', 'drizzle/0000_notes.sql', 'drizzle/meta/_journal.json', 'src/db/schema.ts', 'src/db/client.ts', 'src/db/notes.ts', 'src/routes/notes.ts', 'test/database.test.ts', 'README.md', 'docs/SETUP.md']) {
+  for (const file of ['drizzle.config.ts', 'drizzle/0000_notes.sql', 'drizzle/meta/_journal.json', 'docs/DATABASE-SAFETY.md', 'native/pg-db-path-verifier.exe', 'src/db/schema.ts', 'src/db/path.ts', 'src/db/client.ts', 'src/db/migrate.ts', 'src/db/notes.ts', 'src/routes/notes.ts', 'test/database.test.ts', 'README.md', 'docs/SETUP.md']) {
     if (file.includes('0000_')) assert.ok((await readdir(join(projectPath, 'drizzle'))).some((entry) => /^\d{4}_.+\.sql$/.test(entry)))
     else await access(join(projectPath, file))
   }
+  assert.deepEqual(await readFile(join(projectPath, 'native', 'pg-db-path-verifier.exe')), await readFile(join(root, 'packages', 'core', 'native', 'pg-db-path-verifier.exe')))
+  const generatedPathValidator = await readFile(join(projectPath, 'src', 'db', 'path.ts'), 'utf8')
+  assert.doesNotMatch(generatedPathValidator, /powershell|SystemRoot|WINDIR/i)
   await assert.rejects(access(join(projectPath, 'data', 'notes.sqlite')))
+  await assert.rejects(access(join(projectPath, 'data')))
   await assert.rejects(access(join(projectPath, '.tmp')))
   const readme = await readFile(join(projectPath, 'README.md'), 'utf8')
   assert.match(readme, /never applies migrations|never.*migrations/i)
@@ -307,11 +361,12 @@ try {
     recipe: manifest.recipeId,
     recipeStatus: manifest.recipeStatusAtCreation,
     validations: manifest.validation,
-    migration: 'generated during generation; explicitly applied only to isolated test database; CRUD passed',
+    migration: 'generated during generation; absolute/traversal DB_FILE rejected by runtime migrator and Drizzle config; explicitly applied only to isolated test database; CRUD passed',
+    nativePathVerifier: 'project-local Rust helper copied from first-party package; fake SystemRoot/WINDIR did not execute powershell.exe sentinel',
     applicationDatabase: 'not created or migrated during generation; smoke used :memory:',
     cancellation: 'cancelled during npm install; owned staging cleaned',
     collision: 'existing sentinel preserved; no staging left',
-    be01: 'no-database plan preserved',
+    be01: 'fresh project generated; no database adapters, SQLite/Drizzle packages, migration scripts, data directory, or DB file',
     releaseApproved: false,
   }, null, 2))
 } finally {

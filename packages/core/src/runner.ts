@@ -132,13 +132,14 @@ const allowedEnvironmentOverrides = new Set([
   'SESSION_DRIVER',
 ])
 
-export async function startSafeProcess(options: SafeProcessOptions): Promise<RunningProcess> {
+async function startSafeProcessInternal(options: SafeProcessOptions, postgresSmokeProbePort?: number): Promise<RunningProcess> {
   if (process.platform !== 'win32') throw new GeneratorError({ code: 'GEN_NATIVE_SUPERVISOR_UNAVAILABLE', stage: 'process', message: 'Windows native supervisor is required for generation.', nextAction: 'Build and run Project Generator on supported Windows.', targetModified: false })
   if (options.signal?.aborted) throw new GeneratorError({ code: 'GEN_CANCELLED', stage: 'process', message: 'Generation was cancelled.', nextAction: 'Retry from the beginning.', targetModified: false })
   if (options.args.some((arg) => typeof arg !== 'string' || arg.includes('\0')) || options.args.join('').length > 28_000) {
     throw new GeneratorError({ code: 'GEN_RUNNER_BLOCKED', stage: 'process', message: 'Refused invalid process arguments.', nextAction: 'Use a valid generator config and retry.', targetModified: false })
   }
-  if (Object.entries(options.environment ?? {}).some(([key, value]) => !allowedEnvironmentOverrides.has(key) || value.includes('\0') || (key === 'DB_FILE' && value !== ':memory:'))) {
+  const postgresSmokeUrl = postgresSmokeProbePort === undefined ? undefined : `postgresql://probe:probe@127.0.0.1:${postgresSmokeProbePort}/probe_db`
+  if (Object.entries(options.environment ?? {}).some(([key, value]) => (!allowedEnvironmentOverrides.has(key) && !(key === 'DATABASE_URL' && value === postgresSmokeUrl)) || value.includes('\0') || (key === 'DB_FILE' && value !== ':memory:'))) {
     throw new GeneratorError({ code: 'GEN_RUNNER_BLOCKED', stage: 'process', message: 'Refused unreviewed process environment overrides.', nextAction: 'Use the pinned package-manager adapter and retry.', targetModified: false })
   }
   const scriptMode = options.scriptPath !== undefined && options.allowedScriptRoot !== undefined
@@ -213,6 +214,22 @@ export async function startSafeProcess(options: SafeProcessOptions): Promise<Run
     return stopPromise
   }
   return { result, stop }
+}
+
+export function startSafeProcess(options: SafeProcessOptions): Promise<RunningProcess> {
+  return startSafeProcessInternal(options)
+}
+
+export async function startPostgresSmokeProcess(options: SafeProcessOptions, probePort: number): Promise<RunningProcess> {
+  if (!Number.isInteger(probePort) || probePort < 1 || probePort > 65535 || probePort === 5432
+    || Object.hasOwn(options.environment ?? {}, 'DATABASE_URL')) {
+    throw new GeneratorError({ code: 'GEN_RUNNER_BLOCKED', stage: 'process', message: 'Refused invalid owned PostgreSQL smoke probe.', nextAction: 'Use the smoke-owned loopback probe port and do not provide a DATABASE_URL override.', targetModified: false })
+  }
+  const environment = {
+    ...options.environment,
+    DATABASE_URL: `postgresql://probe:probe@127.0.0.1:${probePort}/probe_db`,
+  }
+  return startSafeProcessInternal({ ...options, environment }, probePort)
 }
 
 export function startNodeProcess(options: SafeProcessOptions): Promise<RunningProcess> {

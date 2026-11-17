@@ -9,6 +9,7 @@ import { ALLOW_PLANNED_RECIPE_GENERATION } from './build-policy.js'
 import { packageManager, packageManagerConfiguration } from './catalog.js'
 import { writeBackendStarter } from './backend-starter.js'
 import { writeDatabaseBackendStarter } from './database-backend-starter.js'
+import { writePostgresBackendStarter } from './postgres-backend-starter.js'
 import { writeNestBackendStarter } from './nest-backend-starter.js'
 import { writeFastApiBackendStarter } from './fastapi-backend-starter.js'
 import { verifyUvLockfile, writeFastApiProjectDocs, writeFastApiProjectManifest } from './fastapi-project-docs.js'
@@ -22,7 +23,7 @@ import { createGinGoMod, verifyGinModuleGraph, GIN_GO_MINIMUM, GIN_GO_SUM_SHA256
 import { runDoctor } from './doctor.js'
 import { createPlan } from './plan.js'
 import { writeProjectDocs, writeProjectManifest } from './project-docs.js'
-import { runNodeProcess, runSafeProcess, startNodeProcess, startSafeProcess, type ProcessResult, type SafeProcessOptions } from './runner.js'
+import { runNodeProcess, runSafeProcess, startNodeProcess, startPostgresSmokeProcess, startSafeProcess, type ProcessResult, type SafeProcessOptions } from './runner.js'
 import { bindOwnedStageProjectIdentity, createOwnedStage, cleanupOwnedStage, cleanupStageSupportFiles, markOwnedStageGenerating, mutateOwnedStage, moveDirectoryNoReplace, verifyOwnedStageProjectIdentity, type OwnedStage } from './staging.js'
 import { resolveComposerPhar, resolveGoTool, resolveNpmTool, resolvePhpExecutable, resolvePythonExecutable, resolveUvExecutable, supportsComposer, supportsGo, supportsGoGin, supportsNpm, supportsPhp, supportsPython, supportsUv, type ComposerPhar, type GoTool, type NpmTool, type PhpExecutable, type PythonExecutable, type UvExecutable } from './toolchain.js'
 import { assertGenerationAllowed } from './native-supervisor.js'
@@ -817,26 +818,46 @@ async function servedBackendSmoke(
   log: JobLog,
   isNest = false,
   isDatabaseBackend = false,
+  isPostgresBackend = false,
 ): Promise<ValidationOutcome> {
   const port = await freePort()
-  const running = await startNodeProcess({
-    scriptPath: win32.join(projectPath, 'dist', isNest ? 'main.js' : 'server.js'),
-    allowedScriptRoot: projectPath,
-    cwd: projectPath,
-    allowedCwdRoot: stage.path,
-    args: [],
-    homeDirectory: dirs.home,
-    tempDirectory: dirs.temp,
-    environment: {
-      HOST: '127.0.0.1',
-      PORT: String(port),
-      NODE_ENV: 'test',
-      ...(isDatabaseBackend ? { DB_FILE: ':memory:' } : {}),
-    },
-    ...(signal ? { signal } : {}),
-  })
+  let databaseConnections = 0
+  const databaseProbe = isPostgresBackend ? createServer((socket) => {
+    databaseConnections += 1
+    socket.destroy()
+  }) : undefined
+  let databaseProbePort: number | undefined
+  if (databaseProbe) {
+    await new Promise<void>((resolveListen, reject) => {
+      databaseProbe.once('error', reject)
+      databaseProbe.listen(0, '127.0.0.1', () => { databaseProbe.off('error', reject); resolveListen() })
+    })
+    const address = databaseProbe.address()
+    if (!address || typeof address === 'string') throw userError('GEN_VALIDATE_FAILED', 'validating', 'Owned PostgreSQL probe did not bind a TCP port.', 'Retry generation in a writable local environment.')
+    databaseProbePort = address.port
+  }
+  let running: Awaited<ReturnType<typeof startNodeProcess>> | undefined
   let outcome: ValidationOutcome | undefined
   try {
+    const processOptions: SafeProcessOptions = {
+      scriptPath: win32.join(projectPath, 'dist', isNest ? 'main.js' : 'server.js'),
+      allowedScriptRoot: projectPath,
+      cwd: projectPath,
+      allowedCwdRoot: stage.path,
+      args: [],
+      homeDirectory: dirs.home,
+      tempDirectory: dirs.temp,
+      environment: {
+        HOST: '127.0.0.1',
+        PORT: String(port),
+        NODE_ENV: 'test',
+        ...(isDatabaseBackend ? { DB_FILE: ':memory:' } : {}),
+      },
+      ...(signal ? { signal } : {}),
+    }
+    running = isPostgresBackend
+      ? await startPostgresSmokeProcess(processOptions, databaseProbePort!)
+      : await startNodeProcess(processOptions)
     for (let attempt = 0; attempt < 30; attempt += 1) {
       throwIfCancelled(signal, 'validating')
       try {
@@ -845,8 +866,8 @@ async function servedBackendSmoke(
         const info = await fetch(`http://127.0.0.1:${port}/api/info`, { signal: AbortSignal.timeout(800) })
         const infoBody = await info.json() as { name?: string; version?: string; environment?: string }
         if (health.status === 200 && healthBody.status === 'ok' && info.status === 200
-          && infoBody.name === (isNest ? 'BE-03 NestJS API' : isDatabaseBackend ? 'BE-07 Express SQLite API' : 'BE-01 Express API') && infoBody.version === '0.1.0' && infoBody.environment === 'test') {
-          outcome = { id: 'http-smoke', status: 'pass', message: 'Built API returned valid JSON from /health and /api/info.', exitCode: 0 }
+          && infoBody.name === (isNest ? 'BE-03 NestJS API' : isDatabaseBackend ? 'BE-07 Express SQLite API' : isPostgresBackend ? 'BE-08 Express PostgreSQL API' : 'BE-01 Express API') && infoBody.version === '0.1.0' && infoBody.environment === 'test') {
+          outcome = { id: 'http-smoke', status: 'pass', message: isPostgresBackend ? 'Built API returned valid JSON from /health and /api/info; owned loopback PostgreSQL probe observed no connection.' : 'Built API returned valid JSON from /health and /api/info.', exitCode: 0 }
           break
         }
       } catch {
@@ -855,10 +876,14 @@ async function servedBackendSmoke(
       await new Promise((resolveWait) => setTimeout(resolveWait, 500))
     }
   } finally {
-    await running.stop()
-    const result = await running.result.catch(() => undefined)
-    if (result) log.process('http-smoke-server', result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
+    if (running) {
+      await running.stop()
+      const result = await running.result.catch(() => undefined)
+      if (result) log.process('http-smoke-server', result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
+    }
+    if (databaseProbe) await new Promise<void>((resolveClose, reject) => databaseProbe.close((error) => error ? reject(error) : resolveClose()))
   }
+  if (isPostgresBackend && databaseConnections !== 0) throw userError('GEN_VALIDATE_FAILED', 'validating', 'Generated startup or health attempted a PostgreSQL connection.', 'Review the starter so generation validation never contacts a database.')
   if (!outcome) throw userError('GEN_VALIDATE_FAILED', 'validating', 'Built API did not return valid JSON from /health and /api/info within 15 seconds.', 'Review the local redacted job log and retry.')
   return outcome
 }
@@ -1162,6 +1187,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
   const usesGo = isGo || isGin
   const isNest = resolved.recipe.id === 'BE-03'
   const isDatabaseBackend = resolved.recipe.id === 'BE-07'
+  const isPostgresBackend = resolved.recipe.id === 'BE-08'
   const isLaravel = resolved.recipe.id === 'BE-05'
   const isPython = resolved.recipe.id === 'BE-06'
   const isForma = Boolean(selection.template)
@@ -1266,6 +1292,8 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       starterFiles = await writeNestBackendStarter(stage, selection.project.name, resolved.recipe.dependencies ?? [])
     } else if (isDatabaseBackend) {
       starterFiles = await writeDatabaseBackendStarter(stage, selection.project.name, resolved.recipe.dependencies ?? [])
+    } else if (isPostgresBackend) {
+      starterFiles = await writePostgresBackendStarter(stage, selection.project.name, resolved.recipe.dependencies ?? [])
     } else if (resolved.recipe.projectType === 'backend') {
       starterFiles = await writeBackendStarter(stage, selection.project.name, resolved.recipe.dependencies ?? [])
     } else {
@@ -1293,7 +1321,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       if (error instanceof GeneratorError) throw error
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
-    const generatedFiles = [...starterFiles, ...(usesGo || isPython || isLaravel || isNest || isDatabaseBackend ? [] : await configureRecipeDependencies(stage, resolved))]
+    const generatedFiles = [...starterFiles, ...(usesGo || isPython || isLaravel || isNest || isDatabaseBackend || isPostgresBackend ? [] : await configureRecipeDependencies(stage, resolved))]
     const managerConfig = packageManagerConfiguration(resolved.recipe.manager)
     if (managerConfig) {
       const projectPrefix = `${win32.basename(projectPath)}/`
@@ -1430,14 +1458,14 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       validations.push(checkOutcome('dependency-install', install))
       if (install.exitCode !== 0) throw mappedProcessError('installing', install)
       await verifyDependencyPins(projectPath, resolved.recipe.dependencies ?? [])
-      if (isDatabaseBackend) {
+      if (isDatabaseBackend || isPostgresBackend) {
         const migration = await runAppScript(
           win32.join(projectPath, 'node_modules', 'drizzle-kit', 'bin.cjs'),
           ['generate'], projectPath, stage, dirs, options.signal, log, 'drizzle-migration-generation',
         )
         const migrationOutcome = checkOutcome('migration-generation', migration)
         validations.push(migrationOutcome)
-        emitValidation(emit, migrationOutcome, 'data-access.drizzle-sqlite')
+        emitValidation(emit, migrationOutcome, isPostgresBackend ? 'data-access.drizzle-postgresql' : 'data-access.drizzle-sqlite')
         if (migration.exitCode !== 0) throw mappedProcessError('installing', migration)
         const migrationFiles = await listRegularFiles(win32.join(projectPath, 'drizzle'))
         if (!migrationFiles.some((file) => /^\d{4}_.+\.sql$/.test(file))
@@ -1498,7 +1526,16 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       validations.push(moduleOutcome)
       emitValidation(emit, moduleOutcome, recipeOwnerId)
     }
-    const checks: { id: string; path?: string; args: string[] }[] = isDatabaseBackend
+    const checks: { id: string; path?: string; args: string[] }[] = isPostgresBackend
+      ? [
+        { id: 'typecheck', path: win32.join(projectPath, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['--project', 'tsconfig.json', '--noEmit'] },
+        { id: 'lint', path: win32.join(projectPath, 'node_modules', 'eslint', 'bin', 'eslint.js'), args: ['src', 'test'] },
+        { id: 'unit-tests', path: win32.join(projectPath, 'node_modules', 'tsx', 'dist', 'cli.mjs'), args: ['--test', 'test/backend.test.ts'] },
+        { id: 'database-safety-tests', path: win32.join(projectPath, 'node_modules', 'tsx', 'dist', 'cli.mjs'), args: ['--test', 'test/database.test.ts'] },
+        { id: 'graceful-shutdown', path: win32.join(projectPath, 'node_modules', 'tsx', 'dist', 'cli.mjs'), args: ['--test', 'test/shutdown.test.ts'] },
+        { id: 'build', path: win32.join(projectPath, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['--project', 'tsconfig.json'] },
+      ]
+      : isDatabaseBackend
       ? [
         { id: 'typecheck', path: win32.join(projectPath, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['--project', 'tsconfig.json', '--noEmit'] },
         { id: 'lint', path: win32.join(projectPath, 'node_modules', 'eslint', 'bin', 'eslint.js'), args: ['src', 'test'] },
@@ -1645,7 +1682,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       : [usesGo
         ? await servedGoBackendSmoke(projectPath, stage, dirs, goTool!, selection.project.name, options.signal, log)
         : resolved.recipe.projectType === 'backend'
-           ? await servedBackendSmoke(projectPath, stage, dirs, options.signal, log, isNest, isDatabaseBackend)
+            ? await servedBackendSmoke(projectPath, stage, dirs, options.signal, log, isNest, isDatabaseBackend, isPostgresBackend)
           : await servedPageSmoke(projectPath, stage, dirs, resolved.recipe.frontend!, options.signal, log)]
     validations.push(...smokeOutcomes)
     for (const smoke of smokeOutcomes) emitValidation(emit, smoke, recipeOwnerId)

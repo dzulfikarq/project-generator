@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { access, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -16,9 +16,13 @@ const cli = join(resourceRoot, 'cli', 'dist', 'src', 'index.js')
 const core = join(resourceRoot, 'cli', 'node_modules', '@project-generator', 'core', 'dist', 'src', 'index.js')
 await Promise.all([access(runtime), access(cli), access(core)])
 
-const root = await mkdtemp(join(tmpdir(), 'pg-packaged-cli-policy-'))
+const tempBase = join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'Temp', 'opencode')
+await access(tempBase)
+const root = await mkdtemp(join(tempBase, 'pg-packaged-cli-policy-'))
 const untrustedEnvironment = {
   ...process.env,
+  TEMP: tempBase,
+  TMP: tempBase,
   NODE_ENV: 'development',
   PG_BUILD_PROFILE: 'development',
   PG_ALLOW_PLANNED_RECIPE_GENERATION: 'true',
@@ -40,6 +44,8 @@ const configs = [
   ['FE-14', 'frontend.react-vite', 'styling.css', undefined, 'pnpm'],
   ['FE-15', 'frontend.vue-vite', 'styling.css', undefined, 'pnpm'],
   ['BE-01', 'backend.express', undefined, undefined, 'npm'],
+  ['BE-07', 'backend.express', undefined, undefined, 'npm'],
+  ['BE-08', 'backend.express', undefined, undefined, 'npm'],
   ['BE-02', 'backend.go-net-http', undefined, undefined, 'go-modules'],
   ['FM-01', 'frontend.react-vite', undefined, 'focus-planner'],
   ['FM-02', 'frontend.nextjs-app', undefined, 'staywise-host-dashboard'],
@@ -57,6 +63,22 @@ function selection(id, frontend, styling, templateId, manager = 'npm') {
     schemaVersion: 1,
     project: { name: 'planned-be-02', parentDirectory: root, type: 'backend' },
     backend: { adapterId: 'backend.go-net-http', manager: 'go-modules', modulePath: 'example.com/planned-be-02' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  }
+  if (id === 'BE-07') return {
+    schemaVersion: 1,
+    project: { name: 'planned-be-07', parentDirectory: root, type: 'backend' },
+    backend: { adapterId: 'backend.express', manager: 'npm' },
+    database: { adapterId: 'database.sqlite', accessAdapterId: 'data-access.drizzle-sqlite', mode: 'embedded' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  }
+  if (id === 'BE-08') return {
+    schemaVersion: 1,
+    project: { name: 'planned-be-08', parentDirectory: root, type: 'backend' },
+    backend: { adapterId: 'backend.express', manager: 'npm' },
+    database: { adapterId: 'database.postgresql', accessAdapterId: 'data-access.drizzle-postgresql', mode: 'existing-service' },
     documentation: 'minimal',
     git: { initialize: false, initialCommit: false },
   }
@@ -102,7 +124,13 @@ try {
   assert.deepEqual(catalog.data.recipes.map(({ id, status }) => [id, status]), [
     ...configs.filter(([id]) => id.startsWith('FE-')).map(([id]) => [id, 'planned']),
     ['BE-01', 'planned'],
+    ['BE-07', 'planned'],
+    ['BE-08', 'planned'],
+    ['BE-03', 'planned'],
     ['BE-02', 'planned'],
+    ['BE-04', 'planned'],
+    ['BE-05', 'planned'],
+    ['BE-06', 'planned'],
   ])
   assert.deepEqual(catalog.data.forma.integrations.map(({ recipeId, status }) => [recipeId, status]), [['FM-01', 'planned'], ['FM-02', 'planned']])
 
@@ -118,6 +146,18 @@ try {
   assert.equal(backendPlan.status, 0, backendPlan.stdout)
   assert.equal(JSON.parse(backendPlan.stdout).data.recipeId, 'BE-01')
   assert.equal(JSON.parse(backendPlan.stdout).data.executionAvailable, false)
+
+  const postgresConfigPath = join(root, 'BE-08.json')
+  const postgresPlan = invoke(['plan', '--config', postgresConfigPath, '--json'])
+  assert.equal(postgresPlan.status, 0, postgresPlan.stdout)
+  const postgresPlanData = JSON.parse(postgresPlan.stdout).data
+  assert.equal(postgresPlanData.recipeId, 'BE-08')
+  assert.equal(postgresPlanData.recipeStatus, 'planned')
+  assert.equal(postgresPlanData.executionAvailable, false)
+  assert.ok(postgresPlanData.expectedWrites.includes('src/db/migrate.ts'))
+  assert.ok(postgresPlanData.expectedWrites.includes('docs/DATABASE-SAFETY.md'))
+  assert.equal(new Set(postgresPlanData.expectedWrites).size, postgresPlanData.expectedWrites.length)
+  assert.ok(postgresPlanData.warnings.some((warning) => warning.includes('does not connect') && warning.includes('/health')))
 
   const goConfigPath = join(root, 'BE-02.json')
   const goPlan = invoke(['plan', '--config', goConfigPath, '--json'])
@@ -142,6 +182,7 @@ try {
   assert.equal(forced.status, 3, forced.stderr)
   assert.ok(events(forced.stdout).some((event) => event.code === 'GEN_RECIPE_UNTESTED'), forced.stdout)
   await assert.rejects(access(join(root, 'planned-fe-01')))
+  await cleanJobLog(forced.stderr)
 
   for (const [index, [id]] of configs.entries()) {
     const result = invoke(['generate', '--config', configPaths[index], '--jsonl'])
@@ -150,12 +191,13 @@ try {
     assert.ok(output.some((event) => event.code === 'GEN_RECIPE_UNTESTED'), `${id}: ${result.stdout}`)
     assert.equal(output.some((event) => event.type === 'stage-started' && ['staging', 'scaffolding', 'installing'].includes(event.stageId)), false, `${id} entered execution stage`)
     await assert.rejects(access(join(root, `planned-${id.toLowerCase()}`)))
-    if (id.startsWith('FE-') || id === 'BE-02') {
+    if (id.startsWith('FE-') || id === 'BE-02' || id === 'BE-07' || id === 'BE-08') {
       const override = invoke(['generate', '--config', configPaths[index], '--jsonl', '--development-allow-planned'])
       assert.equal(override.status, 3, `${id} release override: ${override.stderr}\n${override.stdout}`)
       assert.ok(events(override.stdout).some((event) => event.code === 'GEN_RECIPE_UNTESTED'), `${id} release override was not blocked: ${override.stdout}`)
       assert.equal(events(override.stdout).some((event) => event.type === 'stage-started' && ['staging', 'scaffolding', 'installing'].includes(event.stageId)), false, `${id} override entered execution stage`)
       await assert.rejects(access(join(root, `planned-${id.toLowerCase()}`)))
+      await cleanJobLog(override.stderr)
     }
     await cleanJobLog(result.stderr)
   }
@@ -186,7 +228,7 @@ try {
   assert.equal(directResult.error?.code, 'GEN_RECIPE_UNTESTED')
 
   assert.deepEqual((await readdir(root)).sort(), configPaths.map((path) => path.split(/[\\/]/).at(-1)).sort())
-  console.log(`Packaged ${mode} CLI policy smoke passed: catalog/plan/doctor read-only; release override rejected; FE-01–FE-15, BE-01–BE-02, and FM-01/FM-02 blocked before staging.`)
+  console.log(`Packaged ${mode} CLI policy smoke passed: catalog/plan/doctor read-only; release override rejected; FE-01–FE-15, BE-01/BE-02/BE-07/BE-08, and FM-01/FM-02 blocked before staging.`)
 } finally {
   await rm(root, { recursive: true, force: true })
 }

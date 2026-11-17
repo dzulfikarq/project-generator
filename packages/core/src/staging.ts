@@ -157,12 +157,18 @@ export async function verifyOwnedStageProjectIdentity(stage: OwnedStage, project
   await nativeFs('--verify-scaffold-identity', requestFor(stage, projectName, modulePath, manifestFile), 'scaffold')
 }
 
-export async function mutateOwnedStage(stage: OwnedStage, directories: readonly string[], files: readonly OwnedStageFile[]): Promise<string[]> {
+export async function mutateOwnedStage(
+  stage: OwnedStage,
+  directories: readonly string[],
+  files: readonly OwnedStageFile[],
+  includePathVerifier = false,
+): Promise<string[]> {
   if (!liveStages.has(stage)) throw stagingError('GEN_STAGING_LEFTOVER', 'configuring', 'Refused staging mutation without a live in-process ownership record.', 'Inspect staging manually; do not write to an unverified path.')
   const result = await nativeFs('--prepare-stage', {
     ...requestFor(stage),
     directories,
     files: files.map((file) => ({ ...file, replace: file.replace ?? false, skipExisting: file.skipExisting ?? false })),
+    ...(includePathVerifier ? { includePathVerifier: true } : {}),
   }, 'write')
   if (!Array.isArray(result.response.writtenFiles) || !result.response.writtenFiles.every((path) => typeof path === 'string')) {
     throw stagingError('GEN_CONFIGURE_FAILED', 'configuring', 'Native staging file operation returned an invalid response.', 'Inspect the local redacted job log and retry from a new destination.')

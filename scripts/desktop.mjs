@@ -47,7 +47,8 @@ function prepareResources() {
   const coreDist = join(root, 'packages', 'core', 'dist', 'src')
   const corePackage = join(root, 'packages', 'core', 'package.json')
   const supervisor = join(root, 'packages', 'core', 'native', 'pg-windows-supervisor.exe')
-  if (![cliDist, coreDist, supervisor].every(existsSync)) throw new Error('Build CLI, core, and Windows supervisor before staging desktop resources.')
+  const pathVerifier = join(root, 'packages', 'core', 'native', 'pg-db-path-verifier.exe')
+  if (![cliDist, coreDist, supervisor, pathVerifier].every(existsSync)) throw new Error('Build CLI, core, Windows supervisor, and BE-07 path verifier before staging desktop resources.')
 
   const appDir = join(resources, 'cli')
   const coreTarget = join(appDir, 'node_modules', '@project-generator', 'core')
@@ -57,6 +58,7 @@ function prepareResources() {
   writeFileSync(join(coreTarget, 'package.json'), JSON.stringify(JSON.parse(readFileSync(corePackage, 'utf8'))))
   mkdirSync(join(coreTarget, 'native'), { recursive: true })
   copyFileSync(supervisor, join(coreTarget, 'native', 'pg-windows-supervisor.exe'))
+  copyFileSync(pathVerifier, join(coreTarget, 'native', 'pg-db-path-verifier.exe'))
 
   const catalogRun = spawnSync(process.execPath, [join(cliDist, 'index.js'), 'catalog', '--json'], {
     cwd: root, encoding: 'utf8', windowsHide: true,

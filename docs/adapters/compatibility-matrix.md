@@ -2,12 +2,12 @@
 
 | Field | Value |
 |---|---|
-| Version | Draft 0.1 — 2026-11-16 |
-| Status | **FE-03–FE-15 and standalone BE-01/BE-02/BE-03/BE-04/BE-05/BE-06/BE-07 bounded local evidence recorded; FE-01–FE-15/BE-01–BE-07/FM-01/FM-02 remain PLAN; no recipe promoted or release-approved** |
+| Version | Draft 0.1 — 2026-11-17 |
+| Status | **FE-03–FE-15 and standalone BE-01/BE-02/BE-03/BE-04/BE-05/BE-06/BE-07 bounded local evidence recorded; BE-08 focused checks and disposable PostgreSQL E2E passed; all FE/BE/FM recipes remain PLAN pending applicable independent acceptance; no recipe promoted or release-approved** |
 | Main platform | Windows 11 |
 | Source of truth | This matrix + machine-readable adapter manifests + QA results |
 
-> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-15, BE-01–BE-04, BE-06–BE-07, and FM-01/FM-02 have local implementation/evidence only. BE-05 also has a bounded independent review of its CLI/native and isolated MySQL evidence (**PASS**); this is not recipe promotion or release approval. Every recipe remains unavailable in normal generation.
+> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-15, BE-01–BE-04, BE-06–BE-08, and FM-01/FM-02 have local implementation/evidence only. BE-08's bounded disposable PostgreSQL E2E passed, including generation, DB-free smoke, guarded migration, CRUD, rollback, cancellation and collision. This does not constitute independent acceptance or recipe promotion. BE-05 also has bounded independent review (**PASS**), not recipe promotion or release approval. Every recipe remains unavailable in normal generation.
 
 ## 1. Status and test gates
 
@@ -56,7 +56,7 @@ These scaffolding references are directions, not proof that the exact generated 
 
 | Database | Kind | Example supported-by-design combinations | Constraints | State |
 |---|---|---|---|---|
-| PostgreSQL | SQL | Nest+Prisma; Express+Drizzle; Go+pgx; Laravel+Eloquent; FastAPI+SQLAlchemy | Connection, migrations and service availability validated separately | PLAN |
+| PostgreSQL | SQL | Nest+Prisma; Express+Drizzle (BE-08); Go+pgx; Laravel+Eloquent; FastAPI+SQLAlchemy | BE-08 requires PostgreSQL 16+; generation/startup/health remain DB-free; explicit guarded migration and CRUD require a user-provided service | PLAN |
 | MySQL | SQL | Laravel+Eloquent; Nest+Prisma; Go+MySQL driver; FastAPI+SQLAlchemy | Must respect MySQL vs MariaDB driver/version differences | PLAN |
 | MariaDB | SQL | Laravel+Eloquent; Go+driver; Python+SQLAlchemy | Separate smoke checks; do not assume identical to MySQL | PLAN |
 | SQLite | Embedded SQL | Express+Drizzle; Laravel+Eloquent; FastAPI+SQLAlchemy | No network server needed; file path, journal mode and migrations matter | PLAN |
@@ -71,7 +71,7 @@ These scaffolding references are directions, not proof that the exact generated 
 - Eloquent belongs to Laravel; SQLAlchemy to Python; Mongoose to Mongo/Node; Go can use `database/sql`, pgx or GORM according to the specific preset.
 - Do **not** offer Prisma as a universal ORM for Go, PHP, Python or Mongo without an intentionally reviewed integration.
 - Laravel + MongoDB, Go + MongoDB and FastAPI + MongoDB are not automatically V1 combinations merely because a driver exists.
-- DB provisioning differs from configuration. For `existing-service`, generator sets connection and validates if reachable; for `docker-compose`, generator may create Compose files, and may start services only after explicit consent.
+- DB provisioning differs from configuration. Each `existing-service` recipe defines when it may connect; BE-08 generation/startup/health never connect and migration requires an explicit guarded target. For `docker-compose`, generator may create Compose files, and may start services only after explicit consent.
 
 ## 5. Package managers
 
@@ -137,6 +137,7 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | BE-05 | Backend | None | Laravel | MySQL + Eloquent | N/A | Composer only; npm assets omitted | Phase 05C.3 |
 | BE-06 | Backend | None | FastAPI | None in Phase 05C.1; SQLAlchemy/database remains separate proposal | N/A | uv | Phase 05C.1 implementation; Phase 05C.2 bounded local CLI/native evidence; independent acceptance pending |
 | BE-07 | Backend | None | Express | SQLite + Drizzle | N/A | npm | Phase 06A standalone API; SQL generated, never auto-applied |
+| BE-08 | Backend | None | Express | PostgreSQL 16+ + Drizzle | N/A | npm | Phase 06B standalone API; DB-free generation/startup/health; explicit guarded migration |
 | FS-01 | Fullstack | Vue Vite | Laravel | MySQL + Eloquent | Bootstrap | npm + Composer | V1 |
 | FS-02 | Fullstack | React Vite | Go Gin | PostgreSQL + pgx | Tailwind | npm + go | V1 |
 | FS-03 | Fullstack | Angular | NestJS | PostgreSQL + Prisma | Angular Material | npm | V1 |
@@ -165,7 +166,9 @@ Phase 05D.1 adds BE-03 as standalone NestJS 11/TypeScript/npm using integrity-pi
 
 Phase 05D.2 adds BE-04 as standalone Go + Gin `1.12.0` + Go Modules with Go `>=1.25.0`; bounded Windows CLI/native acceptance passed pinned module integrity, Go checks, HTTP/shutdown, separate module-download consent, cancellation, cleanup, collision, and native result/history/open. The generated graph hash and test details are recorded in [Phase 05D.2 evidence](../qa/evidence/phase-05d2-go-gin.md). Independent evidence review remains pending; BE-04 stays `PLAN` and normal/release generation remains blocked. This does not implement or verify database/fullstack scope; FS-02 PostgreSQL/pgx remains separate and unverified.
 
-Phase 06A adds BE-07 as a distinct Express + npm + SQLite + Drizzle recipe, with pinned `drizzle-orm@0.45.4`, `drizzle-kit@0.31.11`, `better-sqlite3@13.2.0`, and `tsx@4.21.0`. Windows CLI/native acceptance passed dependency/lock integrity, generated SQL, typecheck/lint/tests/build, HTTP smoke, and CRUD against a separately created test database after explicit migration. Generation never creates or migrates the configured application database; generator smoke uses `:memory:` and `DB_FILE` overrides accept only `:memory:`. Cancellation and collision preservation passed; release policy blocks planned BE-01 and BE-07 before staging. BE-01 remains the no-database Express recipe. Evidence: [DEC-031](../decisions/DEC-031-phase-06a-express-sqlite-drizzle.md) and [Phase 06A report](../qa/evidence/phase-06a-express-sqlite-drizzle.md). BE-07 remains `PLAN`; independent review and release approval remain open.
+Phase 06A adds BE-07 as a distinct Express + npm + SQLite + Drizzle recipe, with pinned `drizzle-orm@0.45.4`, `drizzle-kit@0.31.11`, `better-sqlite3@13.2.0`, and `tsx@4.21.0`. Windows CLI/native acceptance passed dependency/lock integrity, generated SQL, typecheck/lint/tests/build, HTTP smoke, and CRUD against a separately created test database after explicit migration. Generation never creates or migrates the configured application database; generator smoke uses `:memory:` and `DB_FILE` overrides accept only `:memory:`. Windows DB path validation rejects reserved device names including `CLOCK$`; the helper does not detect hard-link aliases. Cancellation and collision preservation passed; release policy blocks planned BE-01 and BE-07 before staging. BE-01 remains the no-database Express recipe. Final independent post-remediation runtime acceptance passed; **Phase 06A development closure is GO**. BE-01/BE-07 remain `PLAN`; public release remains **NO-GO**. Evidence: [DEC-031](../decisions/DEC-031-phase-06a-express-sqlite-drizzle.md) and [Phase 06A report](../qa/evidence/phase-06a-express-sqlite-drizzle.md).
+
+Phase 06B adds BE-08 Express + npm + PostgreSQL + Drizzle with pinned dependencies and registry integrity. Focused tests and packaged release policy passed. Smoke-only runner helper synthesizes loopback `DATABASE_URL`; generic allowlist remains unchanged. Targeted disposable PostgreSQL E2E passed identity, generation, HTTP smoke, target mismatch, guarded migration, CRUD, rollback, cancellation and collision. Existing service was untouched. BE-08 remains `PLAN`; Phase 06B **NO-GO pending independent acceptance**. See [DEC-032](../decisions/DEC-032-phase-06b-express-postgresql-drizzle.md) and [Phase 06B evidence](../qa/evidence/phase-06b-express-postgresql-drizzle.md).
 
 **Important:** the fullstack recipe must produce a real, reachable example API endpoint and frontend call when that is part of its advertised output. Generating two unrelated folder trees is insufficient.
 

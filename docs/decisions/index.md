@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Date | 2026-11-13 |
-| State | Phase 01 CLI, Phase 02 local Forma integration, bounded DEC-017 recovery, Phase 02.6 runtime PoC, Phase 03 internal UI MVP, Phase 04B.3 frontend evidence, Phase 05A–05D.2 and Phase 06A backend work; Phase 05C development scope closed after bounded independent BE-05 review; formal release review not complete |
+| Date | 2026-11-17 |
+| State | Phase 01 CLI, Phase 02 local Forma integration, bounded DEC-017 recovery, Phase 02.6 runtime PoC, Phase 03 internal UI MVP, Phase 04B.3 frontend evidence, Phase 05A–05D.2 and Phase 06A backend work; Phase 06B independent acceptance PASS WITH FINDINGS and development closure GO; Phase 05C development scope closed after bounded independent BE-05 review; formal release review pending |
 | Governance | See [`governance.md`](governance.md) |
 
 This project adopts EvoPilot's **decision accountability** pattern but uses standard English spelling (`decision`, `decisions`). A user-selected direction can be recorded as **Accepted Discovery** without implying implementation completion, test passage or formal release approval.
@@ -42,7 +42,8 @@ This project adopts EvoPilot's **decision accountability** pattern but uses stan
 | DEC-028 | Phase 05C.3 standalone Laravel backend | Implementation and bounded CLI/native plus isolated MySQL/Eloquent acceptance complete; bounded independent evidence review PASS; Phase 05C development scope closed | [DEC-028](DEC-028-phase-05c3-laravel.md), [Phase 05C.3 evidence](../qa/evidence/phase-05c3-laravel.md) | Keep BE-05 planned; no automatic DB provisioning/migration, frontend build, recipe promotion, or release approval |
 | DEC-029 | Phase 05D.1 standalone NestJS backend | User-authorized implementation and bounded Windows CLI/native acceptance complete; independent review pending | [DEC-029](DEC-029-phase-05d1-nestjs.md), [Phase 05D.1 evidence](../qa/evidence/phase-05d1-nestjs.md) | Keep BE-03 planned; no database/ORM/auth/Docker/fullstack/Observe, recipe promotion, or release approval; see DEC-030 for BE-04 scope |
 | DEC-030 | Phase 05D.2 standalone Go Gin backend | User-authorized bounded implementation and Windows CLI/native acceptance complete; independent evidence review pending | [DEC-030](DEC-030-phase-05d2-go-gin.md), [Phase 05D.2 evidence](../qa/evidence/phase-05d2-go-gin.md) | BE-04 is Gin `v1.12.0` + Go Modules, Go >=1.25, no DB/auth; keep planned, no FS-02 scope change, promotion, or release approval |
-| DEC-031 | Phase 06A Express + SQLite + Drizzle backend | User-authorized bounded implementation and Windows CLI/native acceptance complete; independent evidence review pending | [DEC-031](DEC-031-phase-06a-express-sqlite-drizzle.md), [Phase 06A evidence](../qa/evidence/phase-06a-express-sqlite-drizzle.md) | Keep BE-07 planned and distinct from no-DB BE-01; generation writes SQL only, never applies app migrations; no database/fullstack expansion, promotion, or release approval |
+| DEC-031 | Phase 06A Express + SQLite + Drizzle backend | Final independent post-remediation runtime acceptance PASS; Phase 06A development closure GO; BE-01/BE-07 remain planned; public release NO-GO | [DEC-031](DEC-031-phase-06a-express-sqlite-drizzle.md), [Phase 06A evidence](../qa/evidence/phase-06a-express-sqlite-drizzle.md) | Keep BE-01/BE-07 distinct and planned; preserve documented path-verifier limits; no release approval |
+| DEC-032 | Phase 06B Express + PostgreSQL + Drizzle backend | Independent acceptance PASS WITH FINDINGS; Phase 06B development closure GO; public release NO-GO | [DEC-032](DEC-032-phase-06b-express-postgresql-drizzle.md), [Phase 06B evidence](../qa/evidence/phase-06b-express-postgresql-drizzle.md) | Keep BE-01 database-free, BE-07 SQLite/Drizzle, BE-08 PostgreSQL/Drizzle separate and planned; no recipe promotion or public release approval |
 
 ## Open items
 
@@ -53,5 +54,6 @@ This project adopts EvoPilot's **decision accountability** pattern but uses stan
 - OPEN-005: Optional Docker Compose start behavior and DB readiness semantics.
 - OPEN-006: Approve and validate native process containment and handle-safe staging operations before closing Windows safety blockers.
 - OPEN-007: Run second-account ACL denial test when another standard account is available; decide whether lifecycle scripts require OS filesystem isolation.
+- OPEN-008: CLOSED for stated Phase 06B development scope by independent acceptance PASS WITH FINDINGS; BE-08 remains planned and public release remains NO-GO. PostgreSQL 16, clean-machine, and installer acceptance remain open.
 
 Proposed decisions remain unapproved even where Phase 01 code now uses that approach. Implementation or passing tests do not substitute for decision approval. Record real authorization before changing status.

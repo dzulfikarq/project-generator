@@ -203,6 +203,54 @@ test('BE-07 requires explicit unsandboxed npm consent before staging', { skip: !
   }
 })
 
+test('production generation blocks planned BE-08 before staging or destination writes', async () => {
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-planned-postgres-'))
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'planned-postgres-api', type: 'backend', parentDirectory: parent },
+    backend: { adapterId: 'backend.express', manager: 'npm' },
+    database: { adapterId: 'database.postgresql', accessAdapterId: 'data-access.drizzle-postgresql', mode: 'existing-service' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  })
+  let logFile = ''
+  try {
+    const result = await generateProject(selection)
+    logFile = result.logFile ?? ''
+    assert.equal(result.status, 'failed')
+    assert.equal(result.error?.code, 'GEN_RECIPE_UNTESTED')
+    await assert.rejects(access(win32.join(parent, 'planned-postgres-api')))
+    assert.deepEqual(await readdir(parent), [])
+  } finally {
+    await rm(parent, { recursive: true, force: true })
+    if (logFile) await rm(dirname(logFile), { recursive: true, force: true })
+  }
+})
+
+test('BE-08 requires explicit unsandboxed npm consent before staging', { skip: !ALLOW_PLANNED_RECIPE_GENERATION }, async () => {
+  const parent = await mkdtemp(win32.join(tmpdir(), 'pg-postgres-consent-'))
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'postgres-consent-api', type: 'backend', parentDirectory: parent },
+    backend: { adapterId: 'backend.express', manager: 'npm' },
+    database: { adapterId: 'database.postgresql', accessAdapterId: 'data-access.drizzle-postgresql', mode: 'existing-service' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  })
+  let logFile = ''
+  try {
+    const result = await generateProject(selection, { allowPlanned: true })
+    logFile = result.logFile ?? ''
+    assert.equal(result.status, 'failed')
+    assert.equal(result.error?.code, 'GEN_DEPENDENCY_CONSENT_REQUIRED')
+    await assert.rejects(access(win32.join(parent, 'postgres-consent-api')))
+    assert.deepEqual(await readdir(parent), [])
+  } finally {
+    await rm(parent, { recursive: true, force: true })
+    if (logFile) await rm(dirname(logFile), { recursive: true, force: true })
+  }
+})
+
 test('BE-06 development generation requires explicit third-party dependency consent before staging', { skip: !ALLOW_PLANNED_RECIPE_GENERATION }, async () => {
   const parent = await mkdtemp(win32.join(tmpdir(), 'pg-fastapi-consent-'))
   const selection = parseSelection({

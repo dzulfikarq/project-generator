@@ -272,6 +272,8 @@ mod windows {
         stage: StageRequest,
         directories: Vec<String>,
         files: Vec<StageFile>,
+        #[serde(default)]
+        include_path_verifier: bool,
     }
 
     #[derive(Serialize)]
@@ -2251,7 +2253,25 @@ mod windows {
     }
 
     fn write_stage_file(stage: HANDLE, job_id: &str, file: StageFile) -> FsResult<bool> {
-        let parts = stage_path_parts(&file.path)?;
+        write_stage_bytes(
+            stage,
+            job_id,
+            &file.path,
+            file.content.as_bytes(),
+            file.replace,
+            file.skip_existing,
+        )
+    }
+
+    fn write_stage_bytes(
+        stage: HANDLE,
+        job_id: &str,
+        path: &str,
+        content: &[u8],
+        replace: bool,
+        skip_existing: bool,
+    ) -> FsResult<bool> {
+        let parts = stage_path_parts(path)?;
         let (name, parents) = parts
             .split_last()
             .ok_or_else(|| fs_failure("unsafe_path", None))?;
@@ -2264,12 +2284,12 @@ mod windows {
         }
 
         let exists = existing_regular_file(parent, name)?;
-        if file.skip_existing && !file.replace && exists {
+        if skip_existing && !replace && exists {
             return Ok(false);
         }
-        if file.replace && exists {
+        if replace && exists {
             // Atomic replacement below changes only this directory entry; it never follows a link.
-        } else if !file.replace && exists && !file.skip_existing {
+        } else if !replace && exists && !skip_existing {
             return Err(fs_failure("target_exists", None));
         }
 
@@ -2287,7 +2307,7 @@ mod windows {
         let raw = temporary_handle.into_raw();
         let mut temporary_file = unsafe { std::fs::File::from_raw_handle(raw as RawHandle) };
         let write_result = temporary_file
-            .write_all(file.content.as_bytes())
+            .write_all(content)
             .and_then(|()| temporary_file.sync_all());
         let temporary_handle = Handle::new(temporary_file.into_raw_handle() as HANDLE)
             .map_err(|_| fs_failure("native_fs_failed", None))?;
@@ -2295,13 +2315,72 @@ mod windows {
             let _ = delete_open_handle(temporary_handle.raw());
             return Err(fs_failure("native_fs_failed", None));
         }
-        if let Err(error) = rename_open_handle(temporary_handle.raw(), parent, name, file.replace) {
+        if let Err(error) = rename_open_handle(temporary_handle.raw(), parent, name, replace) {
             if error.code != "native_fs_unconfirmed" {
                 let _ = delete_open_handle(temporary_handle.raw());
             }
             return Err(error);
         }
         Ok(true)
+    }
+
+    const MAX_PACKAGED_VERIFIER_BYTES: u64 = 16 * 1024 * 1024;
+
+    fn packaged_path_verifier_bytes() -> FsResult<Vec<u8>> {
+        let executable =
+            std::env::current_exe().map_err(|_| fs_failure("native_fs_failed", None))?;
+        let directory = executable
+            .parent()
+            .ok_or_else(|| fs_failure("native_fs_failed", None))?;
+        let source = directory.join("pg-db-path-verifier.exe");
+        let source =
+            wide(&source.to_string_lossy()).map_err(|_| fs_failure("unsafe_path", None))?;
+        let handle = Handle::new(unsafe {
+            CreateFileW(
+                source.as_ptr(),
+                GENERIC_READ | FILE_READ_ATTRIBUTES,
+                FILE_SHARE_READ,
+                null(),
+                OPEN_EXISTING,
+                FILE_FLAG_OPEN_REPARSE_POINT,
+                null_mut(),
+            )
+        })
+        .map_err(|_| fs_last_error("native_fs_failed"))?;
+        let info = get_attributes(handle.raw()).map_err(|_| fs_last_error("native_fs_failed"))?;
+        if info.FileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY) != 0 {
+            return Err(fs_failure("unsafe_path", None));
+        }
+        let raw = handle.into_raw();
+        let file = unsafe { std::fs::File::from_raw_handle(raw as RawHandle) };
+        let mut bytes = Vec::new();
+        file.take(MAX_PACKAGED_VERIFIER_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| fs_failure("native_fs_failed", None))?;
+        if bytes.is_empty() || bytes.len() as u64 > MAX_PACKAGED_VERIFIER_BYTES {
+            return Err(fs_failure("native_fs_failed", None));
+        }
+        Ok(bytes)
+    }
+
+    fn write_packaged_path_verifier(
+        stage: HANDLE,
+        job_id: &str,
+        project_name: &str,
+    ) -> FsResult<String> {
+        if project_name.is_empty()
+            || project_name.contains(['\\', '/', ':', '\0'])
+            || project_name == "."
+            || project_name == ".."
+        {
+            return Err(fs_failure("unsafe_path", None));
+        }
+        let path = format!("{project_name}/native/pg-db-path-verifier.exe");
+        let bytes = packaged_path_verifier_bytes()?;
+        if !write_stage_bytes(stage, job_id, &path, &bytes, false, false)? {
+            return Err(fs_failure("native_fs_unconfirmed", None));
+        }
+        Ok(path)
     }
 
     fn prepare_stage(request: StageMutationRequest) -> FsResult<Vec<String>> {
@@ -2312,11 +2391,22 @@ mod windows {
         verify_bound_project_identity(&request.stage, &stage)?;
         create_stage_directories(stage.stage_handle.raw(), &request.directories)?;
         let mut written = Vec::new();
+        let project_name = request.stage.project_name.clone();
         for file in request.files {
             let path = file.path.clone();
             if write_stage_file(stage.stage_handle.raw(), &request.stage.job_id, file)? {
                 written.push(path);
             }
+        }
+        if request.include_path_verifier {
+            let project_name = project_name
+                .as_deref()
+                .ok_or_else(|| fs_failure("unsafe_path", None))?;
+            written.push(write_packaged_path_verifier(
+                stage.stage_handle.raw(),
+                &request.stage.job_id,
+                project_name,
+            )?);
         }
         verify_bound_project_identity(&request.stage, &stage)?;
         test_crash_at(request.stage.test_crash_at.as_deref(), "afterStageMutation")?;

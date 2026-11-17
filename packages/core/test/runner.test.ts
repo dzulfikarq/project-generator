@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, resolve, win32 } from 'node:path'
 import test, { type TestContext } from 'node:test'
 import { callSupervisor, readSupervisorResponse, sendSupervisorRequest, spawnSupervisor } from '../src/native-supervisor.js'
-import { runNodeProcess } from '../src/runner.js'
+import { runNodeProcess, startPostgresSmokeProcess } from '../src/runner.js'
 import { resolveNpmTool } from '../src/toolchain.js'
 import { cleanupOwnedStage, createOwnedStage, mutateOwnedStage } from '../src/staging.js'
 
@@ -68,7 +69,12 @@ test('runner rejects unreviewed environment overrides before process start', { s
   const marker = win32.join(root, 'started')
   await writeFile(script, `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'started')`)
   try {
-    for (const environment of [{ PATH: 'unreviewed' }, { DB_FILE: '../outside.sqlite' }, { DB_FILE: win32.join(root, 'app.sqlite') }]) {
+    for (const environment of [
+      { PATH: 'unreviewed' },
+      { DB_FILE: '../outside.sqlite' },
+      { DB_FILE: win32.join(root, 'app.sqlite') },
+      { DATABASE_URL: 'postgresql://user:secret@127.0.0.1:5432/app_db' },
+    ]) {
       await assert.rejects(runNodeProcess({
         scriptPath: script,
         allowedScriptRoot: root,
@@ -82,6 +88,49 @@ test('runner rejects unreviewed environment overrides before process start', { s
     }
     await assert.rejects(access(marker))
   } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('PostgreSQL smoke alone receives synthesized loopback DATABASE_URL', { skip: process.platform !== 'win32' }, async (t) => {
+  if (await skipElevatedWorkload(t)) return
+  const root = await mkdtemp(win32.join(tmpdir(), 'pg-postgres-smoke-env-'))
+  const ordinaryScript = win32.join(root, 'ordinary.cjs')
+  const postgresScript = win32.join(root, 'postgres.cjs')
+  const ordinaryMarker = win32.join(root, 'ordinary-env')
+  const postgresMarker = win32.join(root, 'postgres-env')
+  const probe = createServer()
+  await writeFile(ordinaryScript, `require('node:fs').writeFileSync(${JSON.stringify(ordinaryMarker)}, process.env.DATABASE_URL ?? '<unset>')`)
+  await writeFile(postgresScript, `require('node:fs').writeFileSync(${JSON.stringify(postgresMarker)}, process.env.DATABASE_URL ?? '<unset>')`)
+  try {
+    await new Promise<void>((resolveListen, reject) => {
+      probe.once('error', reject)
+      probe.listen(0, '127.0.0.1', resolveListen)
+    })
+    const address = probe.address()
+    assert.ok(address && typeof address !== 'string')
+    const common = {
+      allowedScriptRoot: root,
+      cwd: root,
+      allowedCwdRoot: root,
+      args: [],
+      homeDirectory: root,
+      tempDirectory: root,
+      environment: { NODE_ENV: 'test' },
+    } as const
+
+    const ordinary = await runNodeProcess({ ...common, scriptPath: ordinaryScript })
+    assert.equal(ordinary.exitCode, 0)
+    assert.equal(await readFile(ordinaryMarker, 'utf8'), '<unset>')
+
+    await assert.rejects(startPostgresSmokeProcess({ ...common, scriptPath: postgresScript, environment: { DATABASE_URL: 'postgresql://outside:secret@db.example/app' } }, address.port), (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && error.code === 'GEN_RUNNER_BLOCKED')
+    await assert.rejects(access(postgresMarker))
+
+    const postgresSmoke = await startPostgresSmokeProcess({ ...common, scriptPath: postgresScript }, address.port)
+    assert.equal((await postgresSmoke.result).exitCode, 0)
+    assert.equal(await readFile(postgresMarker, 'utf8'), `postgresql://probe:probe@127.0.0.1:${address.port}/probe_db`)
+  } finally {
+    await new Promise<void>((resolveClose, reject) => probe.close((error) => error ? reject(error) : resolveClose()))
     await rm(root, { recursive: true, force: true })
   }
 })

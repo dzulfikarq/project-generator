@@ -140,6 +140,8 @@ enum DesktopRecipeId {
     Be06,
     #[serde(rename = "BE-07")]
     Be07,
+    #[serde(rename = "BE-08")]
+    Be08,
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -254,6 +256,24 @@ impl DesktopSelectionV1 {
                 "git": { "initialize": false, "initialCommit": false }
             });
         }
+        if matches!(self.recipe_id, DesktopRecipeId::Be08) {
+            return json!({
+                "schemaVersion": 1,
+                "project": {
+                    "name": self.project_name,
+                    "parentDirectory": self.parent_directory,
+                    "type": "backend"
+                },
+                "backend": { "adapterId": "backend.express", "manager": "npm" },
+                "database": {
+                    "adapterId": "database.postgresql",
+                    "accessAdapterId": "data-access.drizzle-postgresql",
+                    "mode": "existing-service"
+                },
+                "documentation": self.documentation.as_str(),
+                "git": { "initialize": false, "initialCommit": false }
+            });
+        }
         if matches!(self.recipe_id, DesktopRecipeId::Be05) {
             return json!({
                 "schemaVersion": 1,
@@ -289,7 +309,8 @@ impl DesktopSelectionV1 {
             | DesktopRecipeId::Be04
             | DesktopRecipeId::Be05
             | DesktopRecipeId::Be06
-            | DesktopRecipeId::Be07 => {
+            | DesktopRecipeId::Be07
+            | DesktopRecipeId::Be08 => {
                 unreachable!("backend selection returned above")
             }
         };
@@ -382,6 +403,7 @@ impl DesktopSelectionV1 {
                 | DesktopRecipeId::Be05
                 | DesktopRecipeId::Be06
                 | DesktopRecipeId::Be07
+                | DesktopRecipeId::Be08
         ) && (self.template_id.is_some() || self.template_variant_id.is_some())
         {
             return Err(error(
@@ -1752,6 +1774,28 @@ mod tests {
         );
         assert_eq!(sqlite_backend["database"]["mode"], "embedded");
         assert!(sqlite_backend.get("frontend").is_none());
+
+        let postgres_backend = DesktopSelectionV1 {
+            project_name: "demo-api".into(),
+            parent_directory: "C:\\Projects".into(),
+            recipe_id: DesktopRecipeId::Be08,
+            documentation: DesktopDocumentationV1::Standard,
+            template_id: None,
+            template_variant_id: None,
+            module_path: None,
+        }
+        .to_core_json("");
+        assert_eq!(postgres_backend["backend"]["adapterId"], "backend.express");
+        assert_eq!(
+            postgres_backend["database"]["adapterId"],
+            "database.postgresql"
+        );
+        assert_eq!(
+            postgres_backend["database"]["accessAdapterId"],
+            "data-access.drizzle-postgresql"
+        );
+        assert_eq!(postgres_backend["database"]["mode"], "existing-service");
+        assert!(postgres_backend.get("frontend").is_none());
 
         let standalone = DesktopSelectionV1 {
             project_name: "demo".into(),

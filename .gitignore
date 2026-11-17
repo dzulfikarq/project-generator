@@ -2,6 +2,7 @@ node_modules/
 packages/*/dist/
 native/windows-supervisor/target/
 packages/core/native/pg-windows-supervisor.exe
+packages/core/native/pg-db-path-verifier.exe
 packages/desktop/src-tauri/resources/pg-runtime/*
 !packages/desktop/src-tauri/resources/pg-runtime/README.txt
 packages/desktop/src-tauri/target/

@@ -215,6 +215,8 @@ Each recipe requires a specific integration test and may be disabled until that 
 
 **BE-04 scope decision (Phase 05D.2):** BE-04 is standalone Go + Gin + Go Modules with no database/authentication. PostgreSQL + pgx remains separate proposed database/fullstack scope; FS-02 remains React + Go Gin + PostgreSQL and is not implemented or verified by BE-04.
 
+**Phase 06B implementation reconciliation:** BE-01 remains database-free and BE-07 remains Express + SQLite + Drizzle. BE-08 is a separate planned Express + npm + PostgreSQL 16+ + Drizzle recipe; it does not implement or verify other proposed PostgreSQL pairings or fullstack recipes. Its generation/startup/health paths are DB-free, and explicit guarded migration/live CRUD acceptance remains separately gated.
+
 ## 10. Release gates
 
 - R0: Architecture, adapter interface, security boundaries, matrix and PRD approved; Windows CI bootstrapped.
