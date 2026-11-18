@@ -1,6 +1,6 @@
 # Roadmap — Project Generator Desktop V1
 
-Status: **Phase 01 bounded acceptance, Phase 02 local Forma integration/evidence, Phase 03 internal UI implementation, Phase 04A–04B.3 frontend evidence, Phase 05A–05D.2 and Phase 06A evidence present; Phase 06A and Phase 06B development closures GO; Phase 06B independent acceptance PASS WITH FINDINGS; Phase 06C independent review PASS WITH FINDINGS, no product blocker, and development closure GO; broader acceptance remains partial, no recipe release-approved.** Date: 2026-11-18.
+Status: **Phase 01 bounded acceptance, Phase 02 local Forma integration/evidence, Phase 03 internal UI implementation, Phase 04A–04B.3 frontend evidence, Phase 05A–05D.2 and Phase 06A evidence present; Phase 06A and Phase 06B development closures GO; Phase 06B independent acceptance PASS WITH FINDINGS; Phase 06C independent review PASS WITH FINDINGS, no product blocker, and development closure GO; Phase 07A independent acceptance PASS WITH FINDINGS and development closure GO; broader acceptance remains partial, no recipe release-approved.** Date: 2026-11-18.
 
 ## Phase 0 — Specification and governance
 
@@ -81,6 +81,12 @@ Architecture specification: [`ARCHITECTURE.md`](ARCHITECTURE.md). UX specificati
 - Implement workspace builder, frontend→backend API sample, environment templates, root dev commands, optional Docker Compose.
 - Prove Vue+Laravel+MySQL and React+Go+PostgreSQL before expanding; then Angular+Nest and Next+Nest.
 - Output: individually tested cross-language fullstack recipes.
+
+## Phase 07A — React/Vite + Express + PostgreSQL + Drizzle (FS-06)
+
+- Implemented FS-06 as one npm workspace/root lockfile, distinct from FS-02 and standalone BE-08/BE-09. PostgreSQL 16+ remains user-provided; generation/startup/health do not connect or migrate; migration requires explicit guarded target confirmation.
+- Bounded Windows CLI E2E passed against run-owned PostgreSQL `17.2` at `127.0.0.1:64604`. Independent CLI E2E passed against PostgreSQL `17.2` at `127.0.0.1:58068`; independent Chrome browser E2E passed against a separate PostgreSQL `17.2` instance at `127.0.0.1:55480`, covering React → Express → PostgreSQL CRUD, loading/empty states, API/database outages, credential sanitization, and clean shutdown. Native Desktop E2E passed 66/66 assertions for review, consent, generation flow, cancellation, collision, and recovery. PID `5172` was observed live before cancel and absent after the cancelled terminal result; this does not prove cancellation caused process termination. System/bundled release-policy checks blocked planned FS-06 before staging. See [DEC-034](decisions/DEC-034-phase-07a-fullstack-react-express-postgresql.md) and [evidence](qa/evidence/phase-07a-react-express-postgresql-drizzle.md).
+- Independent acceptance: **PASS WITH FINDINGS**; Phase 07A development closure: **GO**. FS-06 remains `planned`; public release remains **NO-GO**. PostgreSQL `16` is **NOT VERIFIED**. Clean-machine/installer acceptance, accessibility, and broader security review remain open; npm lifecycle scripts remain unsandboxed and direct Drizzle Kit migration can bypass wrapper checks. This slice does not complete all Phase 6 fullstack combinations or approve release.
 
 ## Phase 7 — Windows release
 

@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Version | Draft 0.1 — 2026-11-17 |
-| Status | **FE-03–FE-15 and standalone BE-01/BE-02/BE-03/BE-04/BE-05/BE-06/BE-07 bounded local evidence recorded; BE-08 independent acceptance PASS WITH FINDINGS; BE-09 independent review PASS WITH FINDINGS (no product blocker), CLI and native r9 E2E passed, Phase 06C development closure GO; all FE/BE/FM recipes remain PLAN; no recipe promoted or release-approved** |
+| Status | **FE-03–FE-15 and standalone BE-01/BE-02/BE-03/BE-04/BE-05/BE-06/BE-07 bounded local evidence recorded; BE-08 independent acceptance PASS WITH FINDINGS; BE-09 independent review PASS WITH FINDINGS (no product blocker), CLI/native r9 E2E passed and Phase 06C development closure GO; FS-06 independent acceptance PASS WITH FINDINGS and Phase 07A development closure GO; all FE/BE/FS/FM recipes remain PLAN; no recipe promoted or release-approved** |
 | Main platform | Windows 11 |
 | Source of truth | This matrix + machine-readable adapter manifests + QA results |
 
-> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-15, BE-01–BE-04, BE-06–BE-09, and FM-01/FM-02 have local implementation/evidence only, except the independently reviewed BE-05/BE-08/BE-09 evidence. BE-08's bounded PostgreSQL E2E passed and its independent acceptance is PASS WITH FINDINGS. BE-09's independent review is PASS WITH FINDINGS with no product blocker; its CLI PostgreSQL E2E and native Desktop r9 E2E are separate evidence. Phase 06C development closure is GO. Neither result promotes a recipe. Every recipe remains unavailable in normal generation.
+> **DO NOT equate framework popularity, upstream Forma checks, or local acceptance evidence with Project Generator readiness.** FE-01–FE-15, BE-01–BE-04, BE-06–BE-09, FS-06, and FM-01/FM-02 have local implementation/evidence only, except independently reviewed BE-05/BE-08/BE-09 and FS-06 evidence. BE-08's bounded PostgreSQL E2E passed and its independent acceptance is PASS WITH FINDINGS. BE-09's independent review is PASS WITH FINDINGS with no product blocker; its CLI PostgreSQL E2E and native Desktop r9 E2E are separate evidence. FS-06 independent acceptance is PASS WITH FINDINGS and Phase 07A development closure is GO. No result here promotes a recipe. Every recipe remains unavailable in normal generation.
 
 ## 1. Status and test gates
 
@@ -56,7 +56,7 @@ These scaffolding references are directions, not proof that the exact generated 
 
 | Database | Kind | Example supported-by-design combinations | Constraints | State |
 |---|---|---|---|---|
-| PostgreSQL | SQL | Nest+Drizzle (BE-09); Nest+Prisma; Express+Drizzle (BE-08); Go+pgx; Laravel+Eloquent; FastAPI+SQLAlchemy | BE-08/BE-09 require PostgreSQL 16+; generation/startup/health remain DB-free; explicit guarded migration and CRUD require a user-provided service | PLAN |
+| PostgreSQL | SQL | React/Vite + Express + Drizzle (FS-06); Nest+Drizzle (BE-09); Nest+Prisma; Express+Drizzle (BE-08); Go+pgx; Laravel+Eloquent; FastAPI+SQLAlchemy | FS-06/BE-08/BE-09 require PostgreSQL 16+; generation/startup/health remain DB-free; explicit guarded migration and CRUD require a user-provided service | PLAN |
 | MySQL | SQL | Laravel+Eloquent; Nest+Prisma; Go+MySQL driver; FastAPI+SQLAlchemy | Must respect MySQL vs MariaDB driver/version differences | PLAN |
 | MariaDB | SQL | Laravel+Eloquent; Go+driver; Python+SQLAlchemy | Separate smoke checks; do not assume identical to MySQL | PLAN |
 | SQLite | Embedded SQL | Express+Drizzle; Laravel+Eloquent; FastAPI+SQLAlchemy | No network server needed; file path, journal mode and migrations matter | PLAN |
@@ -139,6 +139,7 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | BE-07 | Backend | None | Express | SQLite + Drizzle | N/A | npm | Phase 06A standalone API; SQL generated, never auto-applied |
 | BE-08 | Backend | None | Express | PostgreSQL 16+ + Drizzle | N/A | npm | Phase 06B standalone API; DB-free generation/startup/health; explicit guarded migration |
 | BE-09 | Backend | None | NestJS 11 | PostgreSQL 16+ + Drizzle | N/A | npm | Phase 06C standalone API; DB-free generation/startup/health; explicit guarded migration |
+| FS-06 | Fullstack | React + Vite | Express | PostgreSQL 16+ + Drizzle | Plain CSS | npm workspace | Phase 07A; one workspace/root lockfile; explicit guarded migration |
 | FS-01 | Fullstack | Vue Vite | Laravel | MySQL + Eloquent | Bootstrap | npm + Composer | V1 |
 | FS-02 | Fullstack | React Vite | Go Gin | PostgreSQL + pgx | Tailwind | npm + go | V1 |
 | FS-03 | Fullstack | Angular | NestJS | PostgreSQL + Prisma | Angular Material | npm | V1 |
@@ -150,6 +151,8 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | MOB-02 | Mobile | Flutter | Optional backend later | None | Material | pub | V1.1 |
 
 BE-04 does not imply PostgreSQL/pgx support. FS-02 remains a separate proposed fullstack recipe with PostgreSQL/pgx; it is unchanged and unverified by Phase 05D.2.
+
+FS-06 is separately scoped from the PRD-reserved FS-01, FS-02, BE-08, and BE-09. Its bounded local Windows CLI E2E passed against run-owned PostgreSQL `17.2` at `127.0.0.1:64604`. Independent CLI E2E passed against PostgreSQL `17.2` at `127.0.0.1:58068`; independent Chrome browser E2E passed against a separate PostgreSQL `17.2` instance at `127.0.0.1:55480`, including React → Express → PostgreSQL CRUD, loading/empty states, API/database outages, credential sanitization, and clean shutdown. Native Desktop E2E passed 66/66; PID `5172` was observed live before cancel and absent after the cancelled result, which does not prove cancellation caused termination. Independent acceptance is PASS WITH FINDINGS; Phase 07A development closure is GO. PostgreSQL `16` remains NOT VERIFIED; clean-machine/installer, accessibility, and broader security review remain open. FS-06 stays `PLAN`; public release stays NO-GO. Details: [Phase 07A evidence](../qa/evidence/phase-07a-react-express-postgresql-drizzle.md).
 
 FE-01 evidence: [Windows React + Vite run](../qa/evidence/FE-01/2026-11-11-cli-e2e.md). FE-02 evidence: [Windows Next.js run](../qa/evidence/FE-02/2026-11-11-cli-e2e.md). Both were invoked with `--development-allow-planned`; remain `PLAN` pending the full independent acceptance/review gates.
 
