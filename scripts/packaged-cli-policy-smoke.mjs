@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process'
 
 const mode = process.argv[2]
 if (mode !== 'system' && mode !== 'bundled') throw new Error('Pass runtime mode: system or bundled.')
+const includeFullstack = process.env.PG_POLICY_PHASE === '07A'
 
 const resourceRoot = process.argv[3]
   ? resolve(process.argv[3])
@@ -50,6 +51,7 @@ const configs = [
   ['BE-02', 'backend.go-net-http', undefined, undefined, 'go-modules'],
   ['FM-01', 'frontend.react-vite', undefined, 'focus-planner'],
   ['FM-02', 'frontend.nextjs-app', undefined, 'staywise-host-dashboard'],
+  ...(includeFullstack ? [['FS-06']] : []),
 ]
 
 function selection(id, frontend, styling, templateId, manager = 'npm') {
@@ -88,6 +90,16 @@ function selection(id, frontend, styling, templateId, manager = 'npm') {
     project: { name: 'planned-be-09', parentDirectory: root, type: 'backend' },
     backend: { adapterId: 'backend.nestjs', manager: 'npm' },
     database: { adapterId: 'database.postgresql', accessAdapterId: 'data-access.drizzle-postgresql', mode: 'existing-service' },
+    documentation: 'minimal',
+    git: { initialize: false, initialCommit: false },
+  }
+  if (id === 'FS-06') return {
+    schemaVersion: 1,
+    project: { name: 'planned-fs-06', parentDirectory: root, type: 'fullstack' },
+    frontend: { adapterId: 'frontend.react-vite', language: 'ts', manager: 'npm' },
+    backend: { adapterId: 'backend.express', manager: 'npm' },
+    database: { adapterId: 'database.postgresql', accessAdapterId: 'data-access.drizzle-postgresql', mode: 'existing-service' },
+    styling: { adapterId: 'styling.css' },
     documentation: 'minimal',
     git: { initialize: false, initialCommit: false },
   }
@@ -141,6 +153,7 @@ try {
     ['BE-04', 'planned'],
     ['BE-05', 'planned'],
     ['BE-06', 'planned'],
+    ...(includeFullstack ? [['FS-06', 'planned']] : []),
   ])
   assert.deepEqual(catalog.data.forma.integrations.map(({ recipeId, status }) => [recipeId, status]), [['FM-01', 'planned'], ['FM-02', 'planned']])
 
@@ -180,6 +193,19 @@ try {
   assert.ok(nestPostgresPlanData.expectedWrites.includes('src/db/migrate.ts'))
   assert.equal(new Set(nestPostgresPlanData.expectedWrites).size, nestPostgresPlanData.expectedWrites.length)
 
+  if (includeFullstack) {
+    const fullstackPlanResult = invoke(['plan', '--config', join(root, 'FS-06.json'), '--json'])
+    assert.equal(fullstackPlanResult.status, 0, fullstackPlanResult.stdout)
+    const fullstackPlan = JSON.parse(fullstackPlanResult.stdout).data
+    assert.equal(fullstackPlan.recipeId, 'FS-06')
+    assert.equal(fullstackPlan.recipeStatus, 'planned')
+    assert.equal(fullstackPlan.executionAvailable, false)
+    assert.equal(new Set(fullstackPlan.expectedWrites).size, fullstackPlan.expectedWrites.length)
+    assert.ok(fullstackPlan.expectedWrites.includes('apps/api/src/db/migrate.ts'))
+    assert.ok(fullstackPlan.expectedWrites.includes('apps/web/vite.config.ts'))
+    assert.ok(fullstackPlan.warnings.some((warning) => warning.includes('one owned generation transaction')))
+  }
+
   const goConfigPath = join(root, 'BE-02.json')
   const goPlan = invoke(['plan', '--config', goConfigPath, '--json'])
   assert.equal(goPlan.status, 0, goPlan.stdout)
@@ -212,7 +238,7 @@ try {
     assert.ok(output.some((event) => event.code === 'GEN_RECIPE_UNTESTED'), `${id}: ${result.stdout}`)
     assert.equal(output.some((event) => event.type === 'stage-started' && ['staging', 'scaffolding', 'installing'].includes(event.stageId)), false, `${id} entered execution stage`)
     await assert.rejects(access(join(root, `planned-${id.toLowerCase()}`)))
-    if (id.startsWith('FE-') || id === 'BE-02' || id === 'BE-07' || id === 'BE-08' || id === 'BE-09') {
+    if (id.startsWith('FE-') || id === 'BE-02' || id === 'BE-07' || id === 'BE-08' || id === 'BE-09' || id === 'FS-06') {
       const override = invoke(['generate', '--config', configPaths[index], '--jsonl', '--development-allow-planned'])
       assert.equal(override.status, 3, `${id} release override: ${override.stderr}\n${override.stdout}`)
       assert.ok(events(override.stdout).some((event) => event.code === 'GEN_RECIPE_UNTESTED'), `${id} release override was not blocked: ${override.stdout}`)
@@ -249,7 +275,7 @@ try {
   assert.equal(directResult.error?.code, 'GEN_RECIPE_UNTESTED')
 
   assert.deepEqual((await readdir(root)).sort(), configPaths.map((path) => path.split(/[\\/]/).at(-1)).sort())
-  console.log(`Packaged ${mode} CLI policy smoke passed: catalog/plan/doctor read-only; release override rejected; FE-01–FE-15, BE-01/BE-02/BE-07/BE-08/BE-09, and FM-01/FM-02 blocked before staging.`)
+  console.log(`Packaged ${mode} CLI policy smoke passed: catalog/plan/doctor read-only; release override rejected; FE-01–FE-15, BE-01/BE-02/BE-07/BE-08/BE-09${includeFullstack ? ', FS-06' : ''}, and FM-01/FM-02 blocked before staging.`)
 } finally {
   await rm(root, { recursive: true, force: true })
 }

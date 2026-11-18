@@ -92,6 +92,29 @@ test('runner rejects unreviewed environment overrides before process start', { s
   }
 })
 
+test('runner accepts API_PORT for the isolated Vite proxy smoke', { skip: process.platform !== 'win32' }, async () => {
+  const root = await mkdtemp(win32.join(tmpdir(), 'pg-runner-api-port-'))
+  const script = win32.join(root, 'write-port.cjs')
+  const marker = win32.join(root, 'api-port')
+  await writeFile(script, `require('node:fs').writeFileSync(${JSON.stringify(marker)}, process.env.API_PORT ?? '')`)
+  try {
+    const result = await runNodeProcess({
+      scriptPath: script,
+      allowedScriptRoot: root,
+      cwd: root,
+      allowedCwdRoot: root,
+      args: [],
+      homeDirectory: root,
+      tempDirectory: root,
+      environment: { API_PORT: '31987' },
+    })
+    assert.equal(result.exitCode, 0)
+    assert.equal(await readFile(marker, 'utf8'), '31987')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('PostgreSQL smoke alone receives synthesized loopback DATABASE_URL', { skip: process.platform !== 'win32' }, async (t) => {
   if (await skipElevatedWorkload(t)) return
   const root = await mkdtemp(win32.join(tmpdir(), 'pg-postgres-smoke-env-'))

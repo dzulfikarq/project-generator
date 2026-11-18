@@ -5,8 +5,9 @@ import { homedir } from 'node:os'
 import { spawnSync } from 'node:child_process'
 import { dirname, join, resolve, win32 } from 'node:path'
 
-const phase = process.env.PG_POLICY_PHASE === '06C' ? '06C' : '06B'
+const phase = process.env.PG_POLICY_PHASE === '07A' ? '07A' : process.env.PG_POLICY_PHASE === '06C' ? '06C' : '06B'
 if (process.platform !== 'win32') throw new Error(`Phase ${phase} packaged release-policy check requires Windows.`)
+const includeFullstack = phase === '07A'
 
 const root = resolve(import.meta.dirname, '..')
 const tempBase = join(process.env.LOCALAPPDATA ?? win32.join(homedir(), 'AppData', 'Local'), 'Temp', 'opencode')
@@ -68,7 +69,7 @@ try {
     const output = run(mode, resources)
     assert.match(output, new RegExp(`Packaged ${mode} CLI policy smoke passed`))
   }
-  console.log(`Phase ${phase} packaged release policy passed for system and bundled Node; BE-08/BE-09 remain planned and blocked before staging.`)
+  console.log(`Phase ${phase} packaged release policy passed for system and bundled Node; BE-08/BE-09${phase === '07A' ? '/FS-06' : ''} remain planned and blocked before staging.`)
 } finally {
   await rm(tempRoot, { recursive: true, force: true })
 }

@@ -6,7 +6,7 @@ import test from 'node:test'
 import { parseSelection } from '../src/schema.js'
 import { createPlan } from '../src/plan.js'
 import { resolveSelection } from '../src/resolver.js'
-import { assertNestPostgresInstallPathSafe, normalizeWindowsParent, resolveOutputPath } from '../src/paths.js'
+import { assertFullstackInstallPathSafe, assertNestPostgresInstallPathSafe, normalizeWindowsParent, resolveOutputPath } from '../src/paths.js'
 import { GeneratorError } from '../src/errors.js'
 import { supportsComposer, supportsGo, supportsGoGin, supportsNodeForAngular, supportsNodeForBackend, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue, supportsNpm, supportsPhp, supportsPython, supportsUv } from '../src/toolchain.js'
 import { defaultGoModulePath, isValidGoModulePath } from '../src/go-module.js'
@@ -14,6 +14,7 @@ import { FORMA_COMMIT_SHA, isFormaCommit } from '../src/forma-catalog.js'
 import { runDoctor } from '../src/doctor.js'
 import { ADAPTERS, DATABASE_ADAPTERS, ORM_ADAPTERS, PACKAGE_MANAGERS, resolveBackendRecipe } from '../src/catalog.js'
 import { postgresProjectDocs } from '../src/postgres-project-docs.js'
+import { fullstackProjectDocs } from '../src/project-docs.js'
 
 const reactConfig = {
   schemaVersion: 1,
@@ -376,6 +377,59 @@ test('BE-09 resolves a distinct NestJS PostgreSQL Drizzle recipe and preserves d
   }
 })
 
+test('FS-06 resolves only exact React/Vite + Express + PostgreSQL/Drizzle npm workspace', () => {
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'items-workspace', type: 'fullstack', parentDirectory: 'E:\\Projects' },
+    frontend: { adapterId: 'frontend.react-vite', language: 'ts', manager: 'npm' },
+    backend: { adapterId: 'backend.express', manager: 'npm' },
+    database: { adapterId: 'database.postgresql', accessAdapterId: 'data-access.drizzle-postgresql', mode: 'existing-service' },
+    styling: { adapterId: 'styling.css' },
+    documentation: 'standard',
+    git: { initialize: false, initialCommit: false },
+  })
+  const { recipe } = resolveSelection(selection)
+  const plan = createPlan(selection)
+  assert.equal(recipe.id, 'FS-06')
+  assert.equal(recipe.status, 'planned')
+  assert.equal(recipe.projectType, 'fullstack')
+  assert.equal(recipe.manager, 'npm')
+  assert.ok(recipe.dependencies?.length)
+  assert.ok(recipe.dependencies?.every(({ integrity }) => integrity.startsWith('sha512-')))
+  assert.equal(plan.executionAvailable, false)
+  assert.equal(plan.requiresDependencyConsent, true)
+  assert.equal(plan.requiresNetworkConsent, false)
+  assert.equal(plan.executesDependencyLifecycleScripts, true)
+  assert.equal(new Set(plan.expectedWrites).size, plan.expectedWrites.length)
+  for (const path of [
+    'package.json', 'package-lock.json', 'apps/web/src/App.tsx', 'apps/web/src/services/items.ts',
+    'apps/web/vite.config.ts', 'apps/api/src/routes/items.ts', 'apps/api/src/db/migrate.ts',
+    'apps/api/drizzle/*.sql', 'docs/DATABASE-SAFETY.md',
+  ]) assert.ok(plan.expectedWrites.includes(path), path)
+  assert.ok(!plan.expectedWrites.includes('apps/web/src/components/ItemForm.tsx'))
+  assert.ok(plan.networkAccess.includes('https://registry.npmjs.org/'))
+  assert.ok(plan.warnings.some((warning) => warning.includes('one workspace') && warning.includes('one owned generation transaction')))
+  assert.ok(plan.warnings.some((warning) => warning.includes('remains callable outside the wrapper')))
+  const docs = fullstackProjectDocs(resolveSelection(selection), '22.22.1', '10.9.4')
+  assert.match(docs.get('README.md') ?? '', /FS-06, planned/)
+  assert.match(docs.get('docs/SETUP.md') ?? '', /npm run db:migrate -- --target host:port\/database/)
+  assert.ok(docs.has('docs/ARCHITECTURE.md'))
+  assert.ok(docs.has('docs/TESTING.md'))
+  const fullDocs = fullstackProjectDocs(resolveSelection(parseSelection({ ...selection, documentation: 'full' })), '22.22.1', '10.9.4')
+  assert.ok(fullDocs.has('docs/qa/acceptance-matrix.md'))
+
+  for (const invalid of [
+    { backend: { adapterId: 'backend.express', manager: 'yarn' } },
+    { frontend: { adapterId: 'frontend.react-vite', language: 'js', manager: 'npm' } },
+    { styling: { adapterId: 'styling.bootstrap' } },
+    { database: { adapterId: 'database.sqlite', accessAdapterId: 'data-access.drizzle-sqlite', mode: 'embedded' } },
+    { database: { adapterId: 'database.postgresql', accessAdapterId: 'data-access.none', mode: 'existing-service' } },
+    { git: { initialize: true, initialCommit: false } },
+  ]) {
+    assert.throws(() => createPlan(parseSelection({ ...selection, ...invalid })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  }
+})
+
 test('BE-03 resolves standalone NestJS with pinned official CLI/framework and Jest scaffold', () => {
   const selection = parseSelection({
     schemaVersion: 1,
@@ -735,6 +789,20 @@ test('BE-09 preflights the nested esbuild executable path conservatively', () =>
     (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_PATH_UNSAFE' && error.message.includes('261 characters'),
   )
   assert.doesNotThrow(() => assertNestPostgresInstallPathSafe(parentOfLength(61), projectName, jobId))
+})
+
+test('FS-06 preflights longest workspace esbuild path before staging', () => {
+  const jobId = '12345678-1234-1234-1234-123456789abc'
+  const projectName = 'pg-fs06-native'
+  const parentOfLength = (length: number) => `C:\\${'p'.repeat(length - 3)}`
+  const stagedEsbuildPath = (parentLength: number) => win32.join(parentOfLength(parentLength), `.project-generator-stage-${jobId}`, projectName, 'apps', 'web', 'node_modules', '@esbuild', 'win32-x64', 'esbuild.exe')
+  const rejectedLength = stagedEsbuildPath(120).length
+  assert.ok(rejectedLength > 240)
+  assert.throws(
+    () => assertFullstackInstallPathSafe(parentOfLength(120), projectName, jobId),
+    (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_PATH_UNSAFE' && error.message.includes(`${rejectedLength} characters`),
+  )
+  assert.doesNotThrow(() => assertFullstackInstallPathSafe(parentOfLength(61), projectName, jobId))
 })
 
 test('plan is read-only even when parent path does not exist', () => {

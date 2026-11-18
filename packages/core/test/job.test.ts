@@ -3,12 +3,35 @@ import { access, mkdir, mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, win32 } from 'node:path'
 import test, { type TestContext } from 'node:test'
-import { generateProject, redact } from '../src/job.js'
+import { assertNpmDependencyPins, generateProject, redact } from '../src/job.js'
 import { ALLOW_PLANNED_RECIPE_GENERATION } from '../src/build-policy.js'
 import { callSupervisor } from '../src/native-supervisor.js'
 import { parseSelection } from '../src/schema.js'
 import { FORMA_COMMIT_SHA } from '../src/forma-catalog.js'
 import type { JobEventV1 } from '../src/types.js'
+
+test('npm pin verification resolves workspace-local direct dependencies, not transitive root peers', () => {
+  const integrity = 'sha512-reviewed'
+  const packages = {
+    '': { workspaces: ['apps/api', 'apps/web'], devDependencies: { eslint: '9.18.0' } },
+    'apps/api': { dependencies: { express: '5.1.0' }, devDependencies: { typescript: '5.9.3' } },
+    'apps/web': { devDependencies: { typescript: '5.9.3' } },
+    'node_modules/eslint': { version: '9.18.0', integrity },
+    'node_modules/typescript': { version: '6.0.3', integrity: 'sha512-transitive-peer' },
+    'apps/api/node_modules/express': { version: '5.1.0', integrity },
+    'apps/api/node_modules/typescript': { version: '5.9.3', integrity },
+    'apps/web/node_modules/typescript': { version: '5.9.3', integrity },
+  }
+  assert.doesNotThrow(() => assertNpmDependencyPins(packages, [
+    { packageName: 'eslint', version: '9.18.0', integrity },
+    { packageName: 'express', version: '5.1.0', integrity },
+    { packageName: 'typescript', version: '5.9.3', integrity },
+  ]))
+  packages['apps/web/node_modules/typescript'] = { version: '6.0.3', integrity: 'sha512-transitive-peer' }
+  assert.throws(() => assertNpmDependencyPins(packages, [
+    { packageName: 'typescript', version: '5.9.3', integrity },
+  ]), /typescript for apps\/web resolves to 6\.0\.3/)
+})
 
 test('production generation blocks planned recipes before destination writes', async () => {
   const parent = await mkdtemp(win32.join(tmpdir(), 'pg-planned-'))
