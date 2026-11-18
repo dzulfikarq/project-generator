@@ -54,6 +54,21 @@ export function assertNestPostgresInstallPathSafe(parentPath: string, projectNam
   }
 }
 
+export function assertFullstackInstallPathSafe(parentPath: string, projectName: string, jobId: string): void {
+  const stagePath = win32.join(parentPath, `.project-generator-stage-${jobId}`)
+  const projectPath = win32.join(stagePath, projectName)
+  const candidates = ['node_modules', 'apps\\web\\node_modules', 'apps\\api\\node_modules'].map((modules) =>
+    win32.join(projectPath, modules, '@esbuild', 'win32-x64', 'esbuild.exe'))
+  const longest = candidates.reduce((left, right) => right.length > left.length ? right : left)
+  if (longest.length > 240) {
+    throw pathError(
+      'GEN_PATH_UNSAFE',
+      `FS-06 dependency installation is blocked because a staged workspace esbuild.exe path would be ${longest.length} characters; the conservative Windows limit is 240.`,
+      'Choose a shorter parent directory or project name, then rerun generation.',
+    )
+  }
+}
+
 function pathError(code: string, message: string, nextAction: string): GeneratorError {
   return new GeneratorError({ code, stage: 'preflight', message, nextAction, targetModified: false })
 }

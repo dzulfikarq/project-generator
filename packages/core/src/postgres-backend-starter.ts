@@ -1,7 +1,7 @@
 import { mutateOwnedStage, type OwnedStage } from './staging.js'
 import type { DependencyPin } from './types.js'
 
-const files: Record<string, string> = {
+export const POSTGRES_BACKEND_FILES: Record<string, string> = {
   '.env.example': 'HOST=127.0.0.1\nPORT=3000\nNODE_ENV=development\nDATABASE_URL=postgresql://app_user:replace_me@127.0.0.1:5432/app_db\n',
   '.gitignore': 'node_modules/\ndist/\n.env\n',
   'tsconfig.json': `${JSON.stringify({
@@ -532,17 +532,17 @@ export async function writePostgresBackendStarter(stage: OwnedStage, projectName
   const prefix = `${projectName}/`
   const writes = await mutateOwnedStage(stage, [`${prefix}src`, `${prefix}src/db`, `${prefix}src/routes`, `${prefix}test`, `${prefix}docs`], [
     { path: `${prefix}package.json`, content: `${JSON.stringify(packageJson, null, 2)}\n` },
-    ...Object.entries(files).map(([path, content]) => ({ path: `${prefix}${path}`, content })),
+    ...Object.entries(POSTGRES_BACKEND_FILES).map(([path, content]) => ({ path: `${prefix}${path}`, content })),
   ])
   return writes.map((path) => path.slice(prefix.length))
 }
 
 export function postgresDatabaseSupportFiles(): { drizzleConfig: string; schema: string; target: string; migrate: string; databaseSafety: string } {
   return {
-    drizzleConfig: files['drizzle.config.ts']!,
-    schema: files['src/db/schema.ts']!,
-    target: files['src/db/target.ts']!,
-    migrate: files['src/db/migrate.ts']!,
+    drizzleConfig: POSTGRES_BACKEND_FILES['drizzle.config.ts']!,
+    schema: POSTGRES_BACKEND_FILES['src/db/schema.ts']!,
+    target: POSTGRES_BACKEND_FILES['src/db/target.ts']!,
+    migrate: POSTGRES_BACKEND_FILES['src/db/migrate.ts']!,
     databaseSafety: `# PostgreSQL safety
 
 - Generation installs pinned npm dependencies and generates Drizzle SQL; it never connects to PostgreSQL or applies migrations.

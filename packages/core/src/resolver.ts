@@ -9,6 +9,24 @@ import type { ProjectSelectionV1, RecipeManifestV1, ResolvedSelection } from './
 export function resolveSelection(selection: ProjectSelectionV1): ResolvedSelection {
   const { project } = selection
   const outputPath = resolveOutputPath(project.parentDirectory, project.name)
+  if (project.type === 'fullstack') {
+    const recipe = RECIPES.find((candidate) => candidate.id === 'FS-06')
+    const valid = selection.frontend?.adapterId === 'frontend.react-vite'
+      && selection.frontend.language === 'ts'
+      && selection.frontend.manager === 'npm'
+      && selection.backend?.adapterId === 'backend.express'
+      && selection.backend.manager === 'npm'
+      && selection.backend.modulePath === undefined
+      && selection.database?.adapterId === 'database.postgresql'
+      && selection.database.accessAdapterId === 'data-access.drizzle-postgresql'
+      && selection.database.mode === 'existing-service'
+      && selection.styling?.adapterId === 'styling.css'
+      && selection.styling.uiLibraryId === undefined
+      && selection.template === undefined
+      && !selection.git.initialize && !selection.git.initialCommit
+    if (!valid || !recipe) throw incompatibleError('Fullstack generation requires the exact FS-06 React/Vite + Express + PostgreSQL/Drizzle + npm tuple; other combinations are not cataloged.')
+    return { selection: Object.freeze(selection), recipe, outputPath: win32.normalize(outputPath) }
+  }
   if (project.type === 'backend') {
     const adapterId = selection.backend?.adapterId
     const isGo = adapterId === 'backend.go-net-http'

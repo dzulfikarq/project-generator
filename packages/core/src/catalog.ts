@@ -278,7 +278,7 @@ export const ADAPTERS: readonly AdapterManifestV1[] = [
     prerequisites: [{ ...nodeRequirement, versionRange: '>=22.13.0' }, npmRequirement],
     capabilities: ['nodejs', 'typescript', 'rest-api', 'json-middleware', 'health-check', 'unit-tests', 'http-smoke'],
     compatibleWith: [],
-    incompatibleWith: ['database.mysql', 'database.mariadb', 'database.mongodb', 'fullstack.*'],
+  incompatibleWith: ['database.mysql', 'database.mariadb', 'database.mongodb'],
     recipeEvidenceIds: [],
   },
   {
@@ -646,6 +646,16 @@ const expressPostgresDrizzlePins = [
   ...expressSqliteDrizzlePins.filter(({ packageName }) => packageName !== 'better-sqlite3' && packageName !== '@types/better-sqlite3'),
   { packageName: 'pg', version: '8.23.1', integrity: 'sha512-aL96AHANtWjPLDOLqnhx+ngp9+UK7ETEU8VJrDCGvsSSi/mGLcWYsS6Herg7lmaBJe4uwrfqsa7gTEFaSizDoQ==', scope: 'dependencies' as const },
   { packageName: '@types/pg', version: '8.23.1', integrity: 'sha512-fKVHpikPdg4GKks3JuLEhvwSyvwzF23hnabPy6DD8ljVbC7+6J5dQzdv4arV6jqq57djnMgs1HKBxX4P8aBI3A==', scope: 'devDependencies' as const },
+] as const
+
+const fullstackReactExpressPostgresPins = [
+  ...expressPostgresDrizzlePins,
+  { packageName: 'react', version: '19.3.1', integrity: 'sha512-QNhWdt7nrgVWWQG58QuGsAR3jv3Hbe4mb4vz7w2csnHavciZJgda1CPNaldF6eVxv90ud3jUXpKlHL69gO38yw==' },
+  { packageName: 'react-dom', version: '19.3.1', integrity: 'sha512-Y0bARz53lhEC1NMCASs0/j+faB/zqt3R8hpvg1e8+61ZVJ4UL0UdC4cBbXfZMcIuhrfgeILTLe+ZeBCavQPtKQ==' },
+  { packageName: '@types/react', version: '19.2.14', integrity: 'sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==', scope: 'devDependencies' as const },
+  { packageName: '@types/react-dom', version: '19.2.3', integrity: 'sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==', scope: 'devDependencies' as const },
+  { packageName: '@vitejs/plugin-react', version: '6.3.0', integrity: 'sha512-H9E955aVvD2F4zNHCw4eIZbIfF6xKldlh7MNu+hSU7xwQzh65lI/N+CJWqmfhi0PEjDXIt/H7T7J/4wU63KJiw==', scope: 'devDependencies' as const },
+  { packageName: 'vite', version: '8.3.8', integrity: 'sha512-LzOn3h9rG/0vhLdXrV4yJ4QFA9eEoqCl+Yx+kGJd7aB9w6nfNgVHKSYwLPZUHrz4ZGa+t+kXjV9itvcHDLQouA==', scope: 'devDependencies' as const },
 ] as const
 
 const nestBackendPins = [
@@ -1179,6 +1189,29 @@ export const RECIPES: readonly RecipeManifestV1[] = [
     limitations: [
       'Standalone FastAPI REST API; no frontend, database, ORM, authentication, or automatic server startup.',
       'Python 3.14 and uv are required. Dependency pins remain provisional until Python 3.14 Windows acceptance passes.',
+    ],
+    evidenceIds: [],
+  },
+  {
+    schemaVersion: 1,
+    id: 'FS-06',
+    status: 'planned',
+    platform: 'windows',
+    projectType: 'fullstack',
+    frontend: 'frontend.react-vite',
+    backend: 'backend.express',
+    database: 'database.postgresql',
+    dataAccess: 'data-access.drizzle-postgresql',
+    language: 'ts',
+    manager: 'npm',
+    styling: 'styling.css',
+    dependencies: fullstackReactExpressPostgresPins,
+    checks: ['dependency-install', 'dependency-integrity', 'lockfile-integrity', 'migration-generation', 'typecheck', 'lint', 'unit-tests', 'database-safety-tests', 'build', 'fullstack-http-smoke', 'graceful-shutdown'],
+    limitations: [
+      'One npm workspace contains React/Vite web app and Express/PostgreSQL/Drizzle API; this is not two independent generated projects.',
+      'PostgreSQL 16+ is user-provided. Generation, API startup, /health, and SQL generation do not migrate or require a live database.',
+      'Migration requires explicit npm run db:migrate -- --target host:port/database confirmation; direct Drizzle Kit migration remains outside wrapper enforcement.',
+      'npm lifecycle/build scripts execute unsandboxed only after explicit consent. Independent acceptance is PASS WITH FINDINGS and Phase 07A development closure is GO; PostgreSQL 16, clean-machine/installer, accessibility, and broader security review remain unverified.',
     ],
     evidenceIds: [],
   },

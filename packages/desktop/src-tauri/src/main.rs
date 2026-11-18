@@ -144,6 +144,8 @@ enum DesktopRecipeId {
     Be08,
     #[serde(rename = "BE-09")]
     Be09,
+    #[serde(rename = "FS-06")]
+    Fs06,
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -307,6 +309,26 @@ impl DesktopSelectionV1 {
                 "git": { "initialize": false, "initialCommit": false }
             });
         }
+        if matches!(self.recipe_id, DesktopRecipeId::Fs06) {
+            return json!({
+                "schemaVersion": 1,
+                "project": {
+                    "name": self.project_name,
+                    "parentDirectory": self.parent_directory,
+                    "type": "fullstack"
+                },
+                "frontend": { "adapterId": "frontend.react-vite", "language": "ts", "manager": "npm" },
+                "backend": { "adapterId": "backend.express", "manager": "npm" },
+                "database": {
+                    "adapterId": "database.postgresql",
+                    "accessAdapterId": "data-access.drizzle-postgresql",
+                    "mode": "existing-service"
+                },
+                "styling": { "adapterId": "styling.css" },
+                "documentation": self.documentation.as_str(),
+                "git": { "initialize": false, "initialCommit": false }
+            });
+        }
         let (frontend, styling, manager) = match self.recipe_id {
             DesktopRecipeId::Fe01 => ("frontend.react-vite", "styling.css", "npm"),
             DesktopRecipeId::Fe02 => ("frontend.nextjs-app", "styling.tailwind", "npm"),
@@ -331,7 +353,8 @@ impl DesktopSelectionV1 {
             | DesktopRecipeId::Be06
             | DesktopRecipeId::Be07
             | DesktopRecipeId::Be08
-            | DesktopRecipeId::Be09 => {
+            | DesktopRecipeId::Be09
+            | DesktopRecipeId::Fs06 => {
                 unreachable!("backend selection returned above")
             }
         };
@@ -432,6 +455,15 @@ impl DesktopSelectionV1 {
                 "DESKTOP_SELECTION_INVALID",
                 "Standalone backend recipes cannot include a Forma frontend template.",
                 "Remove the template selection and resolve the backend plan again.",
+            ));
+        }
+        if matches!(self.recipe_id, DesktopRecipeId::Fs06)
+            && (self.template_id.is_some() || self.template_variant_id.is_some())
+        {
+            return Err(error(
+                "DESKTOP_SELECTION_INVALID",
+                "FS-06 cannot include a separate Forma frontend template.",
+                "Remove the template selection and resolve the FS-06 recipe again.",
             ));
         }
         Ok(())
@@ -1848,6 +1880,40 @@ mod tests {
         );
         assert!(nest_postgres_backend.get("frontend").is_none());
 
+        let fullstack = DesktopSelectionV1 {
+            project_name: "items-workspace".into(),
+            parent_directory: "C:\\Projects".into(),
+            recipe_id: DesktopRecipeId::Fs06,
+            documentation: DesktopDocumentationV1::Full,
+            template_id: None,
+            template_variant_id: None,
+            module_path: None,
+        }
+        .to_core_json("");
+        assert_eq!(fullstack["project"]["type"], "fullstack");
+        assert_eq!(fullstack["frontend"]["adapterId"], "frontend.react-vite");
+        assert_eq!(fullstack["frontend"]["manager"], "npm");
+        assert_eq!(fullstack["backend"]["adapterId"], "backend.express");
+        assert_eq!(fullstack["database"]["adapterId"], "database.postgresql");
+        assert_eq!(
+            fullstack["database"]["accessAdapterId"],
+            "data-access.drizzle-postgresql"
+        );
+        assert_eq!(fullstack["database"]["mode"], "existing-service");
+        assert_eq!(fullstack["styling"]["adapterId"], "styling.css");
+        assert_eq!(fullstack["documentation"], "full");
+        assert_eq!(fullstack["git"]["initialize"], false);
+        assert!(fullstack.get("template").is_none());
+
+        let parsed: DesktopSelectionV1 = serde_json::from_value(json!({
+            "projectName": "items-workspace",
+            "parentDirectory": "C:\\Projects",
+            "recipeId": "FS-06",
+            "documentation": "standard"
+        }))
+        .unwrap();
+        assert!(matches!(parsed.recipe_id, DesktopRecipeId::Fs06));
+
         let standalone = DesktopSelectionV1 {
             project_name: "demo".into(),
             parent_directory: "C:\\Projects".into(),
@@ -1897,6 +1963,14 @@ mod tests {
         selection.template_variant_id = None;
         selection.project_name = "x".repeat(4097);
         assert_eq!(selection.validate().unwrap_err().code, "GEN_CONFIG_INVALID");
+
+        selection.project_name = "demo".into();
+        selection.recipe_id = DesktopRecipeId::Fs06;
+        selection.template_id = Some("focus-planner".into());
+        assert_eq!(
+            selection.validate().unwrap_err().code,
+            "DESKTOP_SELECTION_INVALID"
+        );
     }
 
     #[test]

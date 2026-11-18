@@ -12,6 +12,7 @@ import { writeDatabaseBackendStarter } from './database-backend-starter.js'
 import { writePostgresBackendStarter } from './postgres-backend-starter.js'
 import { writeNestBackendStarter } from './nest-backend-starter.js'
 import { writeNestPostgresBackendStarter } from './nest-postgres-backend-starter.js'
+import { writeFullstackStarter } from './fullstack-starter.js'
 import { writeFastApiBackendStarter } from './fastapi-backend-starter.js'
 import { verifyUvLockfile, writeFastApiProjectDocs, writeFastApiProjectManifest } from './fastapi-project-docs.js'
 import { writeLaravelBackendStarter, LARAVEL_PINS } from './laravel-backend-starter.js'
@@ -23,7 +24,7 @@ import { writeGinProjectDocs, writeGinProjectManifest } from './gin-project-docs
 import { createGinGoMod, verifyGinModuleGraph, GIN_GO_MINIMUM, GIN_GO_SUM_SHA256 } from './gin-module-graph.js'
 import { runDoctor } from './doctor.js'
 import { createPlan } from './plan.js'
-import { assertNestPostgresInstallPathSafe } from './paths.js'
+import { assertFullstackInstallPathSafe, assertNestPostgresInstallPathSafe } from './paths.js'
 import { writeProjectDocs, writeProjectManifest } from './project-docs.js'
 import { runNodeProcess, runSafeProcess, startNodeProcess, startPostgresSmokeProcess, startSafeProcess, type ProcessResult, type SafeProcessOptions } from './runner.js'
 import { bindOwnedStageProjectIdentity, createOwnedStage, cleanupOwnedStage, cleanupStageSupportFiles, markOwnedStageGenerating, mutateOwnedStage, moveDirectoryNoReplace, verifyOwnedStageProjectIdentity, type OwnedStage } from './staging.js'
@@ -608,21 +609,74 @@ async function configureRecipeDependencies(stage: OwnedStage, resolved: Resolved
   return generatedFiles
 }
 
+type NpmLockPackages = Record<string, {
+  version?: string
+  integrity?: string
+  link?: boolean
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+  workspaces?: string[] | { packages?: string[] }
+}>
+
+export function assertNpmDependencyPins(packages: NpmLockPackages, pins: NonNullable<RecipeManifestV1['dependencies']>): void {
+  const root = packages['']
+  const workspacePaths = Array.isArray(root?.workspaces)
+    ? root.workspaces
+    : root?.workspaces?.packages ?? []
+  const owners = [...new Set(['', ...workspacePaths])]
+    .filter((path) => Object.hasOwn(packages, path))
+
+  for (const pin of pins) {
+    const declaredBy = owners.flatMap((path) => {
+      const manifest = packages[path]!
+      return [manifest.dependencies?.[pin.packageName], manifest.devDependencies?.[pin.packageName]]
+        .filter((version): version is string => version !== undefined)
+        .map((version) => ({ path, version }))
+    })
+    if (declaredBy.length === 0) throw new Error(`${pin.packageName} is not declared by the generated root or workspace manifests.`)
+
+    for (const declaration of declaredBy) {
+      if (declaration.version !== pin.version) {
+        throw new Error(`${pin.packageName} declares ${declaration.version} in ${declaration.path || 'root'}; expected ${pin.version}.`)
+      }
+
+      let ownerPath = declaration.path
+      let resolvedPath: string | undefined
+      while (true) {
+        const candidate = `${ownerPath ? `${ownerPath}/` : ''}node_modules/${pin.packageName}`
+        if (Object.hasOwn(packages, candidate)) {
+          resolvedPath = candidate
+          break
+        }
+        const separator = ownerPath.lastIndexOf('/')
+        if (separator < 0) {
+          if (!ownerPath) break
+          ownerPath = ''
+        } else ownerPath = ownerPath.slice(0, separator)
+      }
+
+      const resolved = resolvedPath ? packages[resolvedPath] : undefined
+      if (!resolved || resolved.version !== pin.version || resolved.integrity !== pin.integrity) {
+        throw new Error(`${pin.packageName} for ${declaration.path || 'root'} resolves to ${resolved?.version ?? 'missing'} at ${resolvedPath ?? 'no lock entry'}; expected ${pin.version} with reviewed integrity.`)
+      }
+    }
+  }
+}
+
 async function verifyDependencyPins(projectPath: string, pins: NonNullable<RecipeManifestV1['dependencies']>): Promise<void> {
   if (pins.length === 0) return
   try {
     const lock = JSON.parse(await readFile(win32.join(projectPath, 'package-lock.json'), 'utf8')) as {
-      packages?: Record<string, { version?: string; integrity?: string }>
+      packages?: NpmLockPackages
     }
-    for (const pin of pins) {
-      const installed = lock.packages?.[`node_modules/${pin.packageName}`]
-      if (!installed || installed.version !== pin.version || installed.integrity !== pin.integrity) throw new Error('Pinned dependency lock entry did not match.')
-    }
+    if (!lock.packages) throw new Error('npm lock packages are missing.')
+    assertNpmDependencyPins(lock.packages, pins)
     if (pins.some(({ packageName }) => packageName === 'bootstrap') && lock.packages?.['node_modules/@popperjs/core']) {
       throw new Error('CSS-only Bootstrap install unexpectedly resolved Popper.')
     }
-  } catch {
-    throw userError('GEN_DEPENDENCY_INTEGRITY', 'installing', 'Pinned dependency version or npm integrity did not match the reviewed catalog.', 'Check npm registry integrity and the generated lockfile, then retry; no target project was committed.')
+  } catch (cause) {
+    const reason = cause instanceof Error ? cause.message : 'npm lock validation failed.'
+    throw userError('GEN_DEPENDENCY_INTEGRITY', 'installing', `Pinned dependency version or npm integrity did not match the reviewed catalog: ${reason}`, 'Check npm registry integrity and the generated lockfile, then retry; no target project was committed.')
   }
 }
 
@@ -676,10 +730,11 @@ async function runAppScript(
   signal: AbortSignal | undefined,
   log: JobLog,
   label: string,
+  allowedScriptRoot = projectPath,
 ): Promise<ProcessResult> {
   const result = await runNodeProcess({
     scriptPath,
-    allowedScriptRoot: projectPath,
+    allowedScriptRoot,
     cwd: projectPath,
     allowedCwdRoot: stage.path,
     args,
@@ -888,6 +943,86 @@ async function servedBackendSmoke(
   if (isPostgresBackend && databaseConnections !== 0) throw userError('GEN_VALIDATE_FAILED', 'validating', 'Generated startup or health attempted a PostgreSQL connection.', 'Review the starter so generation validation never contacts a database.')
   if (!outcome) throw userError('GEN_VALIDATE_FAILED', 'validating', 'Built API did not return valid JSON from /health and /api/info within 15 seconds.', 'Review the local redacted job log and retry.')
   return outcome
+}
+
+async function servedFullstackSmoke(
+  projectPath: string,
+  stage: OwnedStage,
+  dirs: { home: string; temp: string },
+  signal: AbortSignal | undefined,
+  log: JobLog,
+): Promise<ValidationOutcome> {
+  const apiPort = await freePort()
+  const webPort = await freePort()
+  let databaseConnections = 0
+  const databaseProbe = createServer((socket) => { databaseConnections += 1; socket.destroy() })
+  await new Promise<void>((resolveListen, reject) => {
+    databaseProbe.once('error', reject)
+    databaseProbe.listen(0, '127.0.0.1', () => { databaseProbe.off('error', reject); resolveListen() })
+  })
+  const databaseAddress = databaseProbe.address()
+  if (!databaseAddress || typeof databaseAddress === 'string') throw userError('GEN_VALIDATE_FAILED', 'validating', 'Owned PostgreSQL probe did not bind a TCP port.', 'Retry generation in a writable local environment.')
+  let api: Awaited<ReturnType<typeof startNodeProcess>> | undefined
+  let web: Awaited<ReturnType<typeof startNodeProcess>> | undefined
+  let passed = false
+  try {
+    api = await startPostgresSmokeProcess({
+      scriptPath: win32.join(projectPath, 'apps', 'api', 'dist', 'server.js'),
+      allowedScriptRoot: projectPath,
+      cwd: win32.join(projectPath, 'apps', 'api'),
+      allowedCwdRoot: stage.path,
+      args: [],
+      homeDirectory: dirs.home,
+      tempDirectory: dirs.temp,
+      environment: { HOST: '127.0.0.1', PORT: String(apiPort), NODE_ENV: 'test' },
+      ...(signal ? { signal } : {}),
+    }, databaseAddress.port)
+    web = await startNodeProcess({
+      scriptPath: win32.join(projectPath, 'node_modules', 'vite', 'bin', 'vite.js'),
+      allowedScriptRoot: projectPath,
+      cwd: win32.join(projectPath, 'apps', 'web'),
+      allowedCwdRoot: stage.path,
+      args: ['preview', '--host', '127.0.0.1', '--port', String(webPort), '--strictPort'],
+      homeDirectory: dirs.home,
+      tempDirectory: dirs.temp,
+      environment: { API_PORT: String(apiPort) },
+      ...(signal ? { signal } : {}),
+    })
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      throwIfCancelled(signal, 'validating')
+      try {
+        const page = await fetch(`http://127.0.0.1:${webPort}/`, { signal: AbortSignal.timeout(800) })
+        const html = await page.text()
+        const asset = /<script[^>]+src="([^"]+\.js)"/i.exec(html)?.[1]
+        const script = asset ? await fetch(new URL(asset, `http://127.0.0.1:${webPort}`), { signal: AbortSignal.timeout(800) }) : undefined
+        const scriptText = script?.ok ? await script.text() : ''
+        const health = await fetch(`http://127.0.0.1:${webPort}/health`, { signal: AbortSignal.timeout(800) })
+        const healthBody = await health.json() as { status?: string }
+        const info = await fetch(`http://127.0.0.1:${webPort}/api/info`, { signal: AbortSignal.timeout(800) })
+        const infoBody = await info.json() as { name?: string; version?: string; environment?: string }
+        passed = page.status === 200 && page.headers.get('content-type')?.includes('text/html') === true
+          && script?.status === 200 && scriptText.includes('/api/items')
+          && health.status === 200 && healthBody.status === 'ok'
+          && info.status === 200 && infoBody.name === 'FS-06 Express PostgreSQL API'
+          && infoBody.version === '0.1.0' && infoBody.environment === 'test'
+        if (passed) break
+      } catch {
+        // Bounded loopback smoke; response bodies stay local.
+      }
+      await new Promise((resolveWait) => setTimeout(resolveWait, 500))
+    }
+  } finally {
+    for (const [label, running] of [['fullstack-web-smoke', web], ['fullstack-api-smoke', api]] as const) {
+      if (!running) continue
+      await running.stop()
+      const result = await running.result.catch(() => undefined)
+      if (result) log.process(label, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
+    }
+    await new Promise<void>((resolveClose, reject) => databaseProbe.close((error) => error ? reject(error) : resolveClose()))
+  }
+  if (databaseConnections !== 0) throw userError('GEN_VALIDATE_FAILED', 'validating', 'Fullstack startup, frontend proxy, or health smoke attempted a PostgreSQL connection.', 'Review the starter so generation validation never contacts a database.')
+  if (!passed) throw userError('GEN_VALIDATE_FAILED', 'validating', 'Fullstack frontend, Vite API proxy, or database-free API health smoke failed.', 'Review the local redacted job log and retry; smoke checks must not require PostgreSQL.')
+  return { id: 'fullstack-http-smoke', status: 'pass', message: 'Built React page, Vite API proxy, Express health/info, and zero-connection PostgreSQL probe passed.', exitCode: 0 }
 }
 
 async function servedGoBackendSmoke(
@@ -1191,6 +1326,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
   const isNest = resolved.recipe.id === 'BE-03' || isNestPostgres
   const isDatabaseBackend = resolved.recipe.id === 'BE-07'
   const isPostgresBackend = resolved.recipe.id === 'BE-08'
+  const isFullstack = resolved.recipe.id === 'FS-06'
   const isLaravel = resolved.recipe.id === 'BE-05'
   const isPython = resolved.recipe.id === 'BE-06'
   const isForma = Boolean(selection.template)
@@ -1261,6 +1397,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       if (!npmTool || !supportsNpm(npmTool.version)) throw userError('GEN_TOOL_MISSING', 'preflight', 'Trusted npm CLI is missing or unsupported.', 'Install Node.js with npm 10 or newer and rerun doctor.')
     }
     if (isNestPostgres) assertNestPostgresInstallPathSafe(win32.dirname(doctor.target.path), selection.project.name, jobId)
+    if (isFullstack) assertFullstackInstallPathSafe(win32.dirname(doctor.target.path), selection.project.name, jobId)
     stageFinish('preflight', 'passed')
 
     stageStart('staging')
@@ -1277,6 +1414,8 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     let starterFiles: string[] = []
     if (selection.template) {
       formaEvidence = await installFormaTemplate(stage, selection.template, resolved.recipe.frontend!, selection.project.name, dirs, log, options.signal)
+    } else if (isFullstack) {
+      starterFiles = await writeFullstackStarter(stage, selection.project.name, resolved.recipe.dependencies ?? [])
     } else if (isLaravel) {
       const scaffoldPath = win32.join(dirs.tools, 'laravel-scaffold')
       const scaffold = await runComposer([
@@ -1327,7 +1466,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       if (error instanceof GeneratorError) throw error
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
-    const generatedFiles = [...starterFiles, ...(usesGo || isPython || isLaravel || isNest || isDatabaseBackend || isPostgresBackend ? [] : await configureRecipeDependencies(stage, resolved))]
+    const generatedFiles = [...starterFiles, ...(usesGo || isPython || isLaravel || isNest || isDatabaseBackend || isPostgresBackend || isFullstack ? [] : await configureRecipeDependencies(stage, resolved))]
     const managerConfig = packageManagerConfiguration(resolved.recipe.manager)
     if (managerConfig) {
       const projectPrefix = `${win32.basename(projectPath)}/`
@@ -1464,22 +1603,24 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       validations.push(checkOutcome('dependency-install', install))
       if (install.exitCode !== 0) throw mappedProcessError('installing', install)
       await verifyDependencyPins(projectPath, resolved.recipe.dependencies ?? [])
-      if (isDatabaseBackend || isPostgresBackend || isNestPostgres) {
+      if (isDatabaseBackend || isPostgresBackend || isNestPostgres || isFullstack) {
+        const migrationCwd = isFullstack ? win32.join(projectPath, 'apps', 'api') : projectPath
         const migration = await runAppScript(
           win32.join(projectPath, 'node_modules', 'drizzle-kit', 'bin.cjs'),
-          ['generate'], projectPath, stage, dirs, options.signal, log, 'drizzle-migration-generation',
+          ['generate'], migrationCwd, stage, dirs, options.signal, log, 'drizzle-migration-generation', projectPath,
         )
         const migrationOutcome = checkOutcome('migration-generation', migration)
         validations.push(migrationOutcome)
         emitValidation(emit, migrationOutcome, isPostgresBackend || isNestPostgres ? 'data-access.drizzle-postgresql' : 'data-access.drizzle-sqlite')
         if (migration.exitCode !== 0) throw mappedProcessError('installing', migration)
-        const migrationFiles = await listRegularFiles(win32.join(projectPath, 'drizzle'))
+        const migrationRoot = win32.join(projectPath, ...(isFullstack ? ['apps', 'api', 'drizzle'] : ['drizzle']))
+        const migrationFiles = await listRegularFiles(migrationRoot)
         if (!migrationFiles.some((file) => /^\d{4}_.+\.sql$/.test(file))
           || !migrationFiles.includes('meta/_journal.json')
            || !migrationFiles.some((file) => /^meta\/\d{4}_(?:.+_)?snapshot\.json$/.test(file))) {
           throw userError('GEN_LOCKFILE_INTEGRITY', 'installing', 'Drizzle Kit did not produce a SQL migration, journal, and schema snapshot.', 'Review the pinned Drizzle schema/config and retry in a new destination.')
         }
-        generatedFiles.push(...migrationFiles.map((file) => `drizzle/${file}`))
+        generatedFiles.push(...migrationFiles.map((file) => `${isFullstack ? 'apps/api/' : ''}drizzle/${file}`))
       }
       if (resolved.recipe.dependencies?.length) {
         const integrity: ValidationOutcome = { id: 'dependency-integrity', status: 'pass', message: 'Pinned project dependency versions and npm integrity match the reviewed catalog.', exitCode: 0 }
@@ -1532,7 +1673,19 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       validations.push(moduleOutcome)
       emitValidation(emit, moduleOutcome, recipeOwnerId)
     }
-    const checks: { id: string; path?: string; args: string[] }[] = isNestPostgres
+    const checks: { id: string; path?: string; args: string[]; cwd?: string }[] = isFullstack
+      ? [
+        { id: 'api-typecheck', path: win32.join(projectPath, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['--project', 'apps/api/tsconfig.json', '--noEmit'] },
+        { id: 'web-typecheck', path: win32.join(projectPath, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['--project', 'apps/web/tsconfig.json', '--noEmit'] },
+        { id: 'lint', path: win32.join(projectPath, 'node_modules', 'eslint', 'bin', 'eslint.js'), args: ['apps/api/src', 'apps/api/test', 'apps/web/src'] },
+        { id: 'unit-tests', path: win32.join(projectPath, 'node_modules', 'tsx', 'dist', 'cli.mjs'), args: ['--test', 'apps/api/test/backend.test.ts'] },
+        { id: 'database-safety-tests', path: win32.join(projectPath, 'node_modules', 'tsx', 'dist', 'cli.mjs'), args: ['--test', 'apps/api/test/database.test.ts'] },
+        { id: 'frontend-client-tests', path: win32.join(projectPath, 'node_modules', 'tsx', 'dist', 'cli.mjs'), args: ['--test', 'apps/web/src/services/items.test.ts'] },
+        { id: 'graceful-shutdown', path: win32.join(projectPath, 'node_modules', 'tsx', 'dist', 'cli.mjs'), args: ['--test', 'apps/api/test/shutdown.test.ts'] },
+        { id: 'api-build', path: win32.join(projectPath, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['--project', 'apps/api/tsconfig.json'] },
+        { id: 'web-build', path: win32.join(projectPath, 'node_modules', 'vite', 'bin', 'vite.js'), args: ['build'], cwd: win32.join(projectPath, 'apps', 'web') },
+      ]
+      : isNestPostgres
       ? [
         { id: 'typecheck', path: win32.join(projectPath, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['--project', 'tsconfig.json', '--noEmit'] },
         { id: 'lint', path: win32.join(projectPath, 'node_modules', 'eslint', 'bin', 'eslint.js'), args: ['src', 'test'] },
@@ -1652,7 +1805,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
         ? await runGofmt(check.args, projectPath, stage, goTool!, dirs, log, options.signal)
         : usesGo
         ? await runGo(check.args, projectPath, stage, goTool!, dirs, log, check.id, options.signal)
-        : await runAppScript(check.path!, check.args, projectPath, stage, dirs, options.signal, log, check.id)
+        : await runAppScript(check.path!, check.args, check.cwd ?? projectPath, stage, dirs, options.signal, log, check.id, projectPath)
       let outcome = checkOutcome(check.id, result)
       if (isLaravel && result.exitCode === 0 && check.id === 'artisan-version'
         && !result.stdout.includes(`Laravel Framework ${LARAVEL_PINS.framework}`)) {
@@ -1699,7 +1852,9 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
         ? await servedGoBackendSmoke(projectPath, stage, dirs, goTool!, selection.project.name, options.signal, log)
         : resolved.recipe.projectType === 'backend'
              ? await servedBackendSmoke(projectPath, stage, dirs, options.signal, log, isNest, isDatabaseBackend, isPostgresBackend || isNestPostgres)
-          : await servedPageSmoke(projectPath, stage, dirs, resolved.recipe.frontend!, options.signal, log)]
+      : isFullstack
+        ? await servedFullstackSmoke(projectPath, stage, dirs, options.signal, log)
+        : await servedPageSmoke(projectPath, stage, dirs, resolved.recipe.frontend!, options.signal, log)]
     validations.push(...smokeOutcomes)
     for (const smoke of smokeOutcomes) emitValidation(emit, smoke, recipeOwnerId)
     const allPassed = validations.every((item) => item.status === 'pass'
