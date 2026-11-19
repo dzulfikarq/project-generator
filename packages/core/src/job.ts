@@ -13,6 +13,7 @@ import { writePostgresBackendStarter } from './postgres-backend-starter.js'
 import { writeNestBackendStarter } from './nest-backend-starter.js'
 import { writeNestPostgresBackendStarter } from './nest-postgres-backend-starter.js'
 import { writeFullstackStarter } from './fullstack-starter.js'
+import { writeVueFullstackStarter } from './vue-fullstack-starter.js'
 import { writeFastApiBackendStarter } from './fastapi-backend-starter.js'
 import { verifyUvLockfile, writeFastApiProjectDocs, writeFastApiProjectManifest } from './fastapi-project-docs.js'
 import { writeLaravelBackendStarter, LARAVEL_PINS } from './laravel-backend-starter.js'
@@ -24,7 +25,7 @@ import { writeGinProjectDocs, writeGinProjectManifest } from './gin-project-docs
 import { createGinGoMod, verifyGinModuleGraph, GIN_GO_MINIMUM, GIN_GO_SUM_SHA256 } from './gin-module-graph.js'
 import { runDoctor } from './doctor.js'
 import { createPlan } from './plan.js'
-import { assertFullstackInstallPathSafe, assertNestPostgresInstallPathSafe } from './paths.js'
+import { assertFullstackInstallPathSafe, assertNestPostgresInstallPathSafe, assertVueFullstackInstallPathSafe } from './paths.js'
 import { writeProjectDocs, writeProjectManifest } from './project-docs.js'
 import { runNodeProcess, runSafeProcess, startNodeProcess, startPostgresSmokeProcess, startSafeProcess, type ProcessResult, type SafeProcessOptions } from './runner.js'
 import { bindOwnedStageProjectIdentity, createOwnedStage, cleanupOwnedStage, cleanupStageSupportFiles, markOwnedStageGenerating, mutateOwnedStage, moveDirectoryNoReplace, verifyOwnedStageProjectIdentity, type OwnedStage } from './staging.js'
@@ -951,6 +952,7 @@ async function servedFullstackSmoke(
   dirs: { home: string; temp: string },
   signal: AbortSignal | undefined,
   log: JobLog,
+  recipeId: 'FS-06' | 'FS-07',
 ): Promise<ValidationOutcome> {
   const apiPort = await freePort()
   const webPort = await freePort()
@@ -1000,10 +1002,11 @@ async function servedFullstackSmoke(
         const healthBody = await health.json() as { status?: string }
         const info = await fetch(`http://127.0.0.1:${webPort}/api/info`, { signal: AbortSignal.timeout(800) })
         const infoBody = await info.json() as { name?: string; version?: string; environment?: string }
+        const expectedApiName = recipeId === 'FS-07' ? 'FS-07 Express PostgreSQL API' : 'FS-06 Express PostgreSQL API'
         passed = page.status === 200 && page.headers.get('content-type')?.includes('text/html') === true
           && script?.status === 200 && scriptText.includes('/api/items')
           && health.status === 200 && healthBody.status === 'ok'
-          && info.status === 200 && infoBody.name === 'FS-06 Express PostgreSQL API'
+          && info.status === 200 && infoBody.name === expectedApiName
           && infoBody.version === '0.1.0' && infoBody.environment === 'test'
         if (passed) break
       } catch {
@@ -1022,7 +1025,7 @@ async function servedFullstackSmoke(
   }
   if (databaseConnections !== 0) throw userError('GEN_VALIDATE_FAILED', 'validating', 'Fullstack startup, frontend proxy, or health smoke attempted a PostgreSQL connection.', 'Review the starter so generation validation never contacts a database.')
   if (!passed) throw userError('GEN_VALIDATE_FAILED', 'validating', 'Fullstack frontend, Vite API proxy, or database-free API health smoke failed.', 'Review the local redacted job log and retry; smoke checks must not require PostgreSQL.')
-  return { id: 'fullstack-http-smoke', status: 'pass', message: 'Built React page, Vite API proxy, Express health/info, and zero-connection PostgreSQL probe passed.', exitCode: 0 }
+  return { id: 'fullstack-http-smoke', status: 'pass', message: `Built ${recipeId === 'FS-07' ? 'Vue' : 'React'} page, Vite API proxy, Express health/info, and zero-connection PostgreSQL probe passed.`, exitCode: 0 }
 }
 
 async function servedGoBackendSmoke(
@@ -1326,7 +1329,8 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
   const isNest = resolved.recipe.id === 'BE-03' || isNestPostgres
   const isDatabaseBackend = resolved.recipe.id === 'BE-07'
   const isPostgresBackend = resolved.recipe.id === 'BE-08'
-  const isFullstack = resolved.recipe.id === 'FS-06'
+  const isFullstack = resolved.recipe.id === 'FS-06' || resolved.recipe.id === 'FS-07'
+  const isVueFullstack = resolved.recipe.id === 'FS-07'
   const isLaravel = resolved.recipe.id === 'BE-05'
   const isPython = resolved.recipe.id === 'BE-06'
   const isForma = Boolean(selection.template)
@@ -1397,7 +1401,8 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       if (!npmTool || !supportsNpm(npmTool.version)) throw userError('GEN_TOOL_MISSING', 'preflight', 'Trusted npm CLI is missing or unsupported.', 'Install Node.js with npm 10 or newer and rerun doctor.')
     }
     if (isNestPostgres) assertNestPostgresInstallPathSafe(win32.dirname(doctor.target.path), selection.project.name, jobId)
-    if (isFullstack) assertFullstackInstallPathSafe(win32.dirname(doctor.target.path), selection.project.name, jobId)
+    if (resolved.recipe.id === 'FS-06') assertFullstackInstallPathSafe(win32.dirname(doctor.target.path), selection.project.name, jobId)
+    if (isVueFullstack) assertVueFullstackInstallPathSafe(win32.dirname(doctor.target.path), selection.project.name, jobId)
     stageFinish('preflight', 'passed')
 
     stageStart('staging')
@@ -1415,7 +1420,9 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     if (selection.template) {
       formaEvidence = await installFormaTemplate(stage, selection.template, resolved.recipe.frontend!, selection.project.name, dirs, log, options.signal)
     } else if (isFullstack) {
-      starterFiles = await writeFullstackStarter(stage, selection.project.name, resolved.recipe.dependencies ?? [])
+      starterFiles = isVueFullstack
+        ? await writeVueFullstackStarter(stage, selection.project.name, resolved.recipe.dependencies ?? [])
+        : await writeFullstackStarter(stage, selection.project.name, resolved.recipe.dependencies ?? [])
     } else if (isLaravel) {
       const scaffoldPath = win32.join(dirs.tools, 'laravel-scaffold')
       const scaffold = await runComposer([
@@ -1611,7 +1618,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
         )
         const migrationOutcome = checkOutcome('migration-generation', migration)
         validations.push(migrationOutcome)
-        emitValidation(emit, migrationOutcome, isPostgresBackend || isNestPostgres ? 'data-access.drizzle-postgresql' : 'data-access.drizzle-sqlite')
+        emitValidation(emit, migrationOutcome, isPostgresBackend || isNestPostgres || isFullstack ? 'data-access.drizzle-postgresql' : 'data-access.drizzle-sqlite')
         if (migration.exitCode !== 0) throw mappedProcessError('installing', migration)
         const migrationRoot = win32.join(projectPath, ...(isFullstack ? ['apps', 'api', 'drizzle'] : ['drizzle']))
         const migrationFiles = await listRegularFiles(migrationRoot)
@@ -1676,7 +1683,9 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
     const checks: { id: string; path?: string; args: string[]; cwd?: string }[] = isFullstack
       ? [
         { id: 'api-typecheck', path: win32.join(projectPath, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['--project', 'apps/api/tsconfig.json', '--noEmit'] },
-        { id: 'web-typecheck', path: win32.join(projectPath, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['--project', 'apps/web/tsconfig.json', '--noEmit'] },
+        isVueFullstack
+          ? { id: 'web-typecheck', path: win32.join(projectPath, 'node_modules', 'vue-tsc', 'bin', 'vue-tsc.js'), args: ['--noEmit', '--project', 'apps/web/tsconfig.json'] }
+          : { id: 'web-typecheck', path: win32.join(projectPath, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['--project', 'apps/web/tsconfig.json', '--noEmit'] },
         { id: 'lint', path: win32.join(projectPath, 'node_modules', 'eslint', 'bin', 'eslint.js'), args: ['apps/api/src', 'apps/api/test', 'apps/web/src'] },
         { id: 'unit-tests', path: win32.join(projectPath, 'node_modules', 'tsx', 'dist', 'cli.mjs'), args: ['--test', 'apps/api/test/backend.test.ts'] },
         { id: 'database-safety-tests', path: win32.join(projectPath, 'node_modules', 'tsx', 'dist', 'cli.mjs'), args: ['--test', 'apps/api/test/database.test.ts'] },
@@ -1853,7 +1862,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
         : resolved.recipe.projectType === 'backend'
              ? await servedBackendSmoke(projectPath, stage, dirs, options.signal, log, isNest, isDatabaseBackend, isPostgresBackend || isNestPostgres)
       : isFullstack
-        ? await servedFullstackSmoke(projectPath, stage, dirs, options.signal, log)
+         ? await servedFullstackSmoke(projectPath, stage, dirs, options.signal, log, isVueFullstack ? 'FS-07' : 'FS-06')
         : await servedPageSmoke(projectPath, stage, dirs, resolved.recipe.frontend!, options.signal, log)]
     validations.push(...smokeOutcomes)
     for (const smoke of smokeOutcomes) emitValidation(emit, smoke, recipeOwnerId)

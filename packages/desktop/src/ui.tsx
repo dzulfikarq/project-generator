@@ -25,9 +25,9 @@ import {
 
 type Page = 'home' | 'create' | 'frameworks' | 'templates' | 'projects' | 'environment' | 'settings' | 'generation' | 'result'
 type WizardStep = 'details' | 'stack' | 'design' | 'docs' | 'review'
-type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15' | 'BE-01' | 'BE-02' | 'BE-03' | 'BE-04' | 'BE-05' | 'BE-06' | 'BE-07' | 'BE-08' | 'BE-09' | 'FS-06'
+type RecipeId = 'FE-01' | 'FE-02' | 'FE-03' | 'FE-04' | 'FE-05' | 'FE-06' | 'FE-07' | 'FE-08' | 'FE-09' | 'FE-10' | 'FE-11' | 'FE-12' | 'FE-13' | 'FE-14' | 'FE-15' | 'BE-01' | 'BE-02' | 'BE-03' | 'BE-04' | 'BE-05' | 'BE-06' | 'BE-07' | 'BE-08' | 'BE-09' | 'FS-06' | 'FS-07'
 function isRecipeId(value: string): value is RecipeId {
-  return ['FE-01', 'FE-02', 'FE-03', 'FE-04', 'FE-05', 'FE-06', 'FE-07', 'FE-08', 'FE-09', 'FE-10', 'FE-11', 'FE-12', 'FE-13', 'FE-14', 'FE-15', 'BE-01', 'BE-02', 'BE-03', 'BE-04', 'BE-05', 'BE-06', 'BE-07', 'BE-08', 'BE-09', 'FS-06'].includes(value)
+  return ['FE-01', 'FE-02', 'FE-03', 'FE-04', 'FE-05', 'FE-06', 'FE-07', 'FE-08', 'FE-09', 'FE-10', 'FE-11', 'FE-12', 'FE-13', 'FE-14', 'FE-15', 'BE-01', 'BE-02', 'BE-03', 'BE-04', 'BE-05', 'BE-06', 'BE-07', 'BE-08', 'BE-09', 'FS-06', 'FS-07'].includes(value)
 }
 type Documentation = 'minimal' | 'standard' | 'full'
 type Selection = {
@@ -172,6 +172,7 @@ function App() {
   const [projectName, setProjectName] = useState('my-project')
   const [parentDirectory, setParentDirectory] = useState('')
   const [projectType, setProjectType] = useState<'frontend' | 'backend' | 'fullstack'>('frontend')
+  const [fullstackRecipeId, setFullstackRecipeId] = useState<'FS-06' | 'FS-07'>('FS-06')
   const [backendId, setBackendId] = useState('backend.express')
   const [databaseId, setDatabaseId] = useState('database.none')
   const [ormId, setOrmId] = useState('data-access.none')
@@ -209,10 +210,10 @@ function App() {
   const recipe = useMemo(() => projectType === 'backend'
     ? findBackendRecipe(catalog, backendId, managerId, databaseId, ormId)
     : projectType === 'fullstack'
-      ? catalog?.recipes.find((item) => item.id === 'FS-06') ?? null
+      ? catalog?.recipes.find((item) => item.id === fullstackRecipeId) ?? null
       : templateId
       ? findFrameworkRecipe(catalog, frontendId, managerId)
-      : findRecipe(catalog, frontendId, stylingId, managerId), [catalog, frontendId, stylingId, managerId, templateId, projectType, backendId, databaseId, ormId])
+      : findRecipe(catalog, frontendId, stylingId, managerId), [catalog, frontendId, stylingId, managerId, templateId, projectType, backendId, databaseId, ormId, fullstackRecipeId])
   const frontendAdapters = catalog?.adapters.filter((adapter) => adapter.kind === 'frontend') ?? []
   const stylingAdapters = catalog?.adapters.filter((adapter) => adapter.kind === 'styling') ?? []
   const backendAdapters = catalog?.adapters.filter((adapter) => adapter.kind === 'backend') ?? []
@@ -629,7 +630,7 @@ function App() {
 
             {step === 'stack' && <section className="wizard-card" aria-labelledby="stack-title">
               <div className="section-title-row"><div><p className="eyebrow">02 · FRAMEWORK</p><h2 id="stack-title">Choose a project type</h2></div><StatusPill tone="warn">Planned recipes</StatusPill></div>
-               <p className="section-intro">Choose Frontend, Backend, or the exact FS-06 full-stack recipe. Planned recipes remain disabled in normal builds.</p>
+                <p className="section-intro">Choose Frontend, Backend, or an exact cataloged full-stack recipe. Planned recipes remain disabled in normal builds.</p>
                <fieldset className="choice-fieldset"><legend>Project type</legend><div className="compact-choice-grid">
                  {(['frontend', 'backend', 'fullstack'] as const).map((type) => <button type="button" key={type} className={`compact-choice ${projectType === type ? 'chosen' : ''}`} disabled={busy} aria-pressed={projectType === type} onClick={() => {
                    setProjectType(type)
@@ -651,7 +652,7 @@ function App() {
                      setManagerId('npm')
                    } else { setManagerId('npm'); setStylingId('styling.css') }
                    invalidateReview()
-                 }}><span className="radio-dot" aria-hidden="true" /><span><strong>{type === 'frontend' ? 'Frontend' : type === 'backend' ? 'Backend' : 'Full-stack'}</strong><small>{type === 'frontend' ? 'Browser application recipes' : type === 'backend' ? 'Standalone API recipes' : 'One React + Express workspace · FS-06'}</small></span></button>)}
+                  }}><span className="radio-dot" aria-hidden="true" /><span><strong>{type === 'frontend' ? 'Frontend' : type === 'backend' ? 'Backend' : 'Full-stack'}</strong><small>{type === 'frontend' ? 'Browser application recipes' : type === 'backend' ? 'Standalone API recipes' : 'React or Vue + Express + PostgreSQL workspace'}</small></span></button>)}
               </div></fieldset>
               {projectType === 'frontend' ? <>
               <fieldset className="choice-fieldset"><legend>Frontend framework</legend><div className="choice-grid">
@@ -696,14 +697,18 @@ function App() {
                   })}
                  </div></fieldset>
                   <div className="unsupported-grid"><UnsupportedGroup title="Mobile" description="Mobile generation remains unavailable." entries={[]} /></div>
-               </> : <div className="template-style-note"><strong>FS-06 · React + Vite + Express + PostgreSQL + Drizzle</strong><span>One planned npm workspace with same-origin Vite API proxy and item CRUD UI. PostgreSQL 16+ remains user-provided; generation and health checks do not connect or migrate. Independent acceptance: PASS WITH FINDINGS; development closure: GO. Recipe remains planned.</span></div>}
+                </> : <><fieldset className="choice-fieldset"><legend>Full-stack recipe</legend><div className="compact-choice-grid">{(['FS-06', 'FS-07'] as const).map((id) => {
+                  const item = catalog?.recipes.find((candidate) => candidate.id === id)
+                  const label = id === 'FS-07' ? 'Vue 3 + Express + PostgreSQL + Drizzle' : 'React + Express + PostgreSQL + Drizzle'
+                  return <button type="button" key={id} className={`compact-choice ${fullstackRecipeId === id ? 'chosen' : ''}`} disabled={!item || busy} aria-pressed={fullstackRecipeId === id} onClick={() => { setFullstackRecipeId(id); setFrontendId(id === 'FS-07' ? 'frontend.vue-vite' : 'frontend.react-vite'); invalidateReview() }}><span className="radio-dot" aria-hidden="true" /><span><strong>{label}</strong><small>{id} · {item?.status ?? 'Unavailable'}</small></span></button>
+                })}</div></fieldset><div className="template-style-note"><strong>{fullstackRecipeId} · {fullstackRecipeId === 'FS-07' ? 'Vue 3 + Vite' : 'React + Vite'} + Express + PostgreSQL + Drizzle</strong><span>One planned npm workspace with same-origin Vite API proxy and item CRUD UI. PostgreSQL 16+ remains user-provided; generation and health checks do not connect or migrate. Recipe remains planned pending independent acceptance.</span></div></>}
                <div className="wizard-actions"><button className="button secondary-button" disabled={busy} onClick={() => setStep('details')}>Back</button><button className="button primary-button" disabled={projectType === 'frontend' ? !selectedFrontend || busy : projectType === 'backend' ? !selectedBackend || busy : !recipe || busy} onClick={() => setStep('design')}>Choose tools <span aria-hidden="true">→</span></button></div>
             </section>}
 
             {step === 'design' && <section className="wizard-card" aria-labelledby="design-title">
                <div className="section-title-row"><div><p className="eyebrow">03 · TOOLING</p><h2 id="design-title">{projectType === 'backend' ? 'Backend tools' : projectType === 'fullstack' ? 'Full-stack recipe' : 'Styling and starting template'}</h2></div><StatusPill>Catalog-backed</StatusPill></div>
-                <p className="section-intro">{projectType === 'backend' ? 'Choose only exact cataloged backend, database, ORM, and native package-manager recipes. Unsupported combinations stay disabled.' : projectType === 'fullstack' ? 'FS-06 has one exact React/Vite + Express + PostgreSQL/Drizzle + npm composition; individual framework, styling, and database switches are unavailable.' : 'Only combinations with an existing recipe can be selected. Framework changes never silently replace your styling choice.'}</p>
-                {projectType === 'fullstack' && <div className="template-style-note"><strong>FS-06 · React + Vite + Express · PostgreSQL + Drizzle · npm</strong><span>Node.js 22.13+ and npm 10+. One owned workspace, one root lockfile, explicit guarded migration, no automatic PostgreSQL provisioning.</span></div>}
+                 <p className="section-intro">{projectType === 'backend' ? 'Choose only exact cataloged backend, database, ORM, and native package-manager recipes. Unsupported combinations stay disabled.' : projectType === 'fullstack' ? `${fullstackRecipeId} is an exact ${fullstackRecipeId === 'FS-07' ? 'Vue 3/Vite' : 'React/Vite'} + Express + PostgreSQL/Drizzle + npm composition; individual framework, styling, and database switches are unavailable.` : 'Only combinations with an existing recipe can be selected. Framework changes never silently replace your styling choice.'}</p>
+                 {projectType === 'fullstack' && <div className="template-style-note"><strong>{fullstackRecipeId} · {fullstackRecipeId === 'FS-07' ? 'Vue 3 + Vite' : 'React + Vite'} + Express · PostgreSQL + Drizzle · npm</strong><span>Node.js {fullstackRecipeId === 'FS-07' ? '22.18+ or 24.12+' : '22.13+'} and npm 10+. One owned workspace, one root lockfile, explicit guarded migration, no automatic PostgreSQL provisioning.</span></div>}
                {projectType === 'backend' && <>
                  <fieldset className="choice-fieldset"><legend>Native package manager</legend><div className="variant-row"><label htmlFor="backend-manager">Package manager</label><select id="backend-manager" className="select-input" disabled={busy} value={managerId} onChange={(event) => {
                    const nextManager = event.target.value
@@ -814,7 +819,7 @@ function App() {
               {busy && <div className="inline-loading" role="status"><span className="spinner" /> Resolving read-only plan and checking prerequisites…</div>}
               {!busy && !plan && <div className="review-empty"><p>{commandError ? 'Review could not be completed.' : 'Resolve the configuration to load current plan and environment checks.'}</p><button className="button secondary-button" disabled={!selection} onClick={() => void loadReview()}>Resolve plan and run checks</button></div>}
               {plan && <>
-                  <div className="stack-summary"><div><small>PROJECT</small><strong>{projectName}</strong><code>{plan.targetPath}</code></div><div><small>STACK</small><strong>{projectType === 'fullstack' ? 'React + Vite + Express + PostgreSQL + Drizzle' : projectType === 'backend' ? `${selectedBackend?.displayName ?? 'Express'} REST API` : `${selectedFrontend?.displayName ?? frontendId} + ${activeTemplate ? 'Forma-managed styling' : stylingAdapters.find((adapter) => adapter.id === stylingId)?.displayName ?? stylingId}`}</strong><span>{plan.recipeId} · {plan.recipeId === 'BE-02' || plan.recipeId === 'BE-04' ? 'Go' : plan.recipeId === 'BE-05' ? 'PHP' : plan.recipeId === 'BE-06' ? 'Python' : 'TypeScript'} · {managerId} · {documentation} docs</span>{(projectType === 'backend' || projectType === 'fullstack') && <span>{databaseAdapters.find((adapter) => adapter.id === databaseId)?.displayName ?? 'Database unavailable'} · {ormAdapters.find((adapter) => adapter.id === ormId)?.displayName ?? 'ORM unavailable'}</span>}{(plan.recipeId === 'BE-02' || plan.recipeId === 'BE-04') && <code>Module: {modulePath}</code>}</div>{activeTemplate && <div><small>FORMA TEMPLATE</small><strong>{activeTemplate.name}</strong><span>{selectedVariant?.name ?? activeTemplate.variants.find((variant) => variant.default)?.name ?? 'Default'} variant · planned integration</span></div>}</div>
+                  <div className="stack-summary"><div><small>PROJECT</small><strong>{projectName}</strong><code>{plan.targetPath}</code></div><div><small>STACK</small><strong>{projectType === 'fullstack' ? `${fullstackRecipeId === 'FS-07' ? 'Vue 3' : 'React'} + Vite + Express + PostgreSQL + Drizzle` : projectType === 'backend' ? `${selectedBackend?.displayName ?? 'Express'} REST API` : `${selectedFrontend?.displayName ?? frontendId} + ${activeTemplate ? 'Forma-managed styling' : stylingAdapters.find((adapter) => adapter.id === stylingId)?.displayName ?? stylingId}`}</strong><span>{plan.recipeId} · {plan.recipeId === 'BE-02' || plan.recipeId === 'BE-04' ? 'Go' : plan.recipeId === 'BE-05' ? 'PHP' : plan.recipeId === 'BE-06' ? 'Python' : 'TypeScript'} · {managerId} · {documentation} docs</span>{(projectType === 'backend' || projectType === 'fullstack') && <span>{databaseAdapters.find((adapter) => adapter.id === databaseId)?.displayName ?? 'Database unavailable'} · {ormAdapters.find((adapter) => adapter.id === ormId)?.displayName ?? 'ORM unavailable'}</span>}{(plan.recipeId === 'BE-02' || plan.recipeId === 'BE-04') && <code>Module: {modulePath}</code>}</div>{activeTemplate && <div><small>FORMA TEMPLATE</small><strong>{activeTemplate.name}</strong><span>{selectedVariant?.name ?? activeTemplate.variants.find((variant) => variant.default)?.name ?? 'Default'} variant · planned integration</span></div>}</div>
 
                 <div className="review-section"><div className="review-section-heading"><div><span className="review-icon" aria-hidden="true">✓</span><h3>Environment checks</h3></div><StatusPill tone={doctor?.ready ? 'good' : 'bad'}>{doctor?.ready ? 'READY' : 'BLOCKED'}</StatusPill></div>
                   {doctor?.tools.filter((tool) => tool.id !== 'target').map((tool) => <div className="doctor-row" key={tool.id}><span className={tool.available ? 'check-state ok' : 'check-state missing'} aria-hidden="true">{tool.available ? '✓' : '!'}</span><div><strong>{tool.id}{tool.version ? ` · ${tool.version}` : ''}</strong><small>{tool.message}</small></div><span className={tool.available ? 'doctor-status ok' : 'doctor-status missing'}>{tool.available ? 'Ready' : 'Required'}</span></div>)}

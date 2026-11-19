@@ -146,6 +146,8 @@ enum DesktopRecipeId {
     Be09,
     #[serde(rename = "FS-06")]
     Fs06,
+    #[serde(rename = "FS-07")]
+    Fs07,
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -309,7 +311,15 @@ impl DesktopSelectionV1 {
                 "git": { "initialize": false, "initialCommit": false }
             });
         }
-        if matches!(self.recipe_id, DesktopRecipeId::Fs06) {
+        if matches!(
+            self.recipe_id,
+            DesktopRecipeId::Fs06 | DesktopRecipeId::Fs07
+        ) {
+            let frontend = if matches!(self.recipe_id, DesktopRecipeId::Fs07) {
+                "frontend.vue-vite"
+            } else {
+                "frontend.react-vite"
+            };
             return json!({
                 "schemaVersion": 1,
                 "project": {
@@ -317,7 +327,7 @@ impl DesktopSelectionV1 {
                     "parentDirectory": self.parent_directory,
                     "type": "fullstack"
                 },
-                "frontend": { "adapterId": "frontend.react-vite", "language": "ts", "manager": "npm" },
+                "frontend": { "adapterId": frontend, "language": "ts", "manager": "npm" },
                 "backend": { "adapterId": "backend.express", "manager": "npm" },
                 "database": {
                     "adapterId": "database.postgresql",
@@ -354,7 +364,8 @@ impl DesktopSelectionV1 {
             | DesktopRecipeId::Be07
             | DesktopRecipeId::Be08
             | DesktopRecipeId::Be09
-            | DesktopRecipeId::Fs06 => {
+            | DesktopRecipeId::Fs06
+            | DesktopRecipeId::Fs07 => {
                 unreachable!("backend selection returned above")
             }
         };
@@ -457,13 +468,15 @@ impl DesktopSelectionV1 {
                 "Remove the template selection and resolve the backend plan again.",
             ));
         }
-        if matches!(self.recipe_id, DesktopRecipeId::Fs06)
-            && (self.template_id.is_some() || self.template_variant_id.is_some())
+        if matches!(
+            self.recipe_id,
+            DesktopRecipeId::Fs06 | DesktopRecipeId::Fs07
+        ) && (self.template_id.is_some() || self.template_variant_id.is_some())
         {
             return Err(error(
                 "DESKTOP_SELECTION_INVALID",
-                "FS-06 cannot include a separate Forma frontend template.",
-                "Remove the template selection and resolve the FS-06 recipe again.",
+                "Full-stack recipes cannot include a separate Forma frontend template.",
+                "Remove the template selection and resolve the selected full-stack recipe again.",
             ));
         }
         Ok(())
@@ -1905,6 +1918,29 @@ mod tests {
         assert_eq!(fullstack["git"]["initialize"], false);
         assert!(fullstack.get("template").is_none());
 
+        let vue_fullstack = DesktopSelectionV1 {
+            project_name: "vue-items-workspace".into(),
+            parent_directory: "C:\\Projects".into(),
+            recipe_id: DesktopRecipeId::Fs07,
+            documentation: DesktopDocumentationV1::Minimal,
+            template_id: None,
+            template_variant_id: None,
+            module_path: None,
+        }
+        .to_core_json("");
+        assert_eq!(vue_fullstack["project"]["type"], "fullstack");
+        assert_eq!(vue_fullstack["frontend"]["adapterId"], "frontend.vue-vite");
+        assert_eq!(vue_fullstack["backend"]["adapterId"], "backend.express");
+        assert_eq!(
+            vue_fullstack["database"]["adapterId"],
+            "database.postgresql"
+        );
+        assert_eq!(
+            vue_fullstack["database"]["accessAdapterId"],
+            "data-access.drizzle-postgresql"
+        );
+        assert_eq!(vue_fullstack["styling"]["adapterId"], "styling.css");
+
         let parsed: DesktopSelectionV1 = serde_json::from_value(json!({
             "projectName": "items-workspace",
             "parentDirectory": "C:\\Projects",
@@ -1913,6 +1949,14 @@ mod tests {
         }))
         .unwrap();
         assert!(matches!(parsed.recipe_id, DesktopRecipeId::Fs06));
+        let parsed_vue: DesktopSelectionV1 = serde_json::from_value(json!({
+            "projectName": "vue-items-workspace",
+            "parentDirectory": "C:\\Projects",
+            "recipeId": "FS-07",
+            "documentation": "minimal"
+        }))
+        .unwrap();
+        assert!(matches!(parsed_vue.recipe_id, DesktopRecipeId::Fs07));
 
         let standalone = DesktopSelectionV1 {
             project_name: "demo".into(),

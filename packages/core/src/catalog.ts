@@ -658,6 +658,17 @@ const fullstackReactExpressPostgresPins = [
   { packageName: 'vite', version: '8.3.8', integrity: 'sha512-LzOn3h9rG/0vhLdXrV4yJ4QFA9eEoqCl+Yx+kGJd7aB9w6nfNgVHKSYwLPZUHrz4ZGa+t+kXjV9itvcHDLQouA==', scope: 'devDependencies' as const },
 ] as const
 
+const fullstackVueExpressPostgresPins = [
+  ...expressPostgresDrizzlePins,
+  { packageName: 'vue', version: '3.5.45', integrity: 'sha512-3cvsib8m9c0vB24+MDKsgcW4+Da4xaBl9Z/5Tbm2pmSIsRPxcil4cdXjXlVsmJ2g64XJo5h+IRd7rsdGT9pZaw==' },
+  { packageName: '@vitejs/plugin-vue', version: '6.0.11', integrity: 'sha512-m48lskIUJGlB6qUiYhDMI8nd2ngeidz2U4nKTjqI13cFMu5rH8JeEILPkDtK9Fk/TjBA2pkj8AlbenqDaKu+ww==', scope: 'devDependencies' as const },
+  { packageName: 'vite', version: '8.3.8', integrity: 'sha512-LzOn3h9rG/0vhLdXrV4yJ4QFA9eEoqCl+Yx+kGJd7aB9w6nfNgVHKSYwLPZUHrz4ZGa+t+kXjV9itvcHDLQouA==', scope: 'devDependencies' as const },
+  { packageName: 'vue-tsc', version: '3.3.14', integrity: 'sha512-URAu2H9AuMZMg9GCgnqbaHHHd8pBZRAwNV2e2yYS8VDsoTVXHiOSo663OS6DkEvauQ2yixn5TPFJ9WV9QIspkA==', scope: 'devDependencies' as const },
+  { packageName: 'eslint-plugin-vue', version: '10.12.1', integrity: 'sha512-Z5hmchVWq4EEOCn131J2p/uS4hjkrC+goPV5c/YApTY68xTqV3K5IYqD0mYGupDvZ6iYoTSuhSZUoWN+gZIqZQ==', scope: 'devDependencies' as const },
+  { packageName: 'vue-eslint-parser', version: '10.4.2', integrity: 'sha512-WMpzulb50kb6snghzoGzS++62wcOszAk/piYcnvzdStM8Wni/BmogYltpoOFv2eK9hDbXxvwFQgnwZGpAoUfpA==', scope: 'devDependencies' as const },
+  { packageName: '@typescript-eslint/parser', version: '8.72.2', integrity: 'sha512-llP+T1YuJOLlxEciP6OyQGtz5SMxyn+9LA2BvZw5RmToGVa1y4beEDVQL6Gje7T5WFYh19WREjDCN9Ev4gm5AA==', scope: 'devDependencies' as const },
+] as const
+
 const nestBackendPins = [
   { packageName: '@nestjs/common', version: '11.2.10', integrity: 'sha512-QJLY7Bms6lKQbZ3Iq34PTh0EI3JNlMaTWzoJDd3xWqkRhT0d320eUxSL3f8Tb9ywINptnhjPTwUD9NHw71jzYA==' },
   { packageName: '@nestjs/core', version: '11.2.10', integrity: 'sha512-3tzOVDoo701CNCb+J6JYJvXjZJLpdQnhMjjKg8bM5ePqqteYdyyvCXJzGcRpnTvjTlfDing+H7X9jp57TfWhRQ==' },
@@ -1212,6 +1223,29 @@ export const RECIPES: readonly RecipeManifestV1[] = [
       'PostgreSQL 16+ is user-provided. Generation, API startup, /health, and SQL generation do not migrate or require a live database.',
       'Migration requires explicit npm run db:migrate -- --target host:port/database confirmation; direct Drizzle Kit migration remains outside wrapper enforcement.',
       'npm lifecycle/build scripts execute unsandboxed only after explicit consent. Independent acceptance is PASS WITH FINDINGS and Phase 07A development closure is GO; PostgreSQL 16, clean-machine/installer, accessibility, and broader security review remain unverified.',
+    ],
+    evidenceIds: [],
+  },
+  {
+    schemaVersion: 1,
+    id: 'FS-07',
+    status: 'planned',
+    platform: 'windows',
+    projectType: 'fullstack',
+    frontend: 'frontend.vue-vite',
+    backend: 'backend.express',
+    database: 'database.postgresql',
+    dataAccess: 'data-access.drizzle-postgresql',
+    language: 'ts',
+    manager: 'npm',
+    styling: 'styling.css',
+    dependencies: fullstackVueExpressPostgresPins,
+    checks: ['dependency-install', 'dependency-integrity', 'lockfile-integrity', 'migration-generation', 'typecheck', 'lint', 'unit-tests', 'database-safety-tests', 'build', 'fullstack-http-smoke', 'graceful-shutdown'],
+    limitations: [
+      'One npm workspace contains Vue 3/Vite web app and Express/PostgreSQL/Drizzle API; this is not two independent generated projects.',
+      'FS-07 pinned Vue/Vite toolchain intersection requires Node.js 22.18+ or 24.12+; PostgreSQL 16+ is user-provided.',
+      'Generation, API startup, /health, and SQL generation do not connect or migrate. Migration requires explicit npm run db:migrate -- --target host:port/database; direct Drizzle Kit migration remains outside wrapper enforcement.',
+      'npm lifecycle/build scripts execute unsandboxed only after explicit consent. FS-07 remains planned pending independent acceptance; public release remains NO-GO.',
     ],
     evidenceIds: [],
   },

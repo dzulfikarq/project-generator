@@ -10,10 +10,13 @@ export function resolveSelection(selection: ProjectSelectionV1): ResolvedSelecti
   const { project } = selection
   const outputPath = resolveOutputPath(project.parentDirectory, project.name)
   if (project.type === 'fullstack') {
-    const recipe = RECIPES.find((candidate) => candidate.id === 'FS-06')
-    const valid = selection.frontend?.adapterId === 'frontend.react-vite'
-      && selection.frontend.language === 'ts'
-      && selection.frontend.manager === 'npm'
+    const frontendId = selection.frontend?.adapterId
+    const isVue = frontendId === 'frontend.vue-vite'
+    const recipeId = isVue ? 'FS-07' : 'FS-06'
+    const recipe = RECIPES.find((candidate) => candidate.id === recipeId)
+    const valid = (frontendId === 'frontend.react-vite' || isVue)
+      && selection.frontend?.language === 'ts'
+      && selection.frontend?.manager === 'npm'
       && selection.backend?.adapterId === 'backend.express'
       && selection.backend.manager === 'npm'
       && selection.backend.modulePath === undefined
@@ -24,7 +27,7 @@ export function resolveSelection(selection: ProjectSelectionV1): ResolvedSelecti
       && selection.styling.uiLibraryId === undefined
       && selection.template === undefined
       && !selection.git.initialize && !selection.git.initialCommit
-    if (!valid || !recipe) throw incompatibleError('Fullstack generation requires the exact FS-06 React/Vite + Express + PostgreSQL/Drizzle + npm tuple; other combinations are not cataloged.')
+    if (!valid || !recipe) throw incompatibleError('Fullstack generation requires the exact FS-06 React/Vite or FS-07 Vue/Vite + Express + PostgreSQL/Drizzle + npm tuple; other combinations are not cataloged.')
     return { selection: Object.freeze(selection), recipe, outputPath: win32.normalize(outputPath) }
   }
   if (project.type === 'backend') {

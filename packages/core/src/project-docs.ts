@@ -131,8 +131,30 @@ export function fullstackProjectDocs(resolved: ResolvedSelection, nodeVersion: s
   return minimal
 }
 
+export function vueFullstackProjectDocs(resolved: ResolvedSelection, nodeVersion: string, npmVersion: string): Map<string, string> {
+  const name = resolved.selection.project.name
+  const files = new Map<string, string>([
+    ['README.md', `# ${name}\n\nVue 3 + Vite frontend and Express + PostgreSQL + Drizzle API in one npm workspace (FS-07, planned).\n\n## Run locally\n\n1. Copy \.env.example to \.env and set user-managed PostgreSQL credentials.\n2. Run \`npm run dev\`; Vite serves Vue and proxies \`/api\` and \`/health\` to Express.\n3. Review generated SQL under \`apps/api/drizzle/\`; migrations are never applied automatically.\n\nSee [docs/SETUP.md](docs/SETUP.md) and [docs/DATABASE-SAFETY.md](docs/DATABASE-SAFETY.md). npm lifecycle/build code is unsandboxed.\n`],
+    ['docs/SETUP.md', `# Setup\n\nGenerated with Vue 3, Vite, Express, PostgreSQL, Drizzle ORM, Node.js ${nodeVersion}, npm ${npmVersion}. Node.js 22.18+ or 24.12+ and npm 10+ required. PostgreSQL 16+ is user-provided and required only for CRUD and explicit migration.\n\n## Install and run\n\n\`\`\`powershell\nCopy-Item .env.example .env\nnpm install\nnpm run dev\n\`\`\`\n\nThe root workspace owns one \`package-lock.json\`. Set \`DATABASE_URL\` only in root \`.env\`; no database credential is placed in Vue code or \`VITE_*\` variables. API startup validates URL syntax and creates a lazy pool without connecting. GET \`/health\` is process-only.\n\n## Schema and migration\n\nGenerate SQL with \`npm run db:generate\`, then review \`apps/api/drizzle/\`. Generation, startup, health, and SQL generation never migrate or provision PostgreSQL. Apply only after explicit target review:\n\n\`\`\`powershell\nnpm run db:migrate -- --target host:port/database\n\`\`\`\n\nDirect Drizzle Kit invocation remains outside wrapper enforcement.\n\n## Checks\n\n\`\`\`powershell\nnpm run typecheck\nnpm run lint\nnpm test\nnpm run build\n\`\`\`\n\nThis one workspace is not two independent projects. Recipe FS-07 remains planned; npm lifecycle/build scripts execute unsandboxed.\n`],
+  ])
+  if (resolved.selection.documentation === 'minimal') return files
+  files.set('AGENTS.md', '# Agent instructions\n\n- Keep Vue 3/Vite under `apps/web` and Express/PostgreSQL/Drizzle under `apps/api`.\n- Keep one npm workspace and root `package-lock.json`.\n- Never provision, reset, or automatically migrate PostgreSQL; review SQL and use guarded explicit migration.\n- Keep database credentials in root `.env`, never in frontend or `VITE_*` values.\n- FS-07 remains planned; no acceptance or release approval is implied.\n')
+  files.set('docs/ARCHITECTURE.md', '# Architecture\n\nOne npm workspace contains a Vue 3 Composition API application in `apps/web` and Express API in `apps/api`. Vite proxies same-origin `/api` and `/health` to Express. The browser has no PostgreSQL credentials.\n\nThe API uses a lazy `pg` pool and Drizzle schema for item CRUD. Startup validates configuration without opening a database connection. Health is process-only. Drizzle Kit writes reviewed SQL under `apps/api/drizzle/`; only the explicit guarded migration wrapper applies it.\n\nGeneration and startup never provision PostgreSQL. Both applications share one owned generation transaction, root manifest, and root lockfile.\n')
+  files.set('docs/TESTING.md', '# Testing\n\n- `npm run typecheck` checks API TypeScript and Vue SFCs with `vue-tsc`.\n- `npm run lint` checks Express TypeScript, Vue SFCs, and frontend TypeScript.\n- `npm test` runs API safety/shutdown tests and frontend API-client tests. Database tests use an isolated loopback probe; never point test configuration at a shared or production database.\n- `npm run build` builds API and Vue/Vite production assets.\n- Generator smoke serves the built Vue page, probes the Vite `/api` proxy and process-only API health, and asserts zero PostgreSQL connections. This is HTTP smoke, not browser automation.\n- CRUD requires an isolated PostgreSQL 16+ service and a reviewed explicit migration.\n')
+  if (resolved.selection.documentation === 'standard') return files
+  files.set('CLAUDE.md', 'Read AGENTS.md and docs/ before changing this project. Do not claim checks passed unless you ran them.\n')
+  files.set('agent.md', '# Agent notes\n\nGenerated baseline only; no agent history or approval is asserted.\n')
+  files.set('decision.md', '# Decision policy\n\nRecord future material decisions in docs/decisions/index.md. Generated baseline is not an approval.\n')
+  files.set('design.md', '# Design notes\n\nVue/Vite frontend provides item CRUD for the Express/PostgreSQL/Drizzle API. No custom product requirements were supplied.\n')
+  files.set('docs/PRD.md', `# Project brief\n\n- Project: ${name}\n- Stack: Vue 3 + Vite, Express, PostgreSQL, Drizzle ORM\n- Recipe: FS-07 (planned)\n- Scope: one workspace with frontend/API integration; no automatic database provisioning or migration.\n- Status: generated starter; independent acceptance and release approval are pending.\n`)
+  files.set('docs/decisions/index.md', '# Decision register\n\nNo project decisions or approvals have been recorded.\n')
+  files.set('docs/qa/acceptance-matrix.md', '# Verification status\n\nSee `.project-generator/manifest.json` for generator checks. No recipe promotion or release approval is implied.\n')
+  return files
+}
+
 function generatedContent(resolved: ResolvedSelection, nodeVersion: string, npmVersion: string, forma?: FormaInstallEvidence): Map<string, string> {
   if (resolved.recipe.id === 'FS-06') return fullstackProjectDocs(resolved, nodeVersion, npmVersion)
+  if (resolved.recipe.id === 'FS-07') return vueFullstackProjectDocs(resolved, nodeVersion, npmVersion)
   if (resolved.recipe.id === 'BE-08' || resolved.recipe.id === 'BE-09') return postgresProjectDocs(resolved, nodeVersion, npmVersion)
   const details = recipeText(resolved)
   const isNest = resolved.recipe.id === 'BE-03'
