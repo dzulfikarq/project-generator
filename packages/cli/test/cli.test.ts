@@ -25,7 +25,7 @@ test('catalog emits local versioned JSON without network', () => {
   }
   assert.equal(envelope.ok, true)
   assert.deepEqual(envelope.data.recipes.map(({ id, status }) => [id, status]), [
-    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'], ['FE-06', 'planned'], ['FE-07', 'planned'], ['FE-08', 'planned'], ['FE-09', 'planned'], ['FE-10', 'planned'], ['FE-11', 'planned'], ['FE-12', 'planned'], ['FE-13', 'planned'], ['FE-14', 'planned'], ['FE-15', 'planned'], ['BE-01', 'planned'], ['BE-07', 'planned'], ['BE-08', 'planned'], ['BE-09', 'planned'], ['BE-03', 'planned'], ['BE-02', 'planned'], ['BE-04', 'planned'], ['BE-05', 'planned'], ['BE-06', 'planned'], ['FS-06', 'planned'],
+    ['FE-01', 'planned'], ['FE-02', 'planned'], ['FE-03', 'planned'], ['FE-04', 'planned'], ['FE-05', 'planned'], ['FE-06', 'planned'], ['FE-07', 'planned'], ['FE-08', 'planned'], ['FE-09', 'planned'], ['FE-10', 'planned'], ['FE-11', 'planned'], ['FE-12', 'planned'], ['FE-13', 'planned'], ['FE-14', 'planned'], ['FE-15', 'planned'], ['BE-01', 'planned'], ['BE-07', 'planned'], ['BE-08', 'planned'], ['BE-09', 'planned'], ['BE-03', 'planned'], ['BE-02', 'planned'], ['BE-04', 'planned'], ['BE-05', 'planned'], ['BE-06', 'planned'], ['FS-06', 'planned'], ['FS-07', 'planned'],
   ])
   assert.deepEqual(envelope.data.packageManagers.map(({ id, version }) => [id, version]), [['npm', '>=10.0.0'], ['yarn', '4.18.1'], ['pnpm', '11.28.11'], ['go-modules', 'Go 1.22+'], ['composer', '>=2.2.0'], ['uv', '>=0.8.0']])
   const vue = envelope.data.recipes.find(({ id }) => id === 'FE-03')!
@@ -90,6 +90,18 @@ test('catalog emits local versioned JSON without network', () => {
   assert.equal(fullstack.manager, 'npm')
   assert.equal(fullstack.status, 'planned')
   assert.ok(fullstack.dependencies?.every(({ integrity }) => integrity.startsWith('sha512-')))
+  const vueFullstack = envelope.data.recipes.find(({ id }) => id === 'FS-07')!
+  assert.equal(vueFullstack.projectType, 'fullstack')
+  assert.equal(vueFullstack.frontend, 'frontend.vue-vite')
+  assert.equal(vueFullstack.backend, 'backend.express')
+  assert.equal(vueFullstack.database, 'database.postgresql')
+  assert.equal(vueFullstack.dataAccess, 'data-access.drizzle-postgresql')
+  assert.equal(vueFullstack.manager, 'npm')
+  assert.equal(vueFullstack.status, 'planned')
+  assert.deepEqual(vueFullstack.dependencies?.filter(({ packageName }) => ['vue', '@vitejs/plugin-vue', 'vite', 'vue-tsc'].includes(packageName)).map(({ packageName, version }) => [packageName, version]), [
+    ['vue', '3.5.45'], ['@vitejs/plugin-vue', '6.0.11'], ['vite', '8.3.8'], ['vue-tsc', '3.3.14'],
+  ])
+  assert.ok(vueFullstack.dependencies?.every(({ integrity }) => integrity.startsWith('sha512-')))
   assert.ok(envelope.data.databaseAdapters.some(({ id }) => id === 'database.sqlite'))
   assert.ok(envelope.data.ormAdapters.some(({ id }) => id === 'data-access.drizzle-sqlite'))
   const nest = envelope.data.recipes.find(({ id }) => id === 'BE-03')!
@@ -126,7 +138,8 @@ test('help keeps standalone, database, and full-stack recipes distinct', () => {
   assert.match(result.stdout, /BE-08 Express \+ npm \+ PostgreSQL \+ Drizzle/)
   assert.match(result.stdout, /BE-09 NestJS \+ npm \+ PostgreSQL \+ Drizzle/)
   assert.match(result.stdout, /FS-06 React \+ Vite \+ Express \+ PostgreSQL \+ Drizzle \+ npm in one workspace/)
-  assert.match(result.stdout, /BE-01–BE-09, FS-06.*remain planned/)
+  assert.match(result.stdout, /FS-07 Vue 3 \+ Vite \+ Express \+ PostgreSQL \+ Drizzle \+ npm in one workspace/)
+  assert.match(result.stdout, /BE-01–BE-09, FS-06\/FS-07.*remain planned/)
 })
 
 test('recovery apply refuses mismatched confirmation before native operations', () => {

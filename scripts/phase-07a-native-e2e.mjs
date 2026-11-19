@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { openSync, closeSync, readFileSync } from 'node:fs'
+import { cpSync, existsSync, openSync, closeSync, readFileSync, rmSync } from 'node:fs'
 import { access, mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { spawn, spawnSync } from 'node:child_process'
@@ -17,16 +17,21 @@ for (const method of ['ok', 'equal', 'deepEqual', 'match']) {
 const originalFail = assert.fail
 assert.fail = (...args) => { assertionCounts.failed++; return originalFail.apply(assert, args) }
 
-if (process.platform !== 'win32') throw new Error('Phase 07A native acceptance requires Windows.')
+const phase = process.env.PG_NATIVE_E2E_PHASE === '07B' ? '07B' : '07A'
+const recipeId = phase === '07B' ? 'FS-07' : 'FS-06'
+const frameworkSummary = phase === '07B' ? 'Vue 3 + Vite + Express + PostgreSQL + Drizzle' : 'React + Vite + Express + PostgreSQL + Drizzle'
+const nativeFlow = process.env.PG_NATIVE_E2E_FLOW === 'success-only' ? 'success-only' : 'full'
+if (process.platform !== 'win32') throw new Error(`Phase ${phase} native acceptance requires Windows.`)
 const root = resolve(import.meta.dirname, '..')
 const cli = join(root, 'packages', 'cli', 'dist', 'src', 'index.js')
 const tempBase = join(process.env.LOCALAPPDATA ?? win32.join(homedir(), 'AppData', 'Local'), 'Temp', 'opencode')
 const debugPort = Number(process.env.PG_WEBVIEW_DEBUG_PORT ?? 9339)
 const debugBase = `http://127.0.0.1:${debugPort}`
-const cancelName = 'pg-fs06-native-cancel'
-const collisionName = 'pg-fs06-native-collision'
+const cancelName = `pg-${recipeId.toLowerCase()}-native-cancel`
+const collisionName = `pg-${recipeId.toLowerCase()}-native-collision`
 const runtimeEnv = { ...process.env }
-for (const key of Object.keys(runtimeEnv)) if (/^(PGHOST|PGPORT|PGDATABASE|PGUSER|PGPASSWORD|PGSERVICE|PGSSLMODE|PGOPTIONS|PGAPPNAME|PGTARGETSESSIONATTRS|PGDATA|PG_E2E_DATABASE_URL)$/i.test(key)) delete runtimeEnv[key]
+for (const key of Object.keys(runtimeEnv)) if (/^(PGHOST|PGPORT|PGDATABASE|PGUSER|PGPASSWORD|PGSERVICE|PGSSLMODE|PGOPTIONS|PGAPPNAME|PGTARGETSESSIONATTRS|PGDATA|PG_E2E_DATABASE_URL)$/i.test(key)
+  || (nativeFlow === 'success-only' && /^NPM_CONFIG_/i.test(key))) delete runtimeEnv[key]
 delete runtimeEnv.DATABASE_URL
 
 let runRoot
@@ -35,6 +40,7 @@ let parent
 let devProcess
 let devLogFd
 let devStartError
+let resourceSnapshot
 let socket
 let nextId = 0
 let lastNpmCandidates = []
@@ -53,7 +59,7 @@ async function assertPortFree(port) {
 }
 
 function isolatedEnvironment() {
-  return {
+  const env = {
     ...runtimeEnv,
     LOCALAPPDATA: localAppData,
     APPDATA: join(runRoot, 'app-data', 'roaming'),
@@ -65,6 +71,12 @@ function isolatedEnvironment() {
     PG_WEBVIEW_DEBUG_PORT: String(debugPort),
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${debugPort} --user-data-dir="${join(runRoot, 'webview-profile')}"`,
   }
+  if (nativeFlow === 'success-only') Object.assign(env, {
+    NPM_CONFIG_USERCONFIG: join(runRoot, 'npm-user.npmrc'),
+    NPM_CONFIG_GLOBALCONFIG: join(runRoot, 'npm-global.npmrc'),
+    NPM_CONFIG_CACHE: join(runRoot, 'npm-cache'),
+  })
+  return env
 }
 
 async function waitForDevTools(timeoutMs = 30 * 60 * 1000) {
@@ -239,7 +251,8 @@ async function makeFullstackReview(name, expectedDoctorState = 'READY', fromResu
   await fill('#project-parent', parent)
   await click('.wizard-actions .primary-button', 'Choose framework')
   await click('.compact-choice', 'Full-stack')
-  const stack = await evaluate(`JSON.stringify({selected:[...document.querySelectorAll('.compact-choice')].find(e=>e.innerText.includes('Full-stack'))?.getAttribute('aria-pressed'),summary:document.body.innerText.includes('FS-06 · React + Vite + Express + PostgreSQL + Drizzle')})`)
+  if (recipeId === 'FS-07') await click('.compact-choice', 'Vue 3 + Express + PostgreSQL + Drizzle')
+  const stack = await evaluate(`JSON.stringify({selected:[...document.querySelectorAll('.compact-choice')].find(e=>e.innerText.includes('Full-stack'))?.getAttribute('aria-pressed'),summary:document.body.innerText.includes(${JSON.stringify(`${recipeId} · ${frameworkSummary}`)})})`)
   assert.deepEqual(JSON.parse(stack), { selected: 'true', summary: true })
   await click('.wizard-actions .primary-button', 'Choose tools')
   assert.match(await evaluate('document.body.innerText'), /one owned workspace, one root lockfile/i)
@@ -268,11 +281,11 @@ async function startCancelledGeneration() {
   assert.equal(review.consent, false)
   assert.equal(review.planned, false)
   assert.equal(review.createDisabled, true)
-  assert.ok(review.text.includes('FS-06') && review.text.toLowerCase().includes('planned'))
+  assert.ok(review.text.includes(recipeId) && review.text.toLowerCase().includes('planned'))
   assert.match(review.text, /PostgreSQL is user-provided/i)
   assert.match(review.text, /Direct Drizzle Kit migration remains callable outside the wrapper/i)
   assert.ok(review.text.includes('one owned generation transaction'))
-  assert.deepEqual(review.stack, [cancelName, 'React + Vite + Express + PostgreSQL + Drizzle'])
+  assert.deepEqual(review.stack, [cancelName, frameworkSummary])
 
   await click('.disclosure-details summary', 'Expected project files')
   const expectedWrites = await evaluate("[...document.querySelectorAll('.disclosure-details li code')].map(e=>e.innerText)")
@@ -281,16 +294,68 @@ async function startCancelledGeneration() {
   assert.equal(await evaluate("document.body.innerText.toLowerCase().includes('separate network approval required')"), false)
 
   await check('.consent-box input')
-  assert.equal(await evaluate("[...document.querySelectorAll('.wizard-actions .primary-button')].find(x=>x.innerText.includes('Create project'))?.disabled"), true, 'dependency consent alone must not authorize planned FS-06')
+  assert.equal(await evaluate("[...document.querySelectorAll('.wizard-actions .primary-button')].find(x=>x.innerText.includes('Create project'))?.disabled"), true, `dependency consent alone must not authorize planned ${recipeId}`)
   await check('.internal-consent input')
   await waitFor("[...document.querySelectorAll('.wizard-actions .primary-button')].some(x=>x.innerText.includes('Create project')&&!x.disabled)", 'explicit npm and planned-recipe approvals')
   const priorJobs = await evaluate("[...document.querySelectorAll('[data-event-type=\"job-started\"]')].map(e=>e.dataset.jobId)")
   await click('.wizard-actions .primary-button', 'Create project')
-  await waitFor("document.querySelector('#generation-title') !== null", 'native FS-06 generation screen')
+  await waitFor("document.querySelector('#generation-title') !== null", `native ${recipeId} generation screen`)
   await waitFor(`([...document.querySelectorAll('[data-event-type="job-started"]')].some(e=>!${JSON.stringify(priorJobs)}.includes(e.dataset.jobId)))`, 'new native job-started event')
   const jobId = await evaluate(`([...document.querySelectorAll('[data-event-type="job-started"]')].map(e=>e.dataset.jobId).find(id=>!${JSON.stringify(priorJobs)}.includes(id)))`)
   assert.ok(jobId)
   return { review, jobId }
+}
+
+async function startSuccessfulGeneration() {
+  const name = `pg-${recipeId.toLowerCase()}-native-success`
+  const review = await makeFullstackReview(name)
+  assert.ok(review.hasConsent && review.hasPlanned)
+  assert.equal(review.consent, false)
+  assert.equal(review.planned, false)
+  assert.equal(review.createDisabled, true)
+  assert.ok(review.text.includes(recipeId) && review.text.toLowerCase().includes('planned'))
+  assert.match(review.text, /PostgreSQL is user-provided/i)
+  assert.match(review.text, /Direct Drizzle Kit migration remains callable outside the wrapper/i)
+
+  await check('.consent-box input')
+  assert.equal(await evaluate("[...document.querySelectorAll('.wizard-actions .primary-button')].find(x=>x.innerText.includes('Create project'))?.disabled"), true, `dependency consent alone must not authorize planned ${recipeId}`)
+  await check('.internal-consent input')
+  await waitFor("[...document.querySelectorAll('.wizard-actions .primary-button')].some(x=>x.innerText.includes('Create project')&&!x.disabled)", 'explicit npm and planned-recipe approvals')
+  const priorJobs = await evaluate("[...document.querySelectorAll('[data-event-type=\"job-started\"]')].map(e=>e.dataset.jobId)")
+  await click('.wizard-actions .primary-button', 'Create project')
+  await waitFor("document.querySelector('#generation-title') !== null", `native ${recipeId} generation screen`)
+  const jobId = await waitFor(`([...document.querySelectorAll('[data-event-type="job-started"]')].map(e=>e.dataset.jobId).find(id=>!${JSON.stringify(priorJobs)}.includes(id)))`, 'new native job-started event')
+  assert.ok(jobId)
+
+  // Result page renders terminal status and validations, not generation-page activity events.
+  await waitFor("document.querySelector('.result-hero.completed') && document.querySelector('#result-title')?.textContent.trim() === 'Project checks passed'", `native ${recipeId} successful result`, 30 * 60 * 1000)
+  const visibleResult = await evaluate("(() => ({title:document.querySelector('#result-title')?.textContent.trim(),completed:document.querySelector('.result-hero')?.classList.contains('completed'),tags:[...document.querySelectorAll('.result-tags span')].map(e=>e.innerText.trim().toLowerCase()),validation:[...document.querySelectorAll('.validation-list li')].map(li=>({text:li.innerText.trim(),status:li.querySelector('.status-pill')?.innerText.trim().toLowerCase()}))}))()")
+  assert.equal(visibleResult.title, 'Project checks passed')
+  assert.equal(visibleResult.completed, true)
+  assert.ok(visibleResult.tags.includes(recipeId.toLowerCase()))
+  assert.ok(visibleResult.tags.includes('completed'))
+  assert.ok(visibleResult.validation.length > 0, 'successful result page must show validation results')
+  assert.ok(visibleResult.validation.every((item) => item.status === 'passed'), 'every visible validation must pass')
+
+  const projectPath = join(parent, name)
+  const manifest = JSON.parse(await readFile(join(projectPath, '.project-generator', 'manifest.json'), 'utf8'))
+  assert.equal(manifest.recipeId, recipeId)
+  assert.equal(manifest.recipeStatusAtCreation, 'planned')
+  assert.equal(manifest.validation.length, 15, 'generated FS-07 manifest must contain all 15 validations')
+  assert.ok(manifest.validation.every((item) => item.status === 'pass'), 'all generated-manifest validations must pass')
+  await access(join(projectPath, 'package-lock.json'))
+
+  return { name, jobId, projectPath, visibleResult, manifestValidationCount: manifest.validation.length }
+}
+
+function restoreNativeResources() {
+  if (!resourceSnapshot) return
+  const resourceRoot = join(root, 'packages', 'desktop', 'src-tauri', 'resources', 'pg-runtime')
+  for (const { name, existed, backupPath } of resourceSnapshot) {
+    const target = join(resourceRoot, name)
+    rmSync(target, { recursive: true, force: true })
+    if (existed) cpSync(backupPath, target, { recursive: true })
+  }
 }
 
 async function runAcceptance() {
@@ -299,17 +364,32 @@ async function runAcceptance() {
   if (!(await stat(tempBase)).isDirectory()) throw new Error('Approved OpenCode temp path is not a directory.')
   await assertPortFree(1420)
   await assertPortFree(debugPort)
-  runRoot = await mkdtemp(join(tempBase, 'phase-07a-native-e2e-'))
+  runRoot = await mkdtemp(join(tempBase, `phase-${phase.toLowerCase()}-native-e2e-`))
   localAppData = join(runRoot, 'app-data', 'local')
   parent = join(runRoot, 'w')
   for (const path of [localAppData, join(runRoot, 'app-data', 'roaming'), join(runRoot, 'app-data', 'temp'), join(runRoot, 'webview-profile')]) await mkdir(path, { recursive: true })
+  if (nativeFlow === 'success-only') {
+    await writeFile(join(runRoot, 'npm-user.npmrc'), '', { flag: 'wx' })
+    await writeFile(join(runRoot, 'npm-global.npmrc'), '', { flag: 'wx' })
+    const resourceRoot = join(root, 'packages', 'desktop', 'src-tauri', 'resources', 'pg-runtime')
+    const backupRoot = join(runRoot, 'resource-backup')
+    await mkdir(backupRoot)
+    resourceSnapshot = []
+    for (const name of ['cli', 'runtime', 'catalog.json', 'runtime-manifest.json']) {
+      const target = join(resourceRoot, name)
+      const existed = existsSync(target)
+      const backupPath = join(backupRoot, name)
+      if (existed) cpSync(target, backupPath, { recursive: true })
+      resourceSnapshot.push({ name, existed, backupPath })
+    }
+  }
   await mkdir(parent)
   assert.deepEqual(await readdir(parent), [], 'native disposable workspace must start empty')
 
   const collisionPath = join(parent, collisionName)
   await mkdir(collisionPath)
   const sentinelPath = join(collisionPath, 'preserve.txt')
-  await writeFile(sentinelPath, 'preserve FS-06 collision sentinel\n', { flag: 'wx' })
+  await writeFile(sentinelPath, `preserve ${recipeId} collision sentinel\n`, { flag: 'wx' })
   const logPath = join(runRoot, 'desktop-dev.log')
   devLogFd = openSync(logPath, 'wx')
   devProcess = spawn(process.execPath, [join(root, 'scripts', 'desktop.mjs'), 'dev', 'system'], {
@@ -328,11 +408,29 @@ async function runAcceptance() {
   assert.ok(runtime.includes('LOCAL DEVELOPMENT'))
   assert.ok(runtime.includes('No release approval'))
 
+  if (nativeFlow === 'success-only') {
+    const generation = await startSuccessfulGeneration()
+    assert.equal(await readFile(sentinelPath, 'utf8'), `preserve ${recipeId} collision sentinel\n`)
+    assert.deepEqual((await readdir(parent)).sort(), [collisionName, generation.name].sort())
+    result = {
+      status: 'PASS', phase, assertions: { ...assertionCounts },
+      flow: 'targeted native Tauri/WebView2 successful generation; no PostgreSQL service or DATABASE_URL',
+      host: `${process.platform}-${process.arch}`, node: process.version,
+      recipe: recipeId, recipeStatus: 'planned',
+      result: 'Project checks passed; result-page hero, status tags, and all visible validations asserted',
+      manifest: `${generation.manifestValidationCount}/15 validations passed`,
+      npmConfig: 'user/global config and cache isolated under acceptance-owned temp root; lifecycle scripts remain unsandboxed',
+      collisionSentinel: 'unchanged', projectPath: generation.projectPath, evidenceRoot: runRoot,
+      releaseApproved: false,
+    }
+    return
+  }
+
   const cancelFlow = await startCancelledGeneration()
   const { installingEvent, npmProcess } = await waitForNativeNpmInstall(cancelFlow.jobId)
   assert.deepEqual({ type: installingEvent.type, stageId: installingEvent.stageId, stageStatus: installingEvent.stageStatus }, {
     type: 'stage-started', stageId: 'installing', stageStatus: 'running',
-  }, 'native UI must render active FS-06 installing stage')
+  }, `native UI must render active ${recipeId} installing stage`)
   assert.ok(Number.isInteger(Number(npmProcess.processId)) && Number(npmProcess.processId) > 0)
   assert.match(npmProcess.CommandLine, /npm-cli\.js.*\binstall\b/i)
   await waitFor("document.querySelector('.cancel-row button') && !document.querySelector('.cancel-row button').disabled", 'active native cancellation button')
@@ -341,14 +439,14 @@ async function runAcceptance() {
   assert.ok(stillRunning, 'same npm install PID must remain live immediately before cancellation')
   const npmPid = Number(stillRunning.processId)
   const liveInstall = {
-    observedAt: new Date().toISOString(), jobId: cancelFlow.jobId, recipeId: 'FS-06',
+    observedAt: new Date().toISOString(), jobId: cancelFlow.jobId, recipeId,
     stageId: installingEvent.stageId, npmPid, npmCommandLine: stillRunning.CommandLine,
     npmParentPid: stillRunning.parentProcessId, generatorPid: stillRunning.generatorPid,
     generatorCommandLine: stillRunning.generatorCommandLine,
   }
   await writeFile(join(runRoot, 'native-cancellation-live.json'), `${JSON.stringify(liveInstall, null, 2)}\n`, { flag: 'wx' })
   await click('.cancel-row button', 'Cancel generation')
-  await waitFor("document.querySelector('.result-hero.cancelled') !== null && document.querySelector('#result-title')?.textContent.trim() === 'Generation cancelled' && [...document.querySelectorAll('.result-tags span')].some(e=>e.innerText.trim().toLowerCase()==='cancelled')", 'native FS-06 cancelled terminal result', 5 * 60 * 1000)
+  await waitFor("document.querySelector('.result-hero.cancelled') !== null && document.querySelector('#result-title')?.textContent.trim() === 'Generation cancelled' && [...document.querySelectorAll('.result-tags span')].some(e=>e.innerText.trim().toLowerCase()==='cancelled')", `native ${recipeId} cancelled terminal result`, 5 * 60 * 1000)
   const cancelledResult = await evaluate("(() => { const hero=document.querySelector('.result-hero'); const status=[...document.querySelectorAll('.result-tags span')].map(e=>e.innerText.trim()).find(x=>x.toLowerCase()==='cancelled'); return {status:hero?.classList.contains('cancelled')&&status?'cancelled':'unknown',displayedStatus:status?.toLowerCase()??null,title:document.querySelector('#result-title')?.textContent.trim()} })()")
   assert.deepEqual(cancelledResult, { status: 'cancelled', displayedStatus: 'cancelled', title: 'Generation cancelled' })
   const npmTerminated = await waitForProcessExit(npmPid)
@@ -383,26 +481,26 @@ async function runAcceptance() {
   await writeFile(join(runRoot, 'native-cancellation-live.json'), `${JSON.stringify(cancellationEvidence, null, 2)}\n`)
 
   const collisionReview = await makeFullstackReview(collisionName, 'BLOCKED', true)
-  assert.ok(collisionReview.text.includes('FS-06'))
+  assert.ok(collisionReview.text.includes(recipeId))
   assert.match(collisionReview.text, /already exists/i)
   assert.equal(collisionReview.doctorStatus, 'BLOCKED')
   assert.equal(collisionReview.createDisabled, true)
   assert.equal(collisionReview.consent, false)
   assert.equal(collisionReview.planned, false)
-  assert.equal(await readFile(sentinelPath, 'utf8'), 'preserve FS-06 collision sentinel\n')
+  assert.equal(await readFile(sentinelPath, 'utf8'), `preserve ${recipeId} collision sentinel\n`)
   assert.deepEqual((await readdir(parent)).filter((entry) => entry.startsWith('.project-generator-stage-')).sort(), stageEntries.sort())
   assert.deepEqual((await readdir(parent)).sort(), [collisionName, ...stageEntries].sort())
 
   result = {
     status: 'PASS',
-    phase: '07A',
+    phase,
     assertions: { ...assertionCounts },
     flow: 'native Tauri + isolated WebView2 profile + disposable workspace; no PostgreSQL service or DATABASE_URL',
     host: `${process.platform}-${process.arch}`,
     node: process.version,
-    recipe: 'FS-06',
+    recipe: recipeId,
     recipeStatus: 'planned',
-    review: 'React + Vite + Express + PostgreSQL + Drizzle and one-workspace/one-root-lock plan shown; expected root lockfile listed once; docs and DB safety warnings shown',
+    review: `${frameworkSummary} and one-workspace/one-root-lock plan shown; expected root lockfile listed once; docs and DB safety warnings shown`,
     consent: 'npm execution and planned-recipe consents visible/unchecked; npm consent alone kept Create disabled; both explicit checks enabled internal debug generation',
     cancellation: cancellationEvidence,
     collision: 'Doctor BLOCKED; Create disabled; pre-existing sentinel unchanged; no extra owned stage',
@@ -430,14 +528,19 @@ try {
   await runAcceptance()
 } catch (cause) {
   result = {
-    status: 'FAIL', phase: '07A', assertions: { ...assertionCounts },
+    status: 'FAIL', phase, assertions: { ...assertionCounts },
     reason: cause instanceof Error ? cause.message : String(cause),
     evidenceRoot: runRoot,
   }
 } finally {
   try { await stopOwnedDesktop() }
   catch (cause) {
-    result = { status: 'FAIL', phase: '07A', assertions: { ...assertionCounts }, reason: `Native app cleanup failed: ${cause instanceof Error ? cause.message : String(cause)}`, evidenceRoot: runRoot }
+    result = { status: 'FAIL', phase, assertions: { ...assertionCounts }, reason: `Native app cleanup failed: ${cause instanceof Error ? cause.message : String(cause)}`, evidenceRoot: runRoot }
+    process.exitCode = 1
+  }
+  try { restoreNativeResources() }
+  catch (cause) {
+    result = { ...result, status: 'FAIL', cleanupError: `Could not restore generated desktop resources: ${cause instanceof Error ? cause.message : String(cause)}` }
     process.exitCode = 1
   }
   if (runRoot) {

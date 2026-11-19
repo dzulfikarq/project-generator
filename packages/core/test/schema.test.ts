@@ -6,7 +6,7 @@ import test from 'node:test'
 import { parseSelection } from '../src/schema.js'
 import { createPlan } from '../src/plan.js'
 import { resolveSelection } from '../src/resolver.js'
-import { assertFullstackInstallPathSafe, assertNestPostgresInstallPathSafe, normalizeWindowsParent, resolveOutputPath } from '../src/paths.js'
+import { assertFullstackInstallPathSafe, assertNestPostgresInstallPathSafe, assertVueFullstackInstallPathSafe, normalizeWindowsParent, resolveOutputPath } from '../src/paths.js'
 import { GeneratorError } from '../src/errors.js'
 import { supportsComposer, supportsGo, supportsGoGin, supportsNodeForAngular, supportsNodeForBackend, supportsNodeForNext, supportsNodeForNuxt, supportsNodeForPnpm, supportsNodeForVite, supportsNodeForVue, supportsNpm, supportsPhp, supportsPython, supportsUv } from '../src/toolchain.js'
 import { defaultGoModulePath, isValidGoModulePath } from '../src/go-module.js'
@@ -14,7 +14,7 @@ import { FORMA_COMMIT_SHA, isFormaCommit } from '../src/forma-catalog.js'
 import { runDoctor } from '../src/doctor.js'
 import { ADAPTERS, DATABASE_ADAPTERS, ORM_ADAPTERS, PACKAGE_MANAGERS, resolveBackendRecipe } from '../src/catalog.js'
 import { postgresProjectDocs } from '../src/postgres-project-docs.js'
-import { fullstackProjectDocs } from '../src/project-docs.js'
+import { fullstackProjectDocs, vueFullstackProjectDocs } from '../src/project-docs.js'
 
 const reactConfig = {
   schemaVersion: 1,
@@ -805,6 +805,64 @@ test('FS-06 preflights longest workspace esbuild path before staging', () => {
   assert.doesNotThrow(() => assertFullstackInstallPathSafe(parentOfLength(61), projectName, jobId))
 })
 
+test('FS-07 resolves exact Vue/Vite + Express + PostgreSQL/Drizzle workspace and documents Node intersection', () => {
+  const selection = parseSelection({
+    schemaVersion: 1,
+    project: { name: 'vue-items-workspace', type: 'fullstack', parentDirectory: 'E:\\Projects' },
+    frontend: { adapterId: 'frontend.vue-vite', language: 'ts', manager: 'npm' },
+    backend: { adapterId: 'backend.express', manager: 'npm' },
+    database: { adapterId: 'database.postgresql', accessAdapterId: 'data-access.drizzle-postgresql', mode: 'existing-service' },
+    styling: { adapterId: 'styling.css' },
+    documentation: 'full',
+    git: { initialize: false, initialCommit: false },
+  })
+  const { recipe } = resolveSelection(selection)
+  const plan = createPlan(selection)
+  assert.equal(recipe.id, 'FS-07')
+  assert.equal(recipe.status, 'planned')
+  assert.equal(recipe.frontend, 'frontend.vue-vite')
+  assert.equal(recipe.backend, 'backend.express')
+  assert.equal(recipe.database, 'database.postgresql')
+  assert.equal(recipe.dataAccess, 'data-access.drizzle-postgresql')
+  assert.equal(plan.executionAvailable, false)
+  assert.ok(plan.expectedWrites.includes('apps/web/src/App.vue'))
+  assert.ok(plan.expectedWrites.includes('apps/web/src/components/ItemForm.vue'))
+  assert.ok(plan.expectedWrites.includes('apps/web/src/components/ItemsList.vue'))
+  assert.ok(!plan.expectedWrites.includes('apps/web/src/App.tsx'))
+  assert.ok(plan.steps[0]?.readableSummary.includes('22.18+ or 24.12+'))
+  assert.ok(recipe.dependencies?.every(({ integrity }) => integrity.startsWith('sha512-')))
+  const docs = vueFullstackProjectDocs(resolveSelection(selection), '22.22.1', '10.9.4')
+  assert.match(docs.get('README.md') ?? '', /Vue 3 \+ Vite.*FS-07, planned/)
+  assert.match(docs.get('docs/SETUP.md') ?? '', /Node.js 22.18\+ or 24.12\+/)
+  assert.match(docs.get('docs/SETUP.md') ?? '', /npm run db:migrate -- --target host:port\/database/)
+  assert.match(docs.get('docs/ARCHITECTURE.md') ?? '', /Vue 3 Composition API/)
+  assert.ok(docs.has('docs/qa/acceptance-matrix.md'))
+
+  for (const invalid of [
+    { frontend: { adapterId: 'frontend.vue-vite', language: 'js', manager: 'npm' } },
+    { frontend: { adapterId: 'frontend.vue-vite', language: 'ts', manager: 'yarn' } },
+    { backend: { adapterId: 'backend.express', manager: 'pnpm' } },
+    { styling: { adapterId: 'styling.tailwind' } },
+    { database: { adapterId: 'database.sqlite', accessAdapterId: 'data-access.drizzle-sqlite', mode: 'embedded' } },
+  ]) {
+    assert.throws(() => createPlan(parseSelection({ ...selection, ...invalid })), (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_INCOMPATIBLE')
+  }
+})
+
+test('FS-07 long path preflight uses conservative nested Vite workspace path', () => {
+  const jobId = '12345678-1234-1234-1234-123456789abc'
+  const projectName = 'pg-fs07-vue'
+  const parentOfLength = (length: number) => `C:\\${'p'.repeat(length - 3)}`
+  const stagedPath = (parentLength: number) => win32.join(parentOfLength(parentLength), `.project-generator-stage-${jobId}`, projectName, 'apps', 'web', 'node_modules', '@esbuild', 'win32-x64', 'esbuild.exe')
+  const rejectedLength = stagedPath(120).length
+  assert.ok(rejectedLength > 240)
+  assert.throws(
+    () => assertVueFullstackInstallPathSafe(parentOfLength(120), projectName, jobId),
+    (error: unknown) => error instanceof GeneratorError && error.code === 'GEN_PATH_UNSAFE' && error.message.includes(`${rejectedLength} characters`),
+  )
+  assert.doesNotThrow(() => assertVueFullstackInstallPathSafe(parentOfLength(61), projectName, jobId))
+})
+
 test('plan is read-only even when parent path does not exist', () => {
   const config = parseSelection({
     ...reactConfig,
@@ -862,6 +920,28 @@ test('doctor applies framework-specific Nuxt and Angular Node requirements', { s
     const pnpmReport = await runDoctor(pnpm)
     assert.equal(pnpmReport.tools.find(({ id }) => id === 'node')?.available, supportsNodeForPnpm(process.version))
     assert.equal(pnpmReport.tools.find(({ id }) => id === 'pnpm')?.version, '11.28.11')
+
+    const vueFullstack = parseSelection({
+      schemaVersion: 1,
+      project: { name: 'vue-fullstack', type: 'fullstack', parentDirectory: parent },
+      frontend: { adapterId: 'frontend.vue-vite', language: 'ts', manager: 'npm' },
+      backend: { adapterId: 'backend.express', manager: 'npm' },
+      database: { adapterId: 'database.postgresql', accessAdapterId: 'data-access.drizzle-postgresql', mode: 'existing-service' },
+      styling: { adapterId: 'styling.css' },
+      documentation: 'minimal',
+      git: { initialize: false, initialCommit: false },
+    })
+    const originalVersion = Object.getOwnPropertyDescriptor(process, 'version')!
+    try {
+      for (const [version, supported] of [['v22.17.9', false], ['v22.18.0', true], ['v24.11.9', false], ['v24.12.0', true]] as const) {
+        Object.defineProperty(process, 'version', { ...originalVersion, value: version })
+        const report = await runDoctor(vueFullstack)
+        assert.equal(report.tools.find(({ id }) => id === 'node')?.available, supported, `FS-07 Doctor Node gate for ${version}`)
+        assert.match(report.tools.find(({ id }) => id === 'node')?.message ?? '', supported ? /Vue\/Vite and Express/ : /outside this recipe's supported range/)
+      }
+    } finally {
+      Object.defineProperty(process, 'version', originalVersion)
+    }
   } finally {
     await rm(parent, { recursive: true, force: true })
   }

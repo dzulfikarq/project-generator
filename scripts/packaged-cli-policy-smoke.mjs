@@ -7,7 +7,8 @@ import { spawnSync } from 'node:child_process'
 
 const mode = process.argv[2]
 if (mode !== 'system' && mode !== 'bundled') throw new Error('Pass runtime mode: system or bundled.')
-const includeFullstack = process.env.PG_POLICY_PHASE === '07A'
+const policyPhase = process.env.PG_POLICY_PHASE
+const fullstackIds = policyPhase === '07B' ? ['FS-06', 'FS-07'] : policyPhase === '07A' ? ['FS-06'] : []
 
 const resourceRoot = process.argv[3]
   ? resolve(process.argv[3])
@@ -51,7 +52,7 @@ const configs = [
   ['BE-02', 'backend.go-net-http', undefined, undefined, 'go-modules'],
   ['FM-01', 'frontend.react-vite', undefined, 'focus-planner'],
   ['FM-02', 'frontend.nextjs-app', undefined, 'staywise-host-dashboard'],
-  ...(includeFullstack ? [['FS-06']] : []),
+   ...fullstackIds.map((id) => [id]),
 ]
 
 function selection(id, frontend, styling, templateId, manager = 'npm') {
@@ -93,10 +94,10 @@ function selection(id, frontend, styling, templateId, manager = 'npm') {
     documentation: 'minimal',
     git: { initialize: false, initialCommit: false },
   }
-  if (id === 'FS-06') return {
+  if (id === 'FS-06' || id === 'FS-07') return {
     schemaVersion: 1,
     project: { name: 'planned-fs-06', parentDirectory: root, type: 'fullstack' },
-    frontend: { adapterId: 'frontend.react-vite', language: 'ts', manager: 'npm' },
+    frontend: { adapterId: id === 'FS-07' ? 'frontend.vue-vite' : 'frontend.react-vite', language: 'ts', manager: 'npm' },
     backend: { adapterId: 'backend.express', manager: 'npm' },
     database: { adapterId: 'database.postgresql', accessAdapterId: 'data-access.drizzle-postgresql', mode: 'existing-service' },
     styling: { adapterId: 'styling.css' },
@@ -153,7 +154,7 @@ try {
     ['BE-04', 'planned'],
     ['BE-05', 'planned'],
     ['BE-06', 'planned'],
-    ...(includeFullstack ? [['FS-06', 'planned']] : []),
+    ...fullstackIds.map((id) => [id, 'planned']),
   ])
   assert.deepEqual(catalog.data.forma.integrations.map(({ recipeId, status }) => [recipeId, status]), [['FM-01', 'planned'], ['FM-02', 'planned']])
 
@@ -193,16 +194,17 @@ try {
   assert.ok(nestPostgresPlanData.expectedWrites.includes('src/db/migrate.ts'))
   assert.equal(new Set(nestPostgresPlanData.expectedWrites).size, nestPostgresPlanData.expectedWrites.length)
 
-  if (includeFullstack) {
-    const fullstackPlanResult = invoke(['plan', '--config', join(root, 'FS-06.json'), '--json'])
+  for (const id of fullstackIds) {
+    const fullstackPlanResult = invoke(['plan', '--config', join(root, `${id}.json`), '--json'])
     assert.equal(fullstackPlanResult.status, 0, fullstackPlanResult.stdout)
     const fullstackPlan = JSON.parse(fullstackPlanResult.stdout).data
-    assert.equal(fullstackPlan.recipeId, 'FS-06')
+    assert.equal(fullstackPlan.recipeId, id)
     assert.equal(fullstackPlan.recipeStatus, 'planned')
     assert.equal(fullstackPlan.executionAvailable, false)
     assert.equal(new Set(fullstackPlan.expectedWrites).size, fullstackPlan.expectedWrites.length)
     assert.ok(fullstackPlan.expectedWrites.includes('apps/api/src/db/migrate.ts'))
     assert.ok(fullstackPlan.expectedWrites.includes('apps/web/vite.config.ts'))
+    if (id === 'FS-07') assert.ok(fullstackPlan.expectedWrites.includes('apps/web/src/App.vue'))
     assert.ok(fullstackPlan.warnings.some((warning) => warning.includes('one owned generation transaction')))
   }
 
@@ -238,7 +240,7 @@ try {
     assert.ok(output.some((event) => event.code === 'GEN_RECIPE_UNTESTED'), `${id}: ${result.stdout}`)
     assert.equal(output.some((event) => event.type === 'stage-started' && ['staging', 'scaffolding', 'installing'].includes(event.stageId)), false, `${id} entered execution stage`)
     await assert.rejects(access(join(root, `planned-${id.toLowerCase()}`)))
-    if (id.startsWith('FE-') || id === 'BE-02' || id === 'BE-07' || id === 'BE-08' || id === 'BE-09' || id === 'FS-06') {
+     if (id.startsWith('FE-') || id === 'BE-02' || id === 'BE-07' || id === 'BE-08' || id === 'BE-09' || id === 'FS-06' || id === 'FS-07') {
       const override = invoke(['generate', '--config', configPaths[index], '--jsonl', '--development-allow-planned'])
       assert.equal(override.status, 3, `${id} release override: ${override.stderr}\n${override.stdout}`)
       assert.ok(events(override.stdout).some((event) => event.code === 'GEN_RECIPE_UNTESTED'), `${id} release override was not blocked: ${override.stdout}`)
@@ -275,7 +277,7 @@ try {
   assert.equal(directResult.error?.code, 'GEN_RECIPE_UNTESTED')
 
   assert.deepEqual((await readdir(root)).sort(), configPaths.map((path) => path.split(/[\\/]/).at(-1)).sort())
-  console.log(`Packaged ${mode} CLI policy smoke passed: catalog/plan/doctor read-only; release override rejected; FE-01–FE-15, BE-01/BE-02/BE-07/BE-08/BE-09${includeFullstack ? ', FS-06' : ''}, and FM-01/FM-02 blocked before staging.`)
+  console.log(`Packaged ${mode} CLI policy smoke passed: catalog/plan/doctor read-only; release override rejected; FE-01–FE-15, BE-01/BE-02/BE-07/BE-08/BE-09${fullstackIds.length ? `, ${fullstackIds.join('/')}` : ''}, and FM-01/FM-02 blocked before staging.`)
 } finally {
   await rm(root, { recursive: true, force: true })
 }
