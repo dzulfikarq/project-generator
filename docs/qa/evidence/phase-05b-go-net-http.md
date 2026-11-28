@@ -7,6 +7,8 @@
 | Status | Bounded Windows CLI/native evidence and final regressions complete; independent acceptance and release approval pending |
 | Host | Windows 11 Pro `10.0.26300`, x64; Node.js `22.22.1`; npm `10.9.4`; Go `1.26.7 windows/amd64`; Rust/Cargo `1.99.1`; Tauri CLI `2.12.4`; WebView2 `157.0.4341.46` |
 
+> Historical evidence from 2026-11-15. A fresh Phase 08A native run on 2026-11-19 failed during validation with `GEN_PROCESS_SUPERVISOR_FAILED`; see the [current promotion-readiness assessment](phase-08a-be02-promotion-readiness.md). This earlier native pass remains evidence for its own run, not a reproduced pass or promotion verdict.
+
 ## Scope and limits
 
 Reviewed starter uses Go `>=1.22`, writes `go.mod` with `go 1.22.0`, and has no third-party dependencies, `go.sum`, npm, network fetch, database, frontend, or automatic server startup. It generates `/health`, `/api/info`, request logging, HTTP timeouts, graceful shutdown, tests, and standard Go documentation. BE-02 remains `planned`; internal evidence override does not promote it.

@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Status | **Phase 01 CLI + Phase 02 Forma + Phase 02.6 packaging PoC + Phase 03 internal UI MVP + Phase 03.5 UX polish + Phase 04A–04B.3 frontend evidence + Phase 05A–05D.2 / 06A evidence; Phase 06B independent acceptance PASS WITH FINDINGS and development closure GO; Phase 06C independent review PASS WITH FINDINGS, no product blocker, and development closure GO; Phase 07A independent acceptance PASS WITH FINDINGS and development closure GO; Phase 07B independent acceptance PASS WITH FINDINGS and development closure GO** — all FE/BE/FS/FM recipes, including FS-06/FS-07, remain planned; public release NO-GO |
+| Status | **Phase 01 CLI + Phase 02 Forma + Phase 02.6 packaging PoC + Phase 03 internal UI MVP + Phase 03.5 UX polish + Phase 04A–04B.3 frontend evidence + Phase 05A–05D.2 / 06A evidence; Phase 06B independent acceptance PASS WITH FINDINGS and development closure GO; Phase 06C independent review PASS WITH FINDINGS, no product blocker, and development closure GO; Phase 07A/07B independent acceptance PASS WITH FINDINGS and development closure GO; Phase 08A BE-02 promotion NO-GO; Phase 08A.2/08A.7 native diagnostic generation PASS and 08A.7 cleanup PASS; Phase 08A.3 Go 1.22.0 compatibility PASS for tested scope; Phase 08A.5 focused checks PASS WITH FINDINGS but cleanup FAIL; Phase 08B.3 binary provenance and one native generation PASS; prior harness assertion FAIL, corrected regression 21/21 PASS but not native-retested; History/Open/VS Code NOT VERIFIED; historical supervisor/cleanup causes UNKNOWN; independent acceptance outstanding** — BE-02 remains planned, promotion and public release NO-GO |
 | Version | 0.1.0 |
-| Date | 2026-11-19 |
+| Date | 2026-11-28 |
 | Product | Universal Project Generator Desktop |
 | Target OS | Windows 11 first |
 | Documentation inspiration | EvoPilot (PRD ↔ design ↔ decision register ↔ QA evidence) |
@@ -22,7 +22,7 @@ BE-01 adds standalone Node.js `>=22.13.0` + TypeScript + Express `5.1.0` + npm, 
 
 ## Phase 05B status
 
-BE-02 adds a standalone Go `net/http` REST API using Go Modules (Go `>=1.22`), standard library only. Windows CLI and native Forge Studio E2E passed generation, Go checks, HTTP smoke, history/open actions, cancellation cleanup, and collision preservation. Recovery inspection also reported an unrelated pre-existing `parentUnverifiable` test journal; it remains untouched. BE-02 remains planned; independent review and release approval remain open. See [Phase 05B evidence](docs/qa/evidence/phase-05b-go-net-http.md).
+BE-02 adds a standalone Go `net/http` REST API using Go Modules (Go `>=1.22`), standard library only. Phase 08A.2 and 08A.7 each recorded one diagnostic native generation PASS on Go `1.26.7`; Phase 08A.7 cleanup postconditions also passed. Phase 08A.3 verified the preserved output with Go `1.22.0`. Neither resolves historical supervisor or cleanup causes. BE-02 remains planned; promotion and public release remain NO-GO. See [Phase 05B evidence](docs/qa/evidence/phase-05b-go-net-http.md), [Phase 08A assessment](docs/qa/evidence/phase-08a-be02-promotion-readiness.md), and [Phase 08A.3 compatibility evidence](docs/qa/evidence/phase-08a3-be02-go122-compatibility.md).
 
 ## Phase 05C status
 
@@ -59,6 +59,10 @@ Independent acceptance: **PASS WITH FINDINGS**; Phase 07A development closure: *
 ## Phase 07B status
 
 FS-07 adds distinct Vue 3/Vite + Express/PostgreSQL/Drizzle npm workspace. Independent Windows CLI/PostgreSQL/Chrome E2E passed on Node `22.22.1`, npm `10.9.4`, and run-owned PostgreSQL `17.2` at `127.0.0.1:52457` (`5432` excluded). The earlier native **68/68** suite covers review, consent, install cancellation, recovery, and collision, not successful generation. A separate success-wrapper attempt first failed on an activity-event assertion unavailable on the result page; corrected `npm run test:e2e:phase-07b:native-success` then passed **40/40 assertions**, including the rendered success result and generated manifest **15/15**. System/bundled release-policy checks passed. Independent acceptance: **PASS WITH FINDINGS**; Phase 07B development closure: **GO**. FS-07 stays `planned`; public release remains **NO-GO**. PostgreSQL `16`, unsandboxed npm lifecycle scripts, direct Drizzle Kit migration bypass, clean-machine/installer, accessibility, and broader security review remain open. See [DEC-035](docs/decisions/DEC-035-phase-07b-fullstack-vue-express-postgresql.md) and [Phase 07B evidence](docs/qa/evidence/phase-07b-fullstack-vue-express-postgresql.md).
+
+## Phase 08A–08B stabilization status
+
+**BE-02 promotion remains NO-GO.** Phase 08B.3 supervisor build/stage/launch binary provenance and one native generation passed; all seven generated validations passed. The harness then failed because it required `exitCode` on non-process `scaffold-identity`. Corrected assertion and process-check regressions pass **21/21**, but were not rerun natively. History, Open Folder, and Open VS Code remain **NOT VERIFIED** because isolated WebView history state is unavailable. Historical supervisor and cleanup causes remain **UNKNOWN**. BE-02 and all recipes remain `planned`; normal generation stays blocked and public release remains **NO-GO**. See [DEC-036](docs/decisions/DEC-036-phase-08a-be02-promotion-readiness.md), [Phase 08A assessment](docs/qa/evidence/phase-08a-be02-promotion-readiness.md), [Go 1.22.0 compatibility](docs/qa/evidence/phase-08a3-be02-go122-compatibility.md), and [Phase 08B.3 evidence](docs/qa/evidence/phase-08b3-be02-supervisor-provenance.md).
 
 ## Developer setup
 

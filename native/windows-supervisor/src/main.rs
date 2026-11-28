@@ -89,6 +89,9 @@ mod windows {
         cwd: String,
         env: BTreeMap<String, String>,
         timeout_ms: Option<u64>,
+        #[cfg(feature = "test-fault-injection")]
+        #[serde(default)]
+        test_fault: Option<String>,
     }
 
     #[derive(Deserialize)]
@@ -108,9 +111,45 @@ mod windows {
         timed_out: bool,
         termination_confirmed: bool,
         peak_active_processes: u32,
+        active_processes: Option<u32>,
         orphaned_descendants: bool,
         error: Option<&'static str>,
         system_error: Option<u32>,
+    }
+
+    struct RunFailure {
+        message: &'static str,
+        started: bool,
+        termination_confirmed: bool,
+        peak_active_processes: u32,
+        system_error: Option<u32>,
+    }
+
+    impl RunFailure {
+        fn before_start(message: &'static str, system_error: Option<u32>) -> Self {
+            Self {
+                message,
+                started: false,
+                termination_confirmed: true,
+                peak_active_processes: 0,
+                system_error,
+            }
+        }
+
+        fn after_start(
+            message: &'static str,
+            termination_confirmed: bool,
+            peak_active_processes: u32,
+            system_error: Option<u32>,
+        ) -> Self {
+            Self {
+                message,
+                started: true,
+                termination_confirmed,
+                peak_active_processes,
+                system_error,
+            }
+        }
     }
 
     #[derive(Deserialize)]
@@ -322,6 +361,7 @@ mod windows {
                 timed_out: false,
                 termination_confirmed: true,
                 peak_active_processes: 0,
+                active_processes: Some(0),
                 orphaned_descendants: false,
                 error: Some(message),
                 system_error,
@@ -541,53 +581,64 @@ mod windows {
     fn response_after_process(request: RunRequest, job: &Handle) -> RunResponse {
         match run_process(request, job) {
             Ok(response) => response,
-            Err((message, confirmed, peak)) => RunResponse {
-                started: true,
+            Err(failure) => RunResponse {
+                started: failure.started,
                 exit_code: 1,
                 stdout: String::new(),
                 stderr: String::new(),
                 truncated: false,
                 cancelled: false,
                 timed_out: false,
-                termination_confirmed: confirmed,
-                peak_active_processes: peak,
+                termination_confirmed: failure.termination_confirmed,
+                peak_active_processes: failure.peak_active_processes,
+                active_processes: if failure.started {
+                    active_processes(job.raw()).ok()
+                } else {
+                    Some(0)
+                },
                 orphaned_descendants: false,
-                error: Some(message),
-                system_error: None,
+                error: Some(failure.message),
+                system_error: failure.system_error,
             },
         }
     }
 
-    fn run_process(
-        request: RunRequest,
-        job: &Handle,
-    ) -> Result<RunResponse, (&'static str, bool, u32)> {
+    fn run_process(request: RunRequest, job: &Handle) -> Result<RunResponse, RunFailure> {
         if request.executable.is_empty()
             || !std::path::Path::new(&request.executable).is_absolute()
             || !std::path::Path::new(&request.cwd).is_absolute()
             || request.args.len() > 4096
             || request.args.iter().map(String::len).sum::<usize>() > 28_000
         {
-            return Err(("invalid process request", true, 0));
+            return Err(RunFailure::before_start("invalid process request", None));
+        }
+        #[cfg(feature = "test-fault-injection")]
+        if request.test_fault.as_deref() == Some("start-failure") {
+            return Err(RunFailure::before_start("child creation failed", Some(5)));
         }
         let environment = build_environment(&request.env)
-            .map_err(|_| ("invalid process environment", true, 0))?;
+            .map_err(|_| RunFailure::before_start("invalid process environment", None))?;
         let mut command_line = quote_windows_arg(&request.executable)
-            .map_err(|_| ("invalid executable argument", true, 0))?;
+            .map_err(|_| RunFailure::before_start("invalid executable argument", None))?;
         for arg in &request.args {
             command_line.push(' ');
             command_line.push_str(
-                &quote_windows_arg(arg).map_err(|_| ("invalid process argument", true, 0))?,
+                &quote_windows_arg(arg)
+                    .map_err(|_| RunFailure::before_start("invalid process argument", None))?,
             );
         }
         if command_line.encode_utf16().count() >= 32_767 {
-            return Err(("process command line too long", true, 0));
+            return Err(RunFailure::before_start(
+                "process command line too long",
+                None,
+            ));
         }
-        let command_line =
-            wide(&command_line).map_err(|_| ("invalid process command line", true, 0))?;
-        let executable =
-            wide(&request.executable).map_err(|_| ("invalid executable path", true, 0))?;
-        let cwd = wide(&request.cwd).map_err(|_| ("invalid working directory", true, 0))?;
+        let command_line = wide(&command_line)
+            .map_err(|_| RunFailure::before_start("invalid process command line", None))?;
+        let executable = wide(&request.executable)
+            .map_err(|_| RunFailure::before_start("invalid executable path", None))?;
+        let cwd = wide(&request.cwd)
+            .map_err(|_| RunFailure::before_start("invalid working directory", None))?;
 
         let security = SECURITY_ATTRIBUTES {
             nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
@@ -599,27 +650,55 @@ mod windows {
         let mut stderr_read = null_mut();
         let mut stderr_write = null_mut();
         if unsafe { CreatePipe(&mut stdout_read, &mut stdout_write, &security, 0) } == 0 {
-            return Err(("stdout pipe creation failed", true, 0));
+            return Err(RunFailure::before_start(
+                "stdout pipe creation failed",
+                Some(unsafe { GetLastError() }),
+            ));
         }
-        let stdout_read =
-            Handle::new(stdout_read).map_err(|_| ("stdout pipe creation failed", true, 0))?;
-        let stdout_write =
-            Handle::new(stdout_write).map_err(|_| ("stdout pipe creation failed", true, 0))?;
+        let stdout_read = Handle::new(stdout_read).map_err(|error| {
+            RunFailure::before_start(
+                "stdout pipe creation failed",
+                error.raw_os_error().map(|code| code as u32),
+            )
+        })?;
+        let stdout_write = Handle::new(stdout_write).map_err(|error| {
+            RunFailure::before_start(
+                "stdout pipe creation failed",
+                error.raw_os_error().map(|code| code as u32),
+            )
+        })?;
         if unsafe { SetHandleInformation(stdout_read.raw(), HANDLE_FLAG_INHERIT, 0) } == 0 {
-            return Err(("stdout pipe setup failed", true, 0));
+            return Err(RunFailure::before_start(
+                "stdout pipe setup failed",
+                Some(unsafe { GetLastError() }),
+            ));
         }
         if unsafe { CreatePipe(&mut stderr_read, &mut stderr_write, &security, 0) } == 0 {
-            return Err(("stderr pipe creation failed", true, 0));
+            return Err(RunFailure::before_start(
+                "stderr pipe creation failed",
+                Some(unsafe { GetLastError() }),
+            ));
         }
-        let stderr_read =
-            Handle::new(stderr_read).map_err(|_| ("stderr pipe creation failed", true, 0))?;
-        let stderr_write =
-            Handle::new(stderr_write).map_err(|_| ("stderr pipe creation failed", true, 0))?;
+        let stderr_read = Handle::new(stderr_read).map_err(|error| {
+            RunFailure::before_start(
+                "stderr pipe creation failed",
+                error.raw_os_error().map(|code| code as u32),
+            )
+        })?;
+        let stderr_write = Handle::new(stderr_write).map_err(|error| {
+            RunFailure::before_start(
+                "stderr pipe creation failed",
+                error.raw_os_error().map(|code| code as u32),
+            )
+        })?;
         if unsafe { SetHandleInformation(stderr_read.raw(), HANDLE_FLAG_INHERIT, 0) } == 0 {
-            return Err(("stderr pipe setup failed", true, 0));
+            return Err(RunFailure::before_start(
+                "stderr pipe setup failed",
+                Some(unsafe { GetLastError() }),
+            ));
         }
 
-        let nul = wide("NUL").map_err(|_| ("stdin setup failed", true, 0))?;
+        let nul = wide("NUL").map_err(|_| RunFailure::before_start("stdin setup failed", None))?;
         let stdin = Handle::new(unsafe {
             CreateFileW(
                 nul.as_ptr(),
@@ -631,10 +710,19 @@ mod windows {
                 null_mut(),
             )
         })
-        .map_err(|_| ("stdin setup failed", true, 0))?;
+        .map_err(|error| {
+            RunFailure::before_start(
+                "stdin setup failed",
+                error.raw_os_error().map(|code| code as u32),
+            )
+        })?;
 
-        let attributes = AttributeList::new(2)
-            .map_err(|_| ("process attributes initialization failed", true, 0))?;
+        let attributes = AttributeList::new(2).map_err(|error| {
+            RunFailure::before_start(
+                "process attributes initialization failed",
+                error.raw_os_error().map(|code| code as u32),
+            )
+        })?;
         let child_handles = [stdin.raw(), stdout_write.raw(), stderr_write.raw()];
         if unsafe {
             UpdateProcThreadAttribute(
@@ -648,7 +736,10 @@ mod windows {
             )
         } == 0
         {
-            return Err(("child handle-list setup failed", true, 0));
+            return Err(RunFailure::before_start(
+                "child handle-list setup failed",
+                Some(unsafe { GetLastError() }),
+            ));
         }
         let jobs = [job.raw()];
         if unsafe {
@@ -663,7 +754,10 @@ mod windows {
             )
         } == 0
         {
-            return Err(("pre-start job assignment setup failed", true, 0));
+            return Err(RunFailure::before_start(
+                "pre-start job assignment setup failed",
+                Some(unsafe { GetLastError() }),
+            ));
         }
 
         let mut startup: STARTUPINFOEXW = unsafe { zeroed() };
@@ -693,22 +787,39 @@ mod windows {
             )
         };
         if created == 0 {
-            return Err((
+            return Err(RunFailure::before_start(
                 "child creation or atomic Job Object assignment failed",
-                true,
-                0,
+                Some(unsafe { GetLastError() }),
             ));
         }
-        let process =
-            Handle::new(info.hProcess).map_err(|_| ("child process handle invalid", false, 0))?;
-        let thread_handle =
-            Handle::new(info.hThread).map_err(|_| ("child thread handle invalid", false, 0))?;
+        let process = Handle::new(info.hProcess).map_err(|error| {
+            RunFailure::after_start(
+                "child process handle invalid",
+                false,
+                0,
+                error.raw_os_error().map(|code| code as u32),
+            )
+        })?;
+        let thread_handle = Handle::new(info.hThread).map_err(|error| {
+            RunFailure::after_start(
+                "child thread handle invalid",
+                false,
+                0,
+                error.raw_os_error().map(|code| code as u32),
+            )
+        })?;
         drop(stdout_write);
         drop(stderr_write);
         drop(stdin);
 
         let mut in_job = 0;
-        if unsafe { IsProcessInJob(process.raw(), job.raw(), &mut in_job) } == 0 || in_job == 0 {
+        let process_in_job = unsafe { IsProcessInJob(process.raw(), job.raw(), &mut in_job) };
+        if process_in_job == 0 || in_job == 0 {
+            let system_error = if process_in_job == 0 {
+                Some(unsafe { GetLastError() })
+            } else {
+                None
+            };
             let terminated = unsafe {
                 windows_sys::Win32::System::Threading::TerminateProcess(process.raw(), 1)
             } != 0;
@@ -716,14 +827,21 @@ mod windows {
                 && unsafe {
                     WaitForSingleObject(process.raw(), TERMINATION_WAIT.as_millis() as u32)
                 } == WAIT_OBJECT_0;
-            return Err(("child was not confirmed in owned Job Object", confirmed, 0));
+            return Err(RunFailure::after_start(
+                "child was not confirmed in owned Job Object",
+                confirmed,
+                0,
+                system_error,
+            ));
         }
         if unsafe { ResumeThread(thread_handle.raw()) } == u32::MAX {
+            let system_error = Some(unsafe { GetLastError() });
             let confirmed = terminate_job(job.raw());
-            return Err((
+            return Err(RunFailure::after_start(
                 "child initial thread could not be resumed",
                 confirmed,
                 active_processes(job.raw()).unwrap_or(0),
+                system_error,
             ));
         }
         drop(thread_handle);
@@ -765,12 +883,16 @@ mod windows {
         let mut cancelled = false;
         let mut timed_out = false;
         let mut response_error = None;
+        let mut response_system_error = None;
         let mut orphaned = false;
         loop {
             match active_processes(job.raw()) {
-                Ok(count) => peak = peak.max(count),
-                Err(_) => {
+                Ok(count) => {
+                    peak = peak.max(count);
+                }
+                Err(error) => {
                     response_error = Some("Job Object state query failed");
+                    response_system_error = error.raw_os_error().map(|code| code as u32);
                     break;
                 }
             }
@@ -786,6 +908,7 @@ mod windows {
             }
             if wait == WAIT_FAILED {
                 response_error = Some("owned process wait failed");
+                response_system_error = Some(unsafe { GetLastError() });
                 break;
             }
             match control_rx.try_recv() {
@@ -823,13 +946,26 @@ mod windows {
         let mut exit_code = 1u32;
         if unsafe { GetExitCodeProcess(process.raw(), &mut exit_code) } == 0 {
             response_error = Some("owned process exit status query failed");
+            response_system_error = Some(unsafe { GetLastError() });
         }
         let (stdout, stderr) = if confirmed {
             (
-                capture_text(stdout_reader)
-                    .map_err(|_| ("stdout drain failed", confirmed, peak))?,
-                capture_text(stderr_reader)
-                    .map_err(|_| ("stderr drain failed", confirmed, peak))?,
+                capture_text(stdout_reader).map_err(|error| {
+                    RunFailure::after_start(
+                        "stdout drain failed",
+                        confirmed,
+                        peak,
+                        error.raw_os_error().map(|code| code as u32),
+                    )
+                })?,
+                capture_text(stderr_reader).map_err(|error| {
+                    RunFailure::after_start(
+                        "stderr drain failed",
+                        confirmed,
+                        peak,
+                        error.raw_os_error().map(|code| code as u32),
+                    )
+                })?,
             )
         } else {
             drop(stdout_reader);
@@ -845,6 +981,7 @@ mod windows {
                 },
             )
         };
+        let active = active_processes(job.raw()).ok();
         Ok(RunResponse {
             started: true,
             exit_code: exit_code as i32,
@@ -855,9 +992,10 @@ mod windows {
             timed_out,
             termination_confirmed: confirmed,
             peak_active_processes: peak,
+            active_processes: active,
             orphaned_descendants: orphaned,
             error: response_error,
-            system_error: None,
+            system_error: response_system_error,
         })
     }
 
@@ -1355,7 +1493,13 @@ mod windows {
                 FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
                 FILE_ATTRIBUTE_DIRECTORY,
             )
-            .map_err(|error| fs_failure("journal_root_open_failed", error.system_error))?
+            .map_err(|error| {
+                if error.code == "entry_missing" {
+                    error
+                } else {
+                    fs_failure("journal_root_open_failed", error.system_error)
+                }
+            })?
         };
         let attrs = get_attributes(root.raw()).map_err(|_| fs_last_error("journal_invalid"))?;
         if attrs.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0
@@ -4188,6 +4332,17 @@ mod windows {
         }
 
         #[test]
+        fn failed_start_response_preserves_only_safe_process_state() {
+            let response = RunResponse::failed_before_start("child creation failed", Some(5));
+            let value = serde_json::to_value(response).unwrap();
+            assert_eq!(value["started"], false);
+            assert_eq!(value["terminationConfirmed"], true);
+            assert_eq!(value["activeProcesses"], 0);
+            assert_eq!(value["systemError"], 5);
+            assert_eq!(value["exitCode"], 1);
+        }
+
+        #[test]
         fn native_create_requires_successful_completion_status() {
             assert_eq!(checked_native_io_status(0, &io_status(0)).unwrap(), 0);
             let failure =
@@ -4277,6 +4432,36 @@ mod windows {
             assert_eq!(
                 parse_journal(&invalid).err().unwrap().code,
                 "journal_invalid"
+            );
+        }
+
+        #[test]
+        fn recovery_inspection_of_missing_root_returns_empty_without_creating_it() {
+            let nonce = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let parent = std::env::temp_dir().join(format!(
+                "pg-recovery-inspect-{}-{nonce}",
+                std::process::id()
+            ));
+            std::fs::create_dir(&parent).unwrap();
+            let journal_root = parent.join(".project-generator-transactions");
+            let reports = inspect_recovery(RecoveryInspectRequest {
+                journal_root_path: journal_root.to_string_lossy().into_owned(),
+                job_id: None,
+            });
+            let journal_root_created = journal_root.exists();
+            std::fs::remove_dir(&parent).unwrap();
+
+            assert!(
+                reports.is_ok(),
+                "missing journal root should be empty, not an error"
+            );
+            assert!(reports.unwrap().is_empty());
+            assert!(
+                !journal_root_created,
+                "read-only inspection must not create journal root"
             );
         }
     }

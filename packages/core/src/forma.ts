@@ -5,7 +5,7 @@ import { dirname, win32 } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { GeneratorError } from './errors.js'
 import { FORMA_COMMIT_SHA, FORMA_REPOSITORY, formaTemplate, isFormaCommit } from './forma-catalog.js'
-import { runNodeProcess, type ProcessResult } from './runner.js'
+import { runNodeProcess, type ProcessResult, type SupervisorDiagnosticContext } from './runner.js'
 import { mutateOwnedStage, type OwnedStage } from './staging.js'
 import type { FrontendId, ProjectSelectionV1 } from './types.js'
 
@@ -16,6 +16,7 @@ interface FormaDirs {
 
 interface FormaJobLog {
   process(label: string, result: ProcessResult, hiddenPaths: readonly string[]): void
+  supervisorDiagnosticContext(): SupervisorDiagnosticContext
 }
 
 export interface FormaInstallEvidence {
@@ -123,6 +124,7 @@ async function runGitWorker(
     extraPath: [dirname(gitPath)],
     ...(signal ? { signal } : {}),
     timeoutMs: 5 * 60 * 1000,
+    supervisorDiagnostic: log.supervisorDiagnosticContext(),
   })
   log.process(`forma-source-${operation}`, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, profile])
   if (result.exitCode !== 0) {
@@ -187,6 +189,7 @@ async function runFormaScript(
     extraPath: [dirname(gitPath)],
     ...(signal ? { signal } : {}),
     timeoutMs: 5 * 60 * 1000,
+    supervisorDiagnostic: log.supervisorDiagnosticContext(),
   })
   log.process(`forma-${scriptName === 'template-export.mjs' ? 'export' : 'install'}`, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, sourceRoot, ...args.filter((argument) => win32.isAbsolute(argument))])
   return result

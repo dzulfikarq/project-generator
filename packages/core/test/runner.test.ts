@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, resolve, win32 } from 'node:path'
 import test, { type TestContext } from 'node:test'
 import { callSupervisor, readSupervisorResponse, sendSupervisorRequest, spawnSupervisor } from '../src/native-supervisor.js'
-import { runNodeProcess, startPostgresSmokeProcess } from '../src/runner.js'
+import { processSupervisorResponse, runNodeProcess, startPostgresSmokeProcess, type SupervisorDiagnosticV1, type SupervisorProcessResultV1 } from '../src/runner.js'
 import { resolveNpmTool } from '../src/toolchain.js'
 import { cleanupOwnedStage, createOwnedStage, mutateOwnedStage } from '../src/staging.js'
 
@@ -18,6 +18,137 @@ function processAlive(pid: number): boolean {
     return (error as NodeJS.ErrnoException).code === 'EPERM'
   }
 }
+
+function supervisorResponse(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    started: true,
+    exitCode: 0,
+    stdout: '',
+    stderr: '',
+    truncated: false,
+    cancelled: false,
+    timedOut: false,
+    terminationConfirmed: true,
+    activeProcesses: 0,
+    error: null,
+    systemError: null,
+    ...overrides,
+  }
+}
+
+function captureSupervisorDiagnostic() {
+  const diagnostics: SupervisorDiagnosticV1[] = []
+  const processResults: SupervisorProcessResultV1[] = []
+  return {
+    diagnostics,
+    processResults,
+    context: {
+      jobId: 'job-test',
+      stageId: 'validating',
+      onDiagnostic: (diagnostic: SupervisorDiagnosticV1) => diagnostics.push(diagnostic),
+      onProcessResult: (result: SupervisorProcessResultV1) => processResults.push(result),
+    },
+  }
+}
+
+test('supervisor response diagnostics classify failures without exposing raw details', () => {
+  const secretDetails = 'C:\\private\\workspace token=top-secret https://user:password@example.test db=private-connection'
+
+  for (const testCase of [
+    {
+      name: 'child creation failure',
+      response: supervisorResponse({ started: false, exitCode: 1, error: secretDetails, systemError: 2 }),
+      expectedCategory: 'process_start_failure',
+      expectedPublicCode: 'GEN_PROCESS_SUPERVISOR_FAILED',
+      expectedState: 'none',
+      expectedSystemError: { code: 2, category: 'not_found' },
+    },
+    {
+      name: 'supervisor operational failure',
+      response: supervisorResponse({ exitCode: 1, error: secretDetails, systemError: 5, activeProcesses: 1 }),
+      expectedCategory: 'supervisor_operational_failure',
+      expectedPublicCode: 'GEN_PROCESS_SUPERVISOR_FAILED',
+      expectedState: 'active',
+      expectedSystemError: { code: 5, category: 'access_denied' },
+    },
+    {
+      name: 'unconfirmed termination',
+      response: supervisorResponse({ exitCode: 1, error: secretDetails, terminationConfirmed: false, activeProcesses: 1, systemError: 5 }),
+      expectedCategory: 'termination_unconfirmed',
+      expectedPublicCode: 'GEN_PROCESS_TREE_UNCONFIRMED',
+      expectedState: 'active',
+      expectedSystemError: { code: 5, category: 'access_denied' },
+    },
+    {
+      name: 'malformed response',
+      response: { started: true, stdout: secretDetails, stderr: secretDetails },
+      expectedCategory: 'malformed_response',
+      expectedPublicCode: 'GEN_PROCESS_TREE_UNCONFIRMED',
+      expectedState: 'unknown',
+      expectedSystemError: { code: null, category: 'unknown' },
+    },
+  ] as const) {
+    const capture = captureSupervisorDiagnostic()
+    assert.throws(
+      () => processSupervisorResponse(testCase.response, 1, capture.context),
+      (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && error.code === testCase.expectedPublicCode,
+      testCase.name,
+    )
+    assert.equal(capture.diagnostics.length, 1, testCase.name)
+    const diagnostic = capture.diagnostics[0]!
+    assert.equal(diagnostic.failureCategory, testCase.expectedCategory)
+    assert.equal(diagnostic.activeChildProcessCount === null ? 'unknown' : diagnostic.activeChildProcessCount === 0 ? 'none' : 'active', testCase.expectedState)
+    assert.equal(diagnostic.jobId, 'job-test')
+    assert.equal(diagnostic.stageId, 'validating')
+    assert.deepEqual(diagnostic.systemError, testCase.expectedSystemError)
+    assert.equal(diagnostic.supervisorExitCode, 1)
+    assert.match(diagnostic.diagnosticRef, /^supdiag-[0-9a-f-]{36}$/)
+    assert.equal(JSON.stringify(diagnostic).includes(secretDetails), false)
+    assert.equal(JSON.stringify(diagnostic).includes('top-secret'), false)
+    assert.equal(JSON.stringify(diagnostic).includes('private-connection'), false)
+  }
+
+  const nonzeroCapture = captureSupervisorDiagnostic()
+  const result = processSupervisorResponse(supervisorResponse({ exitCode: 23, stderr: secretDetails }), 0, nonzeroCapture.context)
+  assert.equal(result.exitCode, 23)
+  assert.equal(nonzeroCapture.diagnostics[0]?.failureCategory, 'process_nonzero_exit')
+  assert.equal(JSON.stringify(nonzeroCapture.diagnostics[0]).includes(secretDetails), false)
+
+  const timeoutCapture = captureSupervisorDiagnostic()
+  assert.throws(
+    () => processSupervisorResponse(undefined, null, timeoutCapture.context, 'timed_out'),
+    (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && error.code === 'GEN_PROCESS_TREE_UNCONFIRMED',
+  )
+  assert.equal(timeoutCapture.diagnostics[0]?.supervisorResponseStatus, 'timed_out')
+  assert.equal(timeoutCapture.diagnostics[0]?.failureCategory, 'supervisor_operational_failure')
+})
+
+test('cancelled supervisor response records child exit and termination without raw output', () => {
+  const secretDetails = 'C:\\private\\workspace go test ./... token=top-secret'
+  const capture = captureSupervisorDiagnostic()
+  const result = processSupervisorResponse(supervisorResponse({
+    exitCode: -1073741510,
+    stdout: secretDetails,
+    stderr: secretDetails,
+    cancelled: true,
+    activeProcesses: 0,
+  }), 0, capture.context)
+  assert.equal(result.cancelled, true)
+  assert.equal(result.terminationConfirmed, true)
+  assert.deepEqual(capture.processResults, [{
+    schemaVersion: 1,
+    type: 'supervisor-process-result',
+    jobId: 'job-test',
+    stageId: 'validating',
+    started: true,
+    childExitCode: -1073741510,
+    supervisorExitCode: 0,
+    cancelled: true,
+    terminationConfirmed: true,
+    activeChildProcessCount: 0,
+  }])
+  assert.equal(JSON.stringify(capture.processResults).includes(secretDetails), false)
+})
 
 async function stopFixtureDescendant(stopFile: string, pid?: number): Promise<void> {
   await writeFile(stopFile, 'stop').catch(() => undefined)

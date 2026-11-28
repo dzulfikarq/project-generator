@@ -75,6 +75,8 @@ type JobEvent = {
   percent?: number
   message: string
   code?: string
+  diagnosticRef?: string
+  childProcessState?: 'none' | 'active' | 'unknown'
 }
 type DesktopEvent = { schemaVersion: 1; invocationId: string; event: JobEvent }
 type DesktopError = { code?: string; message?: string; nextAction?: string; targetModified?: boolean }
@@ -557,6 +559,15 @@ function App() {
     </aside>
 
     <main className="main-area">
+      {/* ponytail: hidden safe event metadata lets the native harness observe terminal state without rendering internal diagnostics. */}
+      <output hidden id="generation-terminal-metadata"
+        data-job-id={terminalEventRef.current?.jobId ?? events.at(-1)?.jobId ?? ''}
+        data-job-status={terminalEventRef.current?.status ?? events.at(-1)?.status ?? ''}
+        data-event-type={terminalEventRef.current?.type ?? events.at(-1)?.type ?? ''}
+        data-error-code={terminalEventRef.current?.code ?? [...events].reverse().find((event) => event.type === 'error')?.code ?? ''}
+        data-stage-id={terminalEventRef.current?.stageId ?? [...events].reverse().find((event) => event.stageId)?.stageId ?? ''}
+        data-diagnostic-ref={terminalEventRef.current?.diagnosticRef ?? [...events].reverse().find((event) => event.diagnosticRef)?.diagnosticRef ?? ''}
+        data-child-process-state={terminalEventRef.current?.childProcessState ?? [...events].reverse().find((event) => event.childProcessState)?.childProcessState ?? ''} />
       <header className="page-topbar">
         <div className="breadcrumbs"><span>FormaForge</span><span aria-hidden="true">/</span><strong>{PAGE_LABELS[page]}</strong></div>
         <div className="topbar-right"><span className="internal-badge"><span aria-hidden="true">⚒</span> Local development · internal use</span></div>

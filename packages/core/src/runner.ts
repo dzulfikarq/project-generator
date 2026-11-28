@@ -1,8 +1,49 @@
+import { randomUUID } from 'node:crypto'
 import type { ChildProcess } from 'node:child_process'
+import { closeSync, openSync } from 'node:fs'
 import { lstat, realpath } from 'node:fs/promises'
 import { dirname, isAbsolute, relative, win32 } from 'node:path'
+import { BUILD_PROFILE } from './build-policy.js'
 import { GeneratorError } from './errors.js'
-import { readSupervisorResponse, sendSupervisorRequest, spawnSupervisor } from './native-supervisor.js'
+import { readSupervisorResponse, sendSupervisorRequest, spawnSupervisor, SupervisorResponseError, type SupervisorResponseStatus } from './native-supervisor.js'
+
+export type SupervisorFailureCategory = 'process_start_failure' | 'process_nonzero_exit' | 'supervisor_operational_failure' | 'termination_unconfirmed' | 'malformed_response'
+export interface SupervisorDiagnosticV1 {
+  schemaVersion: 1
+  type: 'supervisor-diagnostic'
+  diagnosticRef: string
+  jobId: string
+  stageId: string
+  failureCategory: SupervisorFailureCategory
+  started: boolean | null
+  childExitCode: number | null
+  supervisorExitCode: number | null
+  terminationConfirmed: boolean | null
+  systemError: { category: 'access_denied' | 'not_found' | 'invalid_handle' | 'invalid_parameter' | 'resource_exhausted' | 'other' | 'unknown'; code: number | null }
+  activeChildProcessCount: number | null
+  supervisorResponseStatus: SupervisorResponseStatus
+  timestamp: string
+}
+
+export interface SupervisorDiagnosticContext {
+  jobId: string
+  stageId: string
+  onDiagnostic(diagnostic: SupervisorDiagnosticV1): void
+  onProcessResult?(result: SupervisorProcessResultV1): void
+}
+
+export interface SupervisorProcessResultV1 {
+  schemaVersion: 1
+  type: 'supervisor-process-result'
+  jobId: string
+  stageId: string
+  started: boolean | null
+  childExitCode: number | null
+  supervisorExitCode: number | null
+  cancelled: true
+  terminationConfirmed: boolean | null
+  activeChildProcessCount: number | null
+}
 
 export interface SafeProcessOptions {
   scriptPath?: string
@@ -18,6 +59,7 @@ export interface SafeProcessOptions {
   signal?: AbortSignal
   extraPath?: readonly string[]
   environment?: Readonly<Record<string, string>>
+  supervisorDiagnostic?: SupervisorDiagnosticContext
 }
 
 export interface ProcessResult {
@@ -37,6 +79,161 @@ export interface RunningProcess {
 
 function processTreeError(): GeneratorError {
   return new GeneratorError({ code: 'GEN_PROCESS_TREE_UNCONFIRMED', stage: 'process', message: 'Could not confirm termination of the owned process tree.', nextAction: 'Inspect the owned staging directory only after confirming all generator child processes have exited.', targetModified: false })
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function safeNumber(value: unknown, maximum = 0xffff_ffff): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= maximum ? value : null
+}
+
+function systemErrorCategory(code: number | null): SupervisorDiagnosticV1['systemError']['category'] {
+  if (code === null) return 'unknown'
+  if ([5, 1314].includes(code)) return 'access_denied'
+  if ([2, 3].includes(code)) return 'not_found'
+  if (code === 6) return 'invalid_handle'
+  if ([87, 123].includes(code)) return 'invalid_parameter'
+  if ([8, 14, 1450, 1453].includes(code)) return 'resource_exhausted'
+  return 'other'
+}
+
+function safeExitCode(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= -0x8000_0000 && value <= 0x7fff_ffff ? value : null
+}
+
+function emitSupervisorDiagnostic(
+  context: SupervisorDiagnosticContext | undefined,
+  response: unknown,
+  supervisorExitCode: number | null,
+  responseStatus: SupervisorResponseStatus,
+  failureCategory: SupervisorFailureCategory,
+): SupervisorDiagnosticV1 | undefined {
+  if (!context) return undefined
+  const record = isRecord(response) ? response : undefined
+  const systemErrorCode = safeNumber(record?.systemError)
+  const activeCount = safeNumber(record?.activeProcesses)
+  const diagnostic: SupervisorDiagnosticV1 = {
+    schemaVersion: 1,
+    type: 'supervisor-diagnostic',
+    diagnosticRef: `supdiag-${randomUUID()}`,
+    jobId: context.jobId,
+    stageId: context.stageId,
+    failureCategory,
+    started: typeof record?.started === 'boolean' ? record.started : null,
+    childExitCode: safeExitCode(record?.exitCode),
+    supervisorExitCode: safeExitCode(supervisorExitCode),
+    terminationConfirmed: typeof record?.terminationConfirmed === 'boolean' ? record.terminationConfirmed : null,
+    systemError: { category: systemErrorCategory(systemErrorCode), code: systemErrorCode },
+    activeChildProcessCount: activeCount,
+    supervisorResponseStatus: responseStatus,
+    timestamp: new Date().toISOString(),
+  }
+  try {
+    context.onDiagnostic(diagnostic)
+  } catch {
+    // ponytail: diagnostic write failure must not change process or cancellation behavior.
+  }
+  return diagnostic
+}
+
+function emitCancelledProcessResult(
+  context: SupervisorDiagnosticContext | undefined,
+  response: Record<string, unknown> | undefined,
+  supervisorExitCode: number | null,
+): void {
+  if (response?.cancelled !== true || !context?.onProcessResult) return
+  try {
+    context.onProcessResult({
+      schemaVersion: 1,
+      type: 'supervisor-process-result',
+      jobId: context.jobId,
+      stageId: context.stageId,
+      started: typeof response.started === 'boolean' ? response.started : null,
+      childExitCode: safeExitCode(response.exitCode),
+      supervisorExitCode: safeExitCode(supervisorExitCode),
+      cancelled: true,
+      terminationConfirmed: typeof response.terminationConfirmed === 'boolean' ? response.terminationConfirmed : null,
+      activeChildProcessCount: safeNumber(response.activeProcesses),
+    })
+  } catch {
+    // ponytail: cancellation telemetry must not change process cleanup.
+  }
+}
+
+function claimTestSupervisorStartFailure(): boolean {
+  if (BUILD_PROFILE !== 'development' || process.platform !== 'win32'
+    || process.env.PG_SUPERVISOR_TEST_FAULT !== 'start-failure-once') return false
+  const temporaryRoot = process.env.TEMP
+  const marker = process.env.PG_SUPERVISOR_TEST_FAULT_MARKER
+  if (!temporaryRoot || !marker || !win32.isAbsolute(temporaryRoot) || !win32.isAbsolute(marker)
+    || win32.basename(marker) !== 'phase-08a5-supervisor-fault-consumed'
+    || !isWithin(win32.resolve(temporaryRoot), win32.resolve(marker))) return false
+  try {
+    closeSync(openSync(marker, 'wx'))
+    return true
+  } catch {
+    return false
+  }
+}
+
+function validRunResponse(response: unknown): response is Record<string, unknown> {
+  if (!isRecord(response)) return false
+  return typeof response.started === 'boolean'
+    && safeExitCode(response.exitCode) !== null
+    && typeof response.stdout === 'string'
+    && typeof response.stderr === 'string'
+    && typeof response.truncated === 'boolean'
+    && typeof response.terminationConfirmed === 'boolean'
+    && (response.activeProcesses === undefined || response.activeProcesses === null || safeNumber(response.activeProcesses) !== null)
+    && (response.systemError === undefined || response.systemError === null || safeNumber(response.systemError) !== null)
+}
+
+export function processSupervisorResponse(
+  response: unknown,
+  supervisorExitCode: number | null,
+  diagnosticContext?: SupervisorDiagnosticContext,
+  responseStatus: SupervisorResponseStatus = 'received',
+): ProcessResult {
+  if (responseStatus !== 'received') {
+    emitSupervisorDiagnostic(diagnosticContext, response, supervisorExitCode, responseStatus,
+      responseStatus === 'malformed' ? 'malformed_response' : 'supervisor_operational_failure')
+    throw processTreeError()
+  }
+
+  const record = isRecord(response) ? response : undefined
+  emitCancelledProcessResult(diagnosticContext, record, supervisorExitCode)
+  const errorPresent = record?.error !== null && record?.error !== undefined
+  let category: SupervisorFailureCategory | undefined
+  if (record?.terminationConfirmed === false) category = 'termination_unconfirmed'
+  else if (!validRunResponse(response)) category = 'malformed_response'
+  else if (errorPresent && record?.started === false) category = 'process_start_failure'
+  else if (errorPresent) category = 'supervisor_operational_failure'
+  else if (record?.started === false) category = 'malformed_response'
+  else if (record?.exitCode !== 0) category = 'process_nonzero_exit'
+  else if (supervisorExitCode !== 0) category = 'supervisor_operational_failure'
+  if (category) emitSupervisorDiagnostic(diagnosticContext, response, supervisorExitCode,
+    category === 'malformed_response' ? 'malformed' : 'received', category)
+
+  if (record?.terminationConfirmed !== true) throw processTreeError()
+  if (!validRunResponse(response)) throw processTreeError()
+  if (errorPresent) {
+    if (record.error === 'elevated caller is not allowed') {
+      throw new GeneratorError({ code: 'GEN_ELEVATED_CALLER', stage: 'process', message: 'Generation is blocked in an elevated Windows session.', nextAction: 'Start Project Generator without administrator elevation and retry.', targetModified: false })
+    }
+    throw new GeneratorError({ code: 'GEN_PROCESS_SUPERVISOR_FAILED', stage: 'process', message: 'Windows supervisor could not complete the owned process tree safely.', nextAction: 'Leave staging untouched if termination was not confirmed; inspect the redacted job log before retrying.', targetModified: false })
+  }
+  if (supervisorExitCode !== 0) throw processTreeError()
+  return {
+    exitCode: record.exitCode as number,
+    stdout: record.stdout as string,
+    stderr: record.stderr as string,
+    truncated: record.truncated as boolean,
+    cancelled: record.cancelled === true,
+    timedOut: record.timedOut === true,
+    terminationConfirmed: true,
+  }
 }
 
 function isWithin(root: string, candidate: string): boolean {
@@ -155,10 +352,12 @@ async function startSafeProcessInternal(options: SafeProcessOptions, postgresSmo
     Promise.all((options.extraPath ?? []).map((directory) => checkedDirectory(directory, directory))),
   ])
   if (options.signal?.aborted) throw new GeneratorError({ code: 'GEN_CANCELLED', stage: 'process', message: 'Generation was cancelled.', nextAction: 'Retry from the beginning.', targetModified: false })
+  const testFault = options.supervisorDiagnostic?.stageId === 'validating' && claimTestSupervisorStartFailure()
   let child: ChildProcess
   try {
     child = spawnSupervisor('--run')
   } catch (error) {
+    emitSupervisorDiagnostic(options.supervisorDiagnostic, undefined, null, 'unavailable', 'supervisor_operational_failure')
     throw new GeneratorError({ code: 'GEN_NATIVE_SUPERVISOR_UNAVAILABLE', stage: 'process', message: 'Windows native supervisor is unavailable.', nextAction: 'Rebuild the Project Generator Windows supervisor and retry.', targetModified: false }, { cause: error })
   }
   child.once('spawn', () => {
@@ -168,32 +367,18 @@ async function startSafeProcessInternal(options: SafeProcessOptions, postgresSmo
       cwd,
       env: Object.fromEntries(Object.entries(processEnvironment(options.homeDirectory, options.tempDirectory, cwd, extraPath, options.environment)).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
       ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
+      ...(testFault ? { testFault: 'start-failure' } : {}),
     })
   })
   const responseTimeout = options.timeoutMs === undefined ? 24 * 60 * 60 * 1000 : options.timeoutMs + 15_000
-  const result = readSupervisorResponse(child, responseTimeout).then(({ response, exitCode }) => {
-    if (typeof response.terminationConfirmed !== 'boolean' || !response.terminationConfirmed) throw processTreeError()
-    if (typeof response.started !== 'boolean' || typeof response.exitCode !== 'number'
-      || typeof response.stdout !== 'string' || typeof response.stderr !== 'string'
-      || typeof response.truncated !== 'boolean') throw processTreeError()
-    if (response.error !== null && response.error !== undefined) {
-      if (response.error === 'elevated caller is not allowed') {
-        throw new GeneratorError({ code: 'GEN_ELEVATED_CALLER', stage: 'process', message: 'Generation is blocked in an elevated Windows session.', nextAction: 'Start Project Generator without administrator elevation and retry.', targetModified: false })
-      }
-      throw new GeneratorError({ code: 'GEN_PROCESS_SUPERVISOR_FAILED', stage: 'process', message: 'Windows supervisor could not complete the owned process tree safely.', nextAction: 'Leave staging untouched if termination was not confirmed; inspect the redacted job log before retrying.', targetModified: false })
-    }
-    if (exitCode !== 0) throw processTreeError()
-    return {
-      exitCode: response.exitCode,
-      stdout: response.stdout,
-      stderr: response.stderr,
-      truncated: response.truncated,
-      cancelled: response.cancelled === true,
-      timedOut: response.timedOut === true,
-      terminationConfirmed: true,
-    }
-  }).catch((error: unknown) => {
+  const result = readSupervisorResponse(child, responseTimeout).then(({ response, exitCode }) =>
+    processSupervisorResponse(response, exitCode, options.supervisorDiagnostic))
+    .catch((error: unknown) => {
     if (error instanceof GeneratorError) throw error
+    if (error instanceof SupervisorResponseError) {
+      emitSupervisorDiagnostic(options.supervisorDiagnostic, undefined, null, error.status, error.status === 'malformed' ? 'malformed_response' : 'supervisor_operational_failure')
+      throw processTreeError()
+    }
     throw processTreeError()
   })
 

@@ -5,6 +5,9 @@ description = "Internal Project Generator desktop packaging proof of concept"
 authors = ["Project Generator"]
 edition = "2024"
 
+[features]
+native-acceptance = []
+
 [build-dependencies]
 tauri-build = { version = "2.5.3", features = [] }
 

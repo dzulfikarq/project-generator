@@ -25,6 +25,7 @@
     "test:e2e:phase-05a:native": "node scripts/phase-05a-native-e2e.mjs",
     "test:e2e:phase-05b:cli": "npm run build:development && node scripts/phase-05b-cli-e2e.mjs",
     "test:e2e:phase-05b:native": "node scripts/phase-05b-native-e2e.mjs",
+    "test:e2e:phase-08a5:native": "node scripts/phase-05b-native-e2e.mjs --phase-08a5-focused",
     "test:e2e:phase-05c3:cli": "npm run build:development && node scripts/phase-05c3-cli-e2e.mjs",
     "test:e2e:phase-05c3:native": "node scripts/phase-05c3-native-e2e.mjs",
     "test:e2e:phase-05d1:cli": "npm run build:development && node scripts/phase-05d1-nest-cli-e2e.mjs",

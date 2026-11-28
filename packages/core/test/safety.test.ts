@@ -8,7 +8,7 @@ import test, { type TestContext } from 'node:test'
 import { GeneratorError } from '../src/errors.js'
 import { callSupervisor } from '../src/native-supervisor.js'
 import { assertNoReparsePoints, inspectTarget } from '../src/paths.js'
-import { applyRecovery, bindOwnedStageProjectIdentity, checkFsResult, cleanupOwnedStage, cleanupStageSupportFiles, createOwnedStage, inspectRecovery, markOwnedStageGenerating, moveDirectoryNoReplace, mutateOwnedStage, verifyOwnedStageProjectIdentity } from '../src/staging.js'
+import { applyRecovery, bindOwnedStageProjectIdentity, checkFsResult, cleanupOwnedStage, cleanupStageSupportFiles, createOwnedStage, inspectRecovery, markOwnedStageGenerating, moveDirectoryNoReplace, mutateOwnedStage, recoveryFailureDetails, verifyOwnedStageProjectIdentity } from '../src/staging.js'
 import type { OwnedStage } from '../src/staging.js'
 
 const debugSupervisorPath = resolve(import.meta.dirname, '../../../../native/windows-supervisor/target/debug/pg-windows-supervisor.exe')
@@ -60,6 +60,20 @@ async function createJournal(request: Record<string, unknown>): Promise<void> {
 async function removeJournalForTest(journalRoot: string, jobId: string): Promise<void> {
   await rm(win32.join(journalRoot, `.transaction-${jobId}.jsonl`), { force: true }).catch(() => undefined)
 }
+
+test('recovery diagnostics retain only sanitized supervisor category and code', () => {
+  assert.deepEqual(recoveryFailureDetails({
+    response: { ok: false, code: 'journal_root_open_failed', path: 'C:\\private\\journal' },
+    exitCode: 1,
+  }), {
+    category: 'supervisor_rejected',
+    code: 'journal_root_open_failed',
+    exitCode: 1,
+  })
+  const malformed = recoveryFailureDetails({ response: { ok: false, code: 'C:\\private\\path' }, exitCode: null })
+  assert.deepEqual(malformed, { category: 'supervisor_rejected', code: 'unknown', exitCode: null })
+  assert.equal(JSON.stringify(malformed).includes('private'), false)
+})
 
 test('Windows crash/restart recovery preserves ambiguous and outside data', { skip: process.platform !== 'win32' }, async (t) => {
   if (await skipElevatedStageOperation(t)) return

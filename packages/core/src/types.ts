@@ -144,6 +144,8 @@ export interface JobEventV1 {
   percent?: number
   message: string
   code?: string
+  diagnosticRef?: string
+  childProcessState?: 'none' | 'active' | 'unknown'
 }
 
 export interface GeneratorErrorShape {

@@ -1,21 +1,32 @@
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync, copyFileSync, existsSync, readdirSync } from 'node:fs'
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync, copyFileSync, existsSync, lstatSync, readdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { spawnSync, spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
+import { withNodeOnPath } from './node-path.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const desktop = join(root, 'packages', 'desktop')
 const tauriDir = join(desktop, 'src-tauri')
-const resources = join(tauriDir, 'resources', 'pg-runtime')
 const mode = process.argv[3]
 const action = process.argv[2]
 const version = process.argv[4] ?? '0.1.0'
+const testResourceRoot = process.env.PG_NATIVE_ACCEPTANCE_RESOURCE_ROOT
+  ? resolve(process.env.PG_NATIVE_ACCEPTANCE_RESOURCE_ROOT)
+  : undefined
+const testSupervisor = process.env.PG_NATIVE_ACCEPTANCE_SUPERVISOR_BINARY
+  ? resolve(process.env.PG_NATIVE_ACCEPTANCE_SUPERVISOR_BINARY)
+  : undefined
+const resources = testResourceRoot ?? join(tauriDir, 'resources', 'pg-runtime')
 const npmCli = process.env.npm_execpath ?? join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')
 
 if (!['system', 'bundled'].includes(mode)) throw new Error('Pass runtime mode: system or bundled.')
 if (!['dev', 'build'].includes(action)) throw new Error('Pass action: dev or build.')
 if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) throw new Error('Pass a semantic version such as 0.1.0.')
+if (Boolean(testResourceRoot) !== Boolean(testSupervisor) || (testResourceRoot && action !== 'dev')) {
+  throw new Error('Native acceptance resource overrides require a paired supervisor binary and dev action.')
+}
+if (testSupervisor && !existsSync(testSupervisor)) throw new Error('Test-owned native acceptance supervisor binary is missing.')
 
 function run(program, args, options = {}) {
   const result = spawnSync(program, args, { cwd: root, stdio: 'inherit', windowsHide: true, ...options })
@@ -24,7 +35,8 @@ function run(program, args, options = {}) {
 }
 
 function runNpm(args, options = {}) {
-  run(process.execPath, [npmCli, ...args], options)
+  const env = withNodeOnPath({ ...process.env, ...options.env }, process.execPath)
+  run(process.execPath, [npmCli, ...args], { ...options, env })
 }
 
 function copyJavaScriptTree(source, destination) {
@@ -38,15 +50,21 @@ function copyJavaScriptTree(source, destination) {
 }
 
 function prepareResources() {
-  // ponytail: rebuild only generated children so the tracked resource placeholder remains intact.
-  for (const name of ['cli', 'runtime', 'catalog.json', 'runtime-manifest.json']) {
-    rmSync(join(resources, name), { recursive: true, force: true })
+  if (testResourceRoot) {
+    if (existsSync(resources) && (!lstatSync(resources).isDirectory() || readdirSync(resources).length > 0)) {
+      throw new Error('Native acceptance resource root must be an empty, non-symlink directory.')
+    }
+  } else {
+    // ponytail: rebuild only generated children so the tracked resource placeholder remains intact.
+    for (const name of ['cli', 'runtime', 'catalog.json', 'runtime-manifest.json']) {
+      rmSync(join(resources, name), { recursive: true, force: true })
+    }
   }
   mkdirSync(resources, { recursive: true })
   const cliDist = join(root, 'packages', 'cli', 'dist', 'src')
   const coreDist = join(root, 'packages', 'core', 'dist', 'src')
   const corePackage = join(root, 'packages', 'core', 'package.json')
-  const supervisor = join(root, 'packages', 'core', 'native', 'pg-windows-supervisor.exe')
+  const supervisor = testSupervisor ?? join(root, 'packages', 'core', 'native', 'pg-windows-supervisor.exe')
   const pathVerifier = join(root, 'packages', 'core', 'native', 'pg-db-path-verifier.exe')
   if (![cliDist, coreDist, supervisor, pathVerifier].every(existsSync)) throw new Error('Build CLI, core, Windows supervisor, and BE-07 path verifier before staging desktop resources.')
 
@@ -113,9 +131,15 @@ function tauriCli() {
 }
 
 if (action === 'dev') {
-  runNpm(['run', 'build:development'], { cwd: root })
+  if (testResourceRoot) {
+    runNpm(['run', 'build', '--workspace', '@project-generator/core'], { cwd: root })
+    run(process.execPath, [join(root, 'scripts', 'set-core-build-profile.mjs'), 'development'])
+    runNpm(['run', 'build', '--workspace', '@project-generator/cli'], { cwd: root })
+  } else runNpm(['run', 'build:development'], { cwd: root })
   prepareResources()
-  const child = spawn(process.execPath, [tauriCli(), 'dev'], {
+  const args = [tauriCli(), 'dev']
+  if (testResourceRoot) args.push('--features', 'native-acceptance')
+  const child = spawn(process.execPath, args, {
     cwd: desktop,
     stdio: 'inherit',
     windowsHide: false,

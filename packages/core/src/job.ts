@@ -27,7 +27,7 @@ import { runDoctor } from './doctor.js'
 import { createPlan } from './plan.js'
 import { assertFullstackInstallPathSafe, assertNestPostgresInstallPathSafe, assertVueFullstackInstallPathSafe } from './paths.js'
 import { writeProjectDocs, writeProjectManifest } from './project-docs.js'
-import { runNodeProcess, runSafeProcess, startNodeProcess, startPostgresSmokeProcess, startSafeProcess, type ProcessResult, type SafeProcessOptions } from './runner.js'
+import { runNodeProcess, runSafeProcess, startNodeProcess, startPostgresSmokeProcess, startSafeProcess, type ProcessResult, type SafeProcessOptions, type SupervisorDiagnosticContext, type SupervisorDiagnosticV1, type SupervisorProcessResultV1 } from './runner.js'
 import { bindOwnedStageProjectIdentity, createOwnedStage, cleanupOwnedStage, cleanupStageSupportFiles, markOwnedStageGenerating, mutateOwnedStage, moveDirectoryNoReplace, verifyOwnedStageProjectIdentity, type OwnedStage } from './staging.js'
 import { resolveComposerPhar, resolveGoTool, resolveNpmTool, resolvePhpExecutable, resolvePythonExecutable, resolveUvExecutable, supportsComposer, supportsGo, supportsGoGin, supportsNpm, supportsPhp, supportsPython, supportsUv, type ComposerPhar, type GoTool, type NpmTool, type PhpExecutable, type PythonExecutable, type UvExecutable } from './toolchain.js'
 import { assertGenerationAllowed } from './native-supervisor.js'
@@ -57,6 +57,9 @@ interface JobLog {
   readonly file: string
   write(text: string): void
   process(label: string, result: ProcessResult, hiddenPaths: readonly string[]): void
+  setStage(stageId: StageId): void
+  supervisorDiagnosticContext(): SupervisorDiagnosticContext
+  latestSupervisorDiagnostic(): SupervisorDiagnosticV1 | undefined
 }
 
 const fixedStageOwners: Partial<Record<StageId, string>> = {
@@ -92,7 +95,9 @@ function createJobLog(jobId: string): JobLog {
   const directory = mkdtempSync(win32.join(tmpdir(), 'project-generator-job-'))
   const file = win32.join(directory, `${jobId}.log`)
   writeFileSync(file, 'Project Generator redacted process log\n', { flag: 'wx' })
-  return {
+  let currentStage: StageId = 'preflight'
+  let latestDiagnostic: SupervisorDiagnosticV1 | undefined
+  const log: JobLog = {
     file,
     write(text) { appendFileSync(file, `${text}\n`, 'utf8') },
     process(label, result, hiddenPaths) {
@@ -100,7 +105,23 @@ function createJobLog(jobId: string): JobLog {
       if (result.stdout) this.write(`[${label} stdout]\n${redact(result.stdout, hiddenPaths)}`)
       if (result.stderr) this.write(`[${label} stderr]\n${redact(result.stderr, hiddenPaths)}`)
     },
+    setStage(stageId) { currentStage = stageId },
+    supervisorDiagnosticContext() {
+      return {
+        jobId,
+        stageId: currentStage,
+        onDiagnostic(diagnostic) {
+          latestDiagnostic = diagnostic
+          log.write(JSON.stringify(diagnostic))
+        },
+        onProcessResult(result: SupervisorProcessResultV1) {
+          log.write(JSON.stringify(result))
+        },
+      }
+    },
+    latestSupervisorDiagnostic() { return latestDiagnostic },
   }
+  return log
 }
 
 function createEventEmitter(jobId: string, onEvent?: GenerateOptions['onEvent'], log?: JobLog) {
@@ -227,6 +248,7 @@ function processOptions(
   args: readonly string[],
   signal?: AbortSignal,
   environment?: Readonly<Record<string, string>>,
+  supervisorDiagnostic?: SupervisorDiagnosticContext,
 ): SafeProcessOptions {
   return {
     scriptPath: npmCliPath,
@@ -238,6 +260,7 @@ function processOptions(
     tempDirectory: dirs.temp,
     ...(signal ? { signal } : {}),
     ...(environment ? { environment } : {}),
+    ...(supervisorDiagnostic ? { supervisorDiagnostic } : {}),
     timeoutMs: 10 * 60 * 1000,
   }
 }
@@ -261,6 +284,8 @@ async function runNpm(
     dirs,
     npmArguments(dirs.userConfig, dirs.globalConfig, dirs.cache, commandArgs),
     signal,
+    undefined,
+    log.supervisorDiagnosticContext(),
   ))
   log.process(label, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
   return result
@@ -298,6 +323,7 @@ async function runGo(
     },
     ...(signal ? { signal } : {}),
     timeoutMs,
+    supervisorDiagnostic: log.supervisorDiagnosticContext(),
   })
   log.process(label, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
   return result
@@ -324,6 +350,7 @@ async function runGofmt(
     environment: { GOTOOLCHAIN: 'local', GOENV: 'off', GOTMPDIR: dirs.temp },
     ...(signal ? { signal } : {}),
     timeoutMs: 2 * 60 * 1000,
+    supervisorDiagnostic: log.supervisorDiagnosticContext(),
   })
   log.process('gofmt', result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
   return result
@@ -361,6 +388,7 @@ async function runUv(
     },
     ...(signal ? { signal } : {}),
     timeoutMs: 10 * 60 * 1000,
+    supervisorDiagnostic: log.supervisorDiagnosticContext(),
   })
   log.process(label, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, dirs.uvCache, tmpdir()])
   return result
@@ -393,6 +421,7 @@ async function runComposer(
     },
     ...(signal ? { signal } : {}),
     timeoutMs: 20 * 60 * 1000,
+    supervisorDiagnostic: log.supervisorDiagnosticContext(),
   })
   log.process(label, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, dirs.composerHome, dirs.composerCache, tmpdir()])
   return result
@@ -421,6 +450,7 @@ async function runPhp(
     ...(environment ? { environment } : {}),
     ...(signal ? { signal } : {}),
     timeoutMs: 10 * 60 * 1000,
+    supervisorDiagnostic: log.supervisorDiagnosticContext(),
   })
   log.process(label, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
   return result
@@ -743,6 +773,7 @@ async function runAppScript(
     tempDirectory: dirs.temp,
     ...(signal ? { signal } : {}),
     timeoutMs: 10 * 60 * 1000,
+    supervisorDiagnostic: log.supervisorDiagnosticContext(),
   })
   log.process(label, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
   return result
@@ -781,6 +812,7 @@ async function runPinnedPackageManager(
     environment,
     ...(signal ? { signal } : {}),
     timeoutMs: 10 * 60 * 1000,
+    supervisorDiagnostic: log.supervisorDiagnosticContext(),
   })
   log.process(`${manager.id}-project-dependency-install`, result, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
   return result
@@ -842,6 +874,7 @@ async function servedPageSmoke(
     homeDirectory: dirs.home,
     tempDirectory: dirs.temp,
     ...(signal ? { signal } : {}),
+    supervisorDiagnostic: log.supervisorDiagnosticContext(),
   })
   let outcome: ValidationOutcome | undefined
   try {
@@ -912,6 +945,7 @@ async function servedBackendSmoke(
         ...(isDatabaseBackend ? { DB_FILE: ':memory:' } : {}),
       },
       ...(signal ? { signal } : {}),
+      supervisorDiagnostic: log.supervisorDiagnosticContext(),
     }
     running = isPostgresBackend
       ? await startPostgresSmokeProcess(processOptions, databaseProbePort!)
@@ -978,6 +1012,7 @@ async function servedFullstackSmoke(
       tempDirectory: dirs.temp,
       environment: { HOST: '127.0.0.1', PORT: String(apiPort), NODE_ENV: 'test' },
       ...(signal ? { signal } : {}),
+      supervisorDiagnostic: log.supervisorDiagnosticContext(),
     }, databaseAddress.port)
     web = await startNodeProcess({
       scriptPath: win32.join(projectPath, 'node_modules', 'vite', 'bin', 'vite.js'),
@@ -989,6 +1024,7 @@ async function servedFullstackSmoke(
       tempDirectory: dirs.temp,
       environment: { API_PORT: String(apiPort) },
       ...(signal ? { signal } : {}),
+      supervisorDiagnostic: log.supervisorDiagnosticContext(),
     })
     for (let attempt = 0; attempt < 30; attempt += 1) {
       throwIfCancelled(signal, 'validating')
@@ -1062,6 +1098,7 @@ async function servedGoBackendSmoke(
       GOTMPDIR: dirs.temp,
     },
     ...(signal ? { signal } : {}),
+    supervisorDiagnostic: log.supervisorDiagnosticContext(),
   })
   let outcome: ValidationOutcome | undefined
   try {
@@ -1123,6 +1160,7 @@ async function servedFastApiSmoke(
       PORT: String(port),
     },
     ...(signal ? { signal } : {}),
+    supervisorDiagnostic: log.supervisorDiagnosticContext(),
   })
   let apiPassed = false
   let openApiPassed = false
@@ -1241,6 +1279,7 @@ async function servedLaravelSmoke(
       SESSION_DRIVER: 'array',
     },
     ...(signal ? { signal } : {}),
+    supervisorDiagnostic: log.supervisorDiagnosticContext(),
   })
   let outcome: ValidationOutcome | undefined
   try {
@@ -1309,6 +1348,7 @@ async function executeScaffold(
     tempDirectory: dirs.temp,
     ...(signal ? { signal } : {}),
     timeoutMs: 5 * 60 * 1000,
+    supervisorDiagnostic: log.supervisorDiagnosticContext(),
   })
   log.process('pinned-official-scaffold', scaffold, [stage.parentPath, stage.path, stage.targetPath, dirs.home, dirs.temp, tmpdir()])
   if (scaffold.exitCode !== 0) throw mappedProcessError('scaffolding', scaffold)
@@ -1336,7 +1376,7 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
   const isForma = Boolean(selection.template)
   const recipeOwnerId = resolved.recipe.backend ?? resolved.recipe.frontend ?? 'core'
   const eventOwner = (id: StageId): string => stageOwner(id, recipeOwnerId, resolved.recipe.manager, isForma)
-  const stageStart = (id: StageId): void => { currentStage = id; emit({ type: 'stage-started', stageId: id, stageOwner: eventOwner(id), stageStatus: 'running', message: `${id} started.` }) }
+  const stageStart = (id: StageId): void => { currentStage = id; log.setStage(id); emit({ type: 'stage-started', stageId: id, stageOwner: eventOwner(id), stageStatus: 'running', message: `${id} started.` }) }
   const stageFinish = (id: StageId, status: 'passed' | 'failed' | 'skipped', message = `${id} completed.`): void => { emit({ type: 'stage-finished', stageId: id, stageOwner: eventOwner(id), stageStatus: status, message }) }
   let formaEvidence: FormaInstallEvidence | undefined
   let npmTool: NpmTool | undefined
@@ -1909,8 +1949,15 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       stage: currentStage,
       targetModified: committed || finalizeUnconfirmed,
     }, { cause: original })
+    const supervisorDiagnostic = log.latestSupervisorDiagnostic()
+    const diagnosticFields = supervisorDiagnostic ? {
+      diagnosticRef: supervisorDiagnostic.diagnosticRef,
+      childProcessState: supervisorDiagnostic.activeChildProcessCount === null
+        ? 'unknown' as const
+        : supervisorDiagnostic.activeChildProcessCount === 0 ? 'none' as const : 'active' as const,
+    } : {}
     stageFinish(currentStage, detail.code === 'GEN_CANCELLED' ? 'skipped' : 'failed', detail.message)
-    emit({ type: detail.code === 'GEN_CANCELLED' ? 'warning' : 'error', stageId: currentStage, stageOwner: eventOwner(currentStage), code: detail.code, message: detail.message })
+    emit({ type: detail.code === 'GEN_CANCELLED' ? 'warning' : 'error', stageId: currentStage, stageOwner: eventOwner(currentStage), code: detail.code, message: detail.message, ...diagnosticFields })
     if (stage && !committed && preserveStage) {
       emit({ type: 'warning', stageId: 'staging', stageOwner: 'core', code: 'GEN_STAGING_LEFTOVER', message: finalizeUnconfirmed
         ? 'Owned staging was retained because native finalization outcome could not be confirmed.'
@@ -1927,9 +1974,9 @@ async function generateInJob(selection: ProjectSelectionV1, options: GenerateOpt
       }
     }
     const status = detail.code === 'GEN_CANCELLED' ? 'cancelled' : 'failed'
-    emit({ type: 'job-finished', stageOwner: 'core', status, message: status === 'cancelled'
+    emit({ type: 'job-finished', stageId: currentStage, stageOwner: 'core', status, message: status === 'cancelled'
       ? 'Generation cancelled; cleanup attempted.'
-      : finalizeUnconfirmed ? 'Finalization outcome is uncertain; inspect destination and retained staging.' : 'Generation failed; final destination was not committed.', code: detail.code })
+      : finalizeUnconfirmed ? 'Finalization outcome is uncertain; inspect destination and retained staging.' : 'Generation failed; final destination was not committed.', code: detail.code, ...diagnosticFields })
     return {
       jobId,
       status,

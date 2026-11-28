@@ -1,5 +1,9 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { appendFileSync, readFileSync } from 'node:fs'
+import { win32 } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { BUILD_PROFILE } from './build-policy.js'
 import { GeneratorError } from './errors.js'
 
 const RESPONSE_LIMIT = 4 * 1024 * 1024
@@ -9,6 +13,41 @@ const helperPath = fileURLToPath(new URL('../../native/pg-windows-supervisor.exe
 export interface SupervisorResult {
   response: Record<string, unknown>
   exitCode: number | null
+}
+
+export type SupervisorResponseStatus = 'received' | 'malformed' | 'timed_out' | 'oversized' | 'spawn_failed' | 'unavailable'
+
+export class SupervisorResponseError extends Error {
+  constructor(readonly status: Exclude<SupervisorResponseStatus, 'received' | 'unavailable'>, message: string) {
+    super(message)
+    this.name = 'SupervisorResponseError'
+  }
+}
+
+function recordSupervisorLaunch(child: ChildProcess, mode: string): void {
+  const evidencePath = process.env.PG_NATIVE_ACCEPTANCE_SUPERVISOR_LAUNCH_EVIDENCE
+  const tempRoot = process.env.TEMP
+  if (BUILD_PROFILE !== 'development' || process.platform !== 'win32'
+    || !['--run', '--check-elevation', '--recovery-inspect'].includes(mode)
+    || !evidencePath || !tempRoot || !win32.isAbsolute(evidencePath) || !win32.isAbsolute(tempRoot)) return
+  const relativePath = win32.relative(win32.resolve(tempRoot), win32.resolve(evidencePath))
+  if (!relativePath || relativePath === '..' || relativePath.startsWith(`..${win32.sep}`) || win32.isAbsolute(relativePath)) return
+  child.once('spawn', () => {
+    try {
+      const executablePath = child.spawnfile
+      if (!Number.isSafeInteger(child.pid) || !executablePath) return
+      const sha256 = createHash('sha256').update(readFileSync(executablePath)).digest('hex')
+      appendFileSync(evidencePath, `${JSON.stringify({
+        processId: child.pid,
+        mode,
+        executablePath,
+        sha256,
+        observedAt: new Date().toISOString(),
+      })}\n`, 'utf8')
+    } catch {
+      // ponytail: evidence capture must never change supervisor execution; harness blocks on missing evidence.
+    }
+  })
 }
 
 export function spawnSupervisor(mode: string): ChildProcess {
@@ -24,6 +63,7 @@ export function spawnSupervisor(mode: string): ChildProcess {
     windowsHide: true,
     stdio: ['pipe', 'pipe', 'ignore'],
   })
+  recordSupervisorLaunch(child, mode)
   child.stdin?.on('error', () => undefined)
   return child
 }
@@ -48,22 +88,22 @@ export function readSupervisorResponse(child: ChildProcess, timeoutMs = SUPERVIS
       length += chunk.length
       if (length > RESPONSE_LIMIT) {
         child.kill()
-        finish(new Error('Native supervisor response exceeded limit.'))
+        finish(new SupervisorResponseError('oversized', 'Native supervisor response exceeded limit.'))
       } else output.push(chunk)
     })
-    child.once('error', () => finish(new Error('Native supervisor could not start.')))
+    child.once('error', () => finish(new SupervisorResponseError('spawn_failed', 'Native supervisor could not start.')))
     child.once('close', (exitCode) => {
       try {
         const response: unknown = JSON.parse(Buffer.concat(output).toString('utf8'))
-        if (typeof response !== 'object' || response === null || Array.isArray(response)) throw new Error('Invalid supervisor response.')
+        if (typeof response !== 'object' || response === null || Array.isArray(response)) throw new SupervisorResponseError('malformed', 'Invalid supervisor response.')
         finish(undefined, { response: response as Record<string, unknown>, exitCode })
       } catch {
-        finish(new Error('Native supervisor returned no valid response.'))
+        finish(new SupervisorResponseError('malformed', 'Native supervisor returned no valid response.'))
       }
     })
     const timeout = setTimeout(() => {
       child.kill()
-      finish(new Error('Native supervisor did not respond in time.'))
+      finish(new SupervisorResponseError('timed_out', 'Native supervisor did not respond in time.'))
     }, timeoutMs)
   })
 }

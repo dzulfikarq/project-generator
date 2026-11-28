@@ -202,6 +202,15 @@ export interface RecoveryReport {
   detail: string
 }
 
+export function recoveryFailureDetails(result: SupervisorResult) {
+  const code = result.response.code
+  return {
+    category: result.response.ok === false ? 'supervisor_rejected' : 'invalid_response',
+    code: typeof code === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test(code) ? code : 'unknown',
+    exitCode: Number.isSafeInteger(result.exitCode) ? result.exitCode : null,
+  }
+}
+
 function journalRootPath(): string {
   const localAppData = process.env.LOCALAPPDATA
   if (!localAppData || !win32.isAbsolute(localAppData)) {
@@ -213,7 +222,8 @@ function journalRootPath(): string {
 export async function inspectRecovery(jobId?: string): Promise<RecoveryReport[]> {
   const result = await callSupervisor('--recovery-inspect', { journalRootPath: journalRootPath(), ...(jobId ? { jobId } : {}) })
   if (result.exitCode !== 0 || result.response.ok !== true || !Array.isArray(result.response.reports)) {
-    throw stagingError('GEN_RECOVERY_INSPECT_FAILED', 'recovery', 'Native recovery inspection could not verify the transaction journal.', 'Preserve stage and target paths; inspect manually.')
+    const failure = recoveryFailureDetails(result)
+    throw stagingError('GEN_RECOVERY_INSPECT_FAILED', 'recovery', `Native recovery inspection could not verify the transaction journal (category=${failure.category}, code=${failure.code}, supervisorExitCode=${failure.exitCode ?? 'unknown'}).`, 'Preserve stage and target paths; inspect manually.')
   }
   return result.response.reports as RecoveryReport[]
 }

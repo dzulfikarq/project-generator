@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Version | Draft 0.1 — 2026-11-17 |
-| Status | **FE-03–FE-15 and standalone BE-01/BE-02/BE-03/BE-04/BE-05/BE-06/BE-07 bounded local evidence recorded; BE-08 independent acceptance PASS WITH FINDINGS; BE-09 independent review PASS WITH FINDINGS (no product blocker), CLI/native r9 E2E passed and Phase 06C development closure GO; FS-06 independent acceptance PASS WITH FINDINGS and Phase 07A development closure GO; FS-07 independent acceptance PASS WITH FINDINGS and Phase 07B development closure GO; all FE/BE/FS/FM recipes remain PLAN; no recipe promoted or release-approved** |
+| Status | **FE-03–FE-15 and standalone BE-01/BE-02/BE-03/BE-04/BE-05/BE-06/BE-07 bounded local evidence recorded; Phase 08B.3 BE-02 binary provenance and native generation PASS; harness assertion regression 21/21 PASS but not native-retested; History/Open NOT VERIFIED; historical supervisor/cleanup causes UNKNOWN; BE-02 promotion and public release NO-GO; independent acceptance outstanding; BE-08 independent acceptance PASS WITH FINDINGS; BE-09 independent review PASS WITH FINDINGS (no product blocker), CLI/native r9 E2E passed and Phase 06C development closure GO; FS-06 independent acceptance PASS WITH FINDINGS and Phase 07A development closure GO; FS-07 independent acceptance PASS WITH FINDINGS and Phase 07B development closure GO; all FE/BE/FS/FM recipes remain PLAN; no recipe promoted or release-approved** |
 | Main platform | Windows 11 |
 | Source of truth | This matrix + machine-readable adapter manifests + QA results |
 
@@ -150,6 +150,8 @@ Legend: `PLAN` = design-compatible candidate awaiting generator tests; `FUT` = n
 | FM-02 | Template | Next App Router | None separate | None | Selected Forma template | npm + Forma installer | V1 integration |
 | MOB-01 | Mobile | Expo | Optional backend later | None | NativeWind / Native default | npm | V1.1 |
 | MOB-02 | Mobile | Flutter | Optional backend later | None | Material | pub | V1.1 |
+
+**BE-02 Phase 08A–08B stabilization:** Earlier Phase 05B evidence remains historical. Phase 08A.2/08A.7 diagnostic native generations and the single Phase 08B.3 native generation passed; Phase 08B.3 build/stage/launch hashes matched and its seven generated validations passed. The original harness then failed on the non-process `scaffold-identity` exit-code assertion; corrected harness regression passed 21/21 but has not been native-retested. History/Open/VS Code remain **NOT VERIFIED**. Go `1.22.0` checks passed for tested scope. Historical supervisor/cleanup causes remain **UNKNOWN**. Keep BE-02 `PLAN`; promotion and public release remain **NO-GO**. See [DEC-036](../decisions/DEC-036-phase-08a-be02-promotion-readiness.md), [Phase 08A assessment](../qa/evidence/phase-08a-be02-promotion-readiness.md), [Phase 08A.3 evidence](../qa/evidence/phase-08a3-be02-go122-compatibility.md), and [Phase 08B.3 evidence](../qa/evidence/phase-08b3-be02-supervisor-provenance.md).
 
 BE-04 does not imply PostgreSQL/pgx support. FS-02 remains a separate proposed fullstack recipe with PostgreSQL/pgx; it is unchanged and unverified by Phase 05D.2.
 

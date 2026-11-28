@@ -535,6 +535,10 @@ struct JobEventV1 {
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    diagnostic_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    child_process_state: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -575,6 +579,18 @@ fn desktop_error_from_cli(detail: CliError) -> DesktopErrorV1 {
 }
 
 fn resource_root(app: &AppHandle) -> CommandResult<PathBuf> {
+    #[cfg(all(debug_assertions, feature = "native-acceptance"))]
+    if let Some(path) = std::env::var_os("PG_NATIVE_ACCEPTANCE_RESOURCE_ROOT") {
+        let path = PathBuf::from(path);
+        if path.is_absolute() && path.is_dir() {
+            return Ok(path);
+        }
+        return Err(error(
+            "DESKTOP_RESOURCES_UNAVAILABLE",
+            "Test-owned native acceptance resources are unavailable.",
+            "Restart the isolated native acceptance harness.",
+        ));
+    }
     let packaged = app
         .path()
         .resource_dir()
@@ -1159,8 +1175,18 @@ fn open_project_in_vscode(path: String) -> CommandResult<()> {
                 "Install VS Code or add Code.exe to PATH, then retry.",
             )
         })?;
-        NativeCommand::new(code)
-            .arg("--new-window")
+        let mut command = NativeCommand::new(code);
+        command.arg("--new-window");
+        #[cfg(all(debug_assertions, feature = "native-acceptance"))]
+        if let Some(user_data_dir) = env::var_os("PG_NATIVE_ACCEPTANCE_VSCODE_USER_DATA_DIR") {
+            command.arg("--user-data-dir").arg(user_data_dir);
+            if let Some(extensions_dir) = env::var_os("PG_NATIVE_ACCEPTANCE_VSCODE_EXTENSIONS_DIR")
+            {
+                command.arg("--extensions-dir").arg(extensions_dir);
+            }
+            command.arg("--disable-extensions");
+        }
+        command
             .arg(project)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -1345,6 +1371,29 @@ fn cancellation_terminal_is_confirmed(status: Option<&str>, exit_code: Option<i3
     status == Some("cancelled") && exit_code == Some(5)
 }
 
+fn generator_failure_exit_is_confirmed(
+    status: Option<&str>,
+    code: Option<&str>,
+    exit_code: Option<i32>,
+) -> bool {
+    let is_generator_code = code.is_some_and(|code| {
+        code.strip_prefix("GEN_").is_some_and(|suffix| {
+            !suffix.is_empty()
+                && suffix
+                    .bytes()
+                    .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+        })
+    });
+    match (status, code, exit_code) {
+        (Some("failed"), Some("GEN_PATH_EXISTS"), Some(6)) => true,
+        (Some("failed"), Some("GEN_CANCELLED"), _) => false,
+        (Some("failed"), Some("GEN_PATH_EXISTS"), _) => false,
+        (Some("failed"), Some(_), Some(3 | 4)) => is_generator_code,
+        (Some("partial"), Some("GEN_STAGING_LEFTOVER"), Some(4)) => true,
+        _ => false,
+    }
+}
+
 fn synthetic_event(
     job_id: &str,
     sequence: u64,
@@ -1366,6 +1415,8 @@ fn synthetic_event(
         percent: None,
         message: message.to_owned(),
         code: Some(code.to_owned()),
+        diagnostic_ref: None,
+        child_process_state: None,
     }
 }
 
@@ -1393,7 +1444,30 @@ fn parse_cli_event(
         "job-finished",
     ]
     .contains(&event.event_type.as_str());
-    if event.schema_version != 1 || event.sequence != expected_sequence || !known_type {
+    let valid_diagnostic_ref = event.diagnostic_ref.as_deref().is_none_or(|reference| {
+        let Some(id) = reference.strip_prefix("supdiag-") else {
+            return false;
+        };
+        id.len() == 36
+            && id.bytes().enumerate().all(|(index, byte)| {
+                if [8, 13, 18, 23].contains(&index) {
+                    byte == b'-'
+                } else {
+                    byte.is_ascii_hexdigit()
+                }
+            })
+    });
+    let valid_child_process_state = event
+        .child_process_state
+        .as_deref()
+        .is_none_or(|state| matches!(state, "none" | "active" | "unknown"));
+    if event.schema_version != 1
+        || event.sequence != expected_sequence
+        || !known_type
+        || !valid_diagnostic_ref
+        || !valid_child_process_state
+        || (event.child_process_state.is_some() && event.diagnostic_ref.is_none())
+    {
         return Err(());
     }
     match job_id {
@@ -1504,7 +1578,20 @@ async fn pump_generation(
             _ => None,
         },
     );
-    if terminal && (process_succeeded || cancellation_succeeded) && !protocol_failed {
+    let expected_failure_exit = terminal_event.as_ref().is_some_and(|event| {
+        generator_failure_exit_is_confirmed(
+            event.status.as_deref(),
+            event.code.as_deref(),
+            match &status {
+                Ok(Ok(exit)) => exit.code(),
+                _ => None,
+            },
+        )
+    });
+    if terminal
+        && (process_succeeded || cancellation_succeeded || expected_failure_exit)
+        && !protocol_failed
+    {
         if let Some(event) = terminal_event {
             let _ = send_event(&channel, &invocation_id, event);
         }
@@ -2060,6 +2147,25 @@ mod tests {
     }
 
     #[test]
+    fn cli_event_bridge_forwards_only_opaque_supervisor_metadata() {
+        let event = br#"{"schemaVersion":1,"jobId":"job-1","sequence":4,"timestamp":"2026-11-20T00:00:00Z","type":"job-finished","stageId":"validating","status":"failed","message":"Generation failed.","code":"GEN_PROCESS_SUPERVISOR_FAILED","diagnosticRef":"supdiag-550e8400-e29b-41d4-a716-446655440000","childProcessState":"active","diagnosticDetails":{"systemError":5,"raw":"private OS message"}}"#;
+        let parsed = parse_cli_event(event, 4, Some("job-1")).unwrap();
+        let forwarded = serde_json::to_value(parsed).unwrap();
+        assert_eq!(
+            forwarded["diagnosticRef"],
+            "supdiag-550e8400-e29b-41d4-a716-446655440000"
+        );
+        assert_eq!(forwarded["childProcessState"], "active");
+        assert!(forwarded.get("diagnosticDetails").is_none());
+        assert!(!forwarded.to_string().contains("private OS message"));
+
+        let invalid_reference = br#"{"schemaVersion":1,"jobId":"job-1","sequence":4,"timestamp":"2026-11-20T00:00:00Z","type":"job-finished","status":"failed","message":"Generation failed.","diagnosticRef":"supdiag-private-details","childProcessState":"active"}"#;
+        assert!(parse_cli_event(invalid_reference, 4, Some("job-1")).is_err());
+        let invalid_state = br#"{"schemaVersion":1,"jobId":"job-1","sequence":4,"timestamp":"2026-11-20T00:00:00Z","type":"job-finished","status":"failed","message":"Generation failed.","diagnosticRef":"supdiag-550e8400-e29b-41d4-a716-446655440000","childProcessState":"2 children"}"#;
+        assert!(parse_cli_event(invalid_state, 4, Some("job-1")).is_err());
+    }
+
+    #[test]
     fn cli_cancel_terminal_requires_expected_cancel_exit_code() {
         assert!(cancellation_terminal_is_confirmed(
             Some("cancelled"),
@@ -2071,6 +2177,50 @@ mod tests {
         ));
         assert!(!cancellation_terminal_is_confirmed(Some("failed"), Some(5)));
         assert!(!cancellation_terminal_is_confirmed(Some("cancelled"), None));
+    }
+
+    #[test]
+    fn cli_generator_failure_terminal_requires_matching_status_code_and_exit() {
+        assert!(generator_failure_exit_is_confirmed(
+            Some("failed"),
+            Some("GEN_PROCESS_SUPERVISOR_FAILED"),
+            Some(4)
+        ));
+        assert!(generator_failure_exit_is_confirmed(
+            Some("failed"),
+            Some("GEN_PATH_EXISTS"),
+            Some(6)
+        ));
+        assert!(generator_failure_exit_is_confirmed(
+            Some("failed"),
+            Some("GEN_RECIPE_UNTESTED"),
+            Some(3)
+        ));
+        assert!(generator_failure_exit_is_confirmed(
+            Some("partial"),
+            Some("GEN_STAGING_LEFTOVER"),
+            Some(4)
+        ));
+        assert!(!generator_failure_exit_is_confirmed(
+            Some("failed"),
+            Some("GEN_PROCESS_SUPERVISOR_FAILED"),
+            Some(0)
+        ));
+        assert!(!generator_failure_exit_is_confirmed(
+            Some("failed"),
+            Some("DESKTOP_CLI_EXIT_FAILED"),
+            Some(4)
+        ));
+        assert!(!generator_failure_exit_is_confirmed(
+            Some("failed"),
+            Some("GEN_PATH_EXISTS"),
+            Some(4)
+        ));
+        assert!(!generator_failure_exit_is_confirmed(
+            Some("partial"),
+            Some("GEN_STAGING_LEFTOVER"),
+            Some(5)
+        ));
     }
 
     #[test]
